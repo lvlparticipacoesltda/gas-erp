@@ -101,7 +101,7 @@ Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
 
 1. [Railway](https://railway.app) → **New Project** → **Deploy from GitHub** → selecione `gas-erp`.
 
-2. O arquivo [`railway.toml`](../railway.toml) na raiz define build e start do monorepo.
+2. O arquivo [`railway.toml`](../railway.toml) na raiz define build, migrations (`releaseCommand`) e start do monorepo. O build usa `pnpm install --prod=false` porque ferramentas como Prisma CLI, TypeScript e Nest CLI ficam em `devDependencies`.
 
 3. Em **Variables**, configure:
    - `DATABASE_URL` — Neon
@@ -204,8 +204,14 @@ pnpm build
 
 ### Build falha no monorepo
 
-- Ordem: `pnpm install` → `db:generate` → `@gas-erp/shared build` → `@gas-erp/api` ou `@gas-erp/web build`
+- Ordem: `pnpm install` → `db:generate` → `@gas-erp/shared build` → `@gas-erp/database build` → `@gas-erp/api` ou `@gas-erp/web build`
 - Node 20+ obrigatório
+
+### Railway: `prisma: Permission denied` no build
+
+- Causa: `NODE_ENV=production` faz o pnpm pular `devDependencies` (Prisma CLI, TypeScript, Nest CLI).
+- O [`railway.toml`](../railway.toml) já usa `pnpm install --prod=false` no `buildCommand`.
+- Faça push dessa alteração e redeploy.
 
 ### Prisma: tabelas não existem
 
