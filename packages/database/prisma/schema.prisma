@@ -130,6 +130,7 @@ model User {
   phone          String?
   role           UserRole
   active         Boolean  @default(true)
+  permissions    String[] @default([])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

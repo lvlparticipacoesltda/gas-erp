@@ -61,6 +61,7 @@ export class UsersService {
         phone: data.phone,
         role: data.role,
         active: data.active ?? true,
+        permissions: data.permissions ?? [],
         userStores: data.storeIds?.length
           ? { create: data.storeIds.map((storeId) => ({ storeId })) }
           : undefined,
@@ -102,6 +103,7 @@ export class UsersService {
         phone: data.phone,
         role: data.role,
         active: data.active,
+        permissions: data.permissions,
         passwordHash,
       },
       include: { userStores: { include: { store: true } } },

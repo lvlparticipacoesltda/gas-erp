@@ -309,6 +309,8 @@ DATABASE_URL="..." pnpm db:deploy
 
 ### E-mail de recuperação de senha não chega
 
+Guia passo a passo: [resend-setup.md](resend-setup.md)
+
 - Configure `RESEND_API_KEY` e `EMAIL_FROM` no Railway
 - Verifique o domínio do remetente na [Resend](https://resend.com/domains)
 - Sem API key, o link aparece nos **logs do Railway** (modo fallback)
@@ -334,7 +336,7 @@ DATABASE_URL="..." pnpm db:deploy
 
 1. **Validar login em produção** — `https://thlgasdopovo.com.br/login`
 2. **Trocar senhas demo** — usar Minha conta ou recuperação por e-mail
-3. **Configurar Resend** — `RESEND_API_KEY` + `EMAIL_FROM` no Railway; verificar domínio na Resend
+3. **Configurar Resend** — guia completo: [resend-setup.md](resend-setup.md)
 4. **Rodar migration** — `pnpm db:deploy` com `DATABASE_URL` do Neon (tabela `PasswordResetToken`)
 5. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
 6. **Testar fluxos MVP** — venda, estoque, clientes, resumo diário

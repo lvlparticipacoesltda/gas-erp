@@ -5,6 +5,7 @@ export interface AuthUser {
   role: string;
   organizationId: string;
   storeIds: string[];
+  permissions?: string[];
 }
 
 export interface PaginatedResponse<T> {

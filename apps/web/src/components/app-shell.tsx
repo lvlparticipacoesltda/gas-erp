@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { api, clearAuth, getCurrentStoreId, getStoredUser, getToken, setCurrentStoreId } from '@/lib/api';
+import { buildStoreHref, STORE_NAV_ITEMS } from '@/lib/store-nav';
 import { NavLink } from '@/components/ui';
-import { ROLE_LABELS } from '@gas-erp/shared';
+import { hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
 interface Store {
@@ -30,14 +31,13 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     setUser(stored);
     api<Store[]>('/stores', {}, token).then((data) => {
       setStores(data);
-      const current = getCurrentStoreId();
       if (mode === 'store') {
         const fromPath = pathname.match(/^\/store\/([^/]+)/)?.[1];
         if (fromPath) {
           setStoreId(fromPath);
           setCurrentStoreId(fromPath);
-        } else if (current && data.some((s) => s.id === current)) {
-          setStoreId(current);
+        } else if (getCurrentStoreId() && data.some((s) => s.id === getCurrentStoreId())) {
+          setStoreId(getCurrentStoreId());
         } else if (data[0]) {
           setStoreId(data[0].id);
           setCurrentStoreId(data[0].id);
@@ -60,17 +60,12 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
   if (!user) return <div className="flex min-h-screen items-center justify-center">Carregando...</div>;
 
   const storeLinks = storeId
-    ? [
-        { href: `/store/${storeId}/dashboard`, label: 'Dashboard' },
-        { href: `/store/${storeId}/sales/new`, label: 'Nova venda' },
-        { href: `/store/${storeId}/sales`, label: 'Vendas' },
-        { href: `/store/${storeId}/customers`, label: 'Clientes' },
-        { href: `/store/${storeId}/products`, label: 'Produtos' },
-        { href: `/store/${storeId}/stock`, label: 'Estoque' },
-        { href: `/store/${storeId}/stock/transfers`, label: 'Transferências' },
-        { href: `/store/${storeId}/deliverers`, label: 'Entregadores' },
-        { href: `/store/${storeId}/daily-summary`, label: 'Resumo diário' },
-      ]
+    ? STORE_NAV_ITEMS.filter((item) => hasScreenPermission(user.role, user.permissions, item.screen)).map(
+        (item) => ({
+          href: buildStoreHref(storeId, item.segment),
+          label: item.label,
+        }),
+      )
     : [];
 
   const masterLinks = [
@@ -78,10 +73,16 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     { href: '/master/stores', label: 'Lojas' },
     { href: '/master/users', label: 'Usuários' },
     { href: '/master/go-to-store', label: 'Ir para loja' },
-    { href: '/settings', label: 'Minha conta' },
+    { href: '/master/settings', label: 'Minha conta' },
   ];
 
-  const links = mode === 'master' ? masterLinks : [...storeLinks, { href: '/settings', label: 'Minha conta' }];
+  const links =
+    mode === 'master'
+      ? masterLinks
+      : [
+          ...storeLinks,
+          ...(storeId ? [{ href: `/store/${storeId}/settings`, label: 'Minha conta' }] : []),
+        ];
 
   return (
     <div className="min-h-screen lg:flex">

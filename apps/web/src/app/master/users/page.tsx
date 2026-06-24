@@ -5,6 +5,11 @@ import { AppShell } from '@/components/app-shell';
 import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { ROLE_LABELS, USER_ROLES } from '@gas-erp/shared';
+import {
+  effectivePermissions,
+  PermissionCheckboxes,
+  permissionsToPayload,
+} from '@/components/permission-checkboxes';
 
 interface UserRow {
   id: string;
@@ -13,6 +18,7 @@ interface UserRow {
   phone?: string | null;
   role: string;
   active: boolean;
+  permissions: string[];
   userStores: { store: { id: string; name: string } }[];
 }
 
@@ -27,6 +33,7 @@ const emptyCreate = {
   password: 'admin123',
   role: 'ATTENDANT',
   storeIds: [] as string[],
+  permissions: [] as string[],
 };
 
 export default function MasterUsersPage() {
@@ -42,6 +49,7 @@ export default function MasterUsersPage() {
     storeIds: [] as string[],
     active: true,
     password: '',
+    permissions: [] as string[],
   });
   const [formError, setFormError] = useState('');
 
@@ -69,7 +77,17 @@ export default function MasterUsersPage() {
       storeIds: user.userStores.map((us) => us.store.id),
       active: user.active,
       password: '',
+      permissions: effectivePermissions(user.role, user.permissions),
     });
+  }
+
+  function onRoleChange(role: string, isEdit: boolean) {
+    const defaults = effectivePermissions(role, []);
+    if (isEdit) {
+      setEditForm((f) => ({ ...f, role, permissions: defaults }));
+    } else {
+      setForm((f) => ({ ...f, role, permissions: defaults }));
+    }
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -80,7 +98,11 @@ export default function MasterUsersPage() {
         '/users',
         {
           method: 'POST',
-          body: JSON.stringify({ ...form, storeIds: form.storeIds.length ? form.storeIds : undefined }),
+          body: JSON.stringify({
+            ...form,
+            storeIds: form.storeIds.length ? form.storeIds : undefined,
+            permissions: permissionsToPayload(form.role, form.permissions),
+          }),
         },
         getToken(),
       );
@@ -110,6 +132,7 @@ export default function MasterUsersPage() {
       role: editForm.role,
       storeIds: editForm.storeIds,
       active: editForm.active,
+      permissions: permissionsToPayload(editForm.role, editForm.permissions),
     };
     if (editForm.password) payload.password = editForm.password;
     try {
@@ -123,7 +146,7 @@ export default function MasterUsersPage() {
 
   return (
     <AppShell mode="master">
-      <PageHeader title="Usuários" subtitle="Controle de acesso por loja e papel" />
+      <PageHeader title="Usuários" subtitle="Papéis, lojas e telas permitidas por usuário" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">{editing ? 'Editar usuário' : 'Novo usuário'}</h2>
@@ -165,7 +188,10 @@ export default function MasterUsersPage() {
               </div>
               <div>
                 <Label>Papel</Label>
-                <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
+                <Select
+                  value={editForm.role}
+                  onChange={(e) => onRoleChange(e.target.value, true)}
+                >
                   {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN').map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r]}
@@ -189,6 +215,11 @@ export default function MasterUsersPage() {
                   ))}
                 </Select>
               </div>
+              <PermissionCheckboxes
+                role={editForm.role}
+                selected={editForm.permissions}
+                onChange={(permissions) => setEditForm({ ...editForm, permissions })}
+              />
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -231,7 +262,7 @@ export default function MasterUsersPage() {
               </div>
               <div>
                 <Label>Papel</Label>
-                <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                <Select value={form.role} onChange={(e) => onRoleChange(e.target.value, false)}>
                   {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN').map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r]}
@@ -255,6 +286,11 @@ export default function MasterUsersPage() {
                   ))}
                 </Select>
               </div>
+              <PermissionCheckboxes
+                role={form.role}
+                selected={form.permissions.length ? form.permissions : effectivePermissions(form.role, [])}
+                onChange={(permissions) => setForm({ ...form, permissions })}
+              />
               <Button type="submit">Cadastrar</Button>
               {formError && <p className="text-sm text-red-600">{formError}</p>}
             </form>

@@ -19,7 +19,10 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api<{ accessToken: string; user: { role: string; storeIds?: string[] } }>('/auth/login', {
+      const res = await api<{
+        accessToken: string;
+        user: { role: string; storeIds?: string[]; permissions?: string[] };
+      }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });

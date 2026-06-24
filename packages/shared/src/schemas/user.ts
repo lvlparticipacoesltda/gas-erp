@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { USER_ROLES } from '../enums';
+import { userPermissionsSchema } from '../permissions';
 
 export const createUserSchema = z.object({
   email: z.string().email(),
@@ -9,6 +10,7 @@ export const createUserSchema = z.object({
   role: z.enum(USER_ROLES),
   storeIds: z.array(z.string()).optional(),
   active: z.boolean().optional(),
+  permissions: userPermissionsSchema,
 });
 
 export const updateUserSchema = z.object({
@@ -19,6 +21,7 @@ export const updateUserSchema = z.object({
   role: z.enum(USER_ROLES).optional(),
   storeIds: z.array(z.string()).optional(),
   active: z.boolean().optional(),
+  permissions: userPermissionsSchema,
 });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;

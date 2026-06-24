@@ -5,13 +5,14 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../common/mail/mail.service';
 import {
+  AuthUser,
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   resetPasswordSchema,
+  resolveUserPermissions,
   updateProfileSchema,
 } from '@gas-erp/shared';
-import { AuthUser } from '@gas-erp/shared';
 
 const FORGOT_PASSWORD_MESSAGE =
   'Se o e-mail estiver cadastrado, você receberá instruções para redefinir a senha em breve.';
@@ -42,6 +43,7 @@ export class AuthService {
       role: user.role,
       organizationId: user.organizationId,
       storeIds: user.userStores.map((us) => us.storeId),
+      permissions: resolveUserPermissions(user.role, user.permissions),
     };
 
     const accessToken = await this.jwt.signAsync(authUser);
@@ -67,6 +69,7 @@ export class AuthService {
       role: user.role,
       organizationId: user.organizationId,
       storeIds: user.userStores.map((us) => us.storeId),
+      permissions: resolveUserPermissions(user.role, user.permissions),
       stores: user.userStores.map((us) => us.store),
       organization: user.organization,
     };
@@ -98,6 +101,7 @@ export class AuthService {
       role: updated.role,
       organizationId: updated.organizationId,
       storeIds: updated.userStores.map((us) => us.storeId),
+      permissions: resolveUserPermissions(updated.role, updated.permissions),
       stores: updated.userStores.map((us) => us.store),
       organization: updated.organization,
     };
