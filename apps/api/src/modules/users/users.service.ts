@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createUserSchema, updateUserSchema } from '@gas-erp/shared';
@@ -46,6 +46,11 @@ export class UsersService {
 
   async create(user: AuthUser, input: unknown) {
     const data = createUserSchema.parse(input);
+    const existing = await this.prisma.user.findFirst({
+      where: { organizationId: user.organizationId, email: data.email },
+    });
+    if (existing) throw new ConflictException('Este e-mail já está cadastrado nesta rede');
+
     const passwordHash = await bcrypt.hash(data.password, 10);
     const created = await this.prisma.user.create({
       data: {
@@ -68,8 +73,16 @@ export class UsersService {
   }
 
   async update(user: AuthUser, id: string, input: unknown) {
-    await this.findOne(user, id);
+    const current = await this.findOne(user, id);
     const data = updateUserSchema.parse(input);
+
+    if (data.email && data.email !== current.email) {
+      const existing = await this.prisma.user.findFirst({
+        where: { organizationId: user.organizationId, email: data.email, NOT: { id } },
+      });
+      if (existing) throw new ConflictException('Este e-mail já está cadastrado nesta rede');
+    }
+
     const passwordHash = data.password ? await bcrypt.hash(data.password, 10) : undefined;
 
     if (data.storeIds) {

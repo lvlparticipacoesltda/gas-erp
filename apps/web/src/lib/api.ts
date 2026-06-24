@@ -1,3 +1,5 @@
+import { parseApiError } from './errors';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
 export async function api<T>(
@@ -14,7 +16,7 @@ export async function api<T>(
   const res = await fetch(`${API_URL}${path}`, { ...options, headers, cache: 'no-store' });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? 'Erro na requisição');
+    throw new Error(parseApiError(err, res.statusText));
   }
   return res.json();
 }

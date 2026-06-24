@@ -31,13 +31,20 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     api<Store[]>('/stores', {}, token).then((data) => {
       setStores(data);
       const current = getCurrentStoreId();
-      if (current) setStoreId(current);
-      else if (data[0]) {
-        setStoreId(data[0].id);
-        setCurrentStoreId(data[0].id);
+      if (mode === 'store') {
+        const fromPath = pathname.match(/^\/store\/([^/]+)/)?.[1];
+        if (fromPath) {
+          setStoreId(fromPath);
+          setCurrentStoreId(fromPath);
+        } else if (current && data.some((s) => s.id === current)) {
+          setStoreId(current);
+        } else if (data[0]) {
+          setStoreId(data[0].id);
+          setCurrentStoreId(data[0].id);
+        }
       }
     });
-  }, [router]);
+  }, [router, mode, pathname]);
 
   function logout() {
     clearAuth();
@@ -47,7 +54,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
   function onStoreChange(id: string) {
     setStoreId(id);
     setCurrentStoreId(id);
-    if (mode === 'store') router.push(`/store/${id}/dashboard`);
+    router.push(`/store/${id}/dashboard`);
   }
 
   if (!user) return <div className="flex min-h-screen items-center justify-center">Carregando...</div>;
@@ -70,9 +77,11 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     { href: '/master/dashboard', label: 'Visão geral' },
     { href: '/master/stores', label: 'Lojas' },
     { href: '/master/users', label: 'Usuários' },
+    { href: '/master/go-to-store', label: 'Ir para loja' },
+    { href: '/settings', label: 'Minha conta' },
   ];
 
-  const links = mode === 'master' ? masterLinks : storeLinks;
+  const links = mode === 'master' ? masterLinks : [...storeLinks, { href: '/settings', label: 'Minha conta' }];
 
   return (
     <div className="min-h-screen lg:flex">
@@ -83,7 +92,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
           <div className="text-sm font-medium">{user.name}</div>
         </div>
         <div className="p-4">
-          {stores.length > 0 && (
+          {mode === 'store' && stores.length > 0 && (
             <select
               className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               value={storeId ?? ''}
@@ -103,10 +112,9 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
               </NavLink>
             ))}
             {user.role === 'ORG_MASTER' && mode === 'store' && (
-              <NavLink href="/master/dashboard">Painel Master</NavLink>
-            )}
-            {user.role === 'ORG_MASTER' && mode === 'master' && storeId && (
-              <NavLink href={`/store/${storeId}/dashboard`}>Ir para loja</NavLink>
+              <NavLink href="/master/dashboard" active={pathname.startsWith('/master')}>
+                Painel Master
+              </NavLink>
             )}
           </nav>
         </div>

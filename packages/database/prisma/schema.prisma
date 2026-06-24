@@ -140,6 +140,7 @@ model User {
   auditLogs      AuditLog[]
   statusLogs     SaleStatusLog[]
   stockMovements StockMovement[]
+  passwordResetTokens PasswordResetToken[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -473,4 +474,18 @@ model AuditLog {
   user         User?        @relation(fields: [userId], references: [id])
 
   @@index([organizationId, createdAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
 }

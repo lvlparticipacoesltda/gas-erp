@@ -13,8 +13,13 @@ Ver plano completo em `.cursor/plans/`. Resumo:
 
 Base URL: `/api/v1`
 
-Principais recursos: `auth`, `stores`, `users`, `customers`, `products`, `stock`, `stock-transfers`, `sales`, `deliverers`, `deliveries`, `dashboard`.
+Principais recursos: `auth`, `health`, `stores`, `users`, `customers`, `products`, `stock`, `stock-transfers`, `sales`, `deliverers`, `deliveries`, `dashboard`.
 
-## Produção
+### Produção
 
-Para deploy do MVP (Neon + Railway + Vercel) e evolução da infraestrutura, veja [deployment.md](deployment.md).
+| | |
+|---|---|
+| Base | `https://gas-erpapi-production.up.railway.app/api/v1` |
+| Health | `GET /health` (público, sem auth) |
+
+Para deploy, DNS, CORS e roadmap, veja [deployment.md](deployment.md).

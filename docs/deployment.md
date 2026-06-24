@@ -2,6 +2,64 @@
 
 Guia para colocar o Gas ERP em produção e evoluir a infraestrutura conforme o negócio cresce.
 
+## Status atual (jun/2026)
+
+Deploy MVP **no ar** para a Rede Gás Litoral / THL Gás do Povo.
+
+| Item | Status | Detalhe |
+|------|--------|---------|
+| Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
+| Banco PostgreSQL (Neon) | ✅ | Migrations aplicadas + seed demo |
+| API (Railway) | ✅ | `https://gas-erpapi-production.up.railway.app` |
+| Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
+| Domínio customizado | ✅ | `https://thlgasdopovo.com.br` → Vercel (DNS Hostinger) |
+| CORS | ✅ | `WEB_URL=https://thlgasdopovo.com.br` no Railway |
+| Health check | ✅ | `GET /api/v1/health` |
+| Subdomínio `api.` | ⏳ | API ainda na URL `*.up.railway.app` (opcional) |
+| Subdomínio `www` | ⏳ | Redirecionar `www` → apex ou incluir no CORS |
+| Senhas demo | ⏳ | Ainda `admin123` — trocar em produção |
+| CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
+| Módulo fiscal | ⏳ | Fase 2 |
+| Apps mobile | ⏳ | Fase 2 |
+
+### URLs de produção
+
+| Serviço | URL |
+|---------|-----|
+| **App (login)** | https://thlgasdopovo.com.br/login |
+| **API** | https://gas-erpapi-production.up.railway.app/api/v1 |
+| **Health** | https://gas-erpapi-production.up.railway.app/api/v1/health |
+| **Vercel (backup)** | https://gas-erp-web.vercel.app |
+
+### Variáveis configuradas
+
+| Variável | Onde | Valor atual |
+|----------|------|-------------|
+| `DATABASE_URL` | Railway | Neon (`sslmode=require`) |
+| `JWT_SECRET` | Railway | gerado (`openssl rand -base64 48`) |
+| `JWT_EXPIRES_IN` | Railway | `7d` |
+| `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
+| `NODE_ENV` | Railway | `production` |
+| `NEXT_PUBLIC_API_URL` | Vercel | `https://gas-erpapi-production.up.railway.app/api/v1` |
+
+### Arquitetura em produção (atual)
+
+```
+Usuários
+   │
+   ▼
+thlgasdopovo.com.br  ──►  Hostinger DNS  ──►  Vercel (Next.js)
+   │
+   │  NEXT_PUBLIC_API_URL
+   ▼
+gas-erpapi-production.up.railway.app  ──►  Railway (NestJS)
+   │
+   ▼
+Neon PostgreSQL (sa-east-1)
+```
+
+---
+
 ## Estratégia por fase
 
 | Fase | Cenário | Sugestão |
@@ -10,7 +68,7 @@ Guia para colocar o Gas ERP em produção e evoluir a infraestrutura conforme o 
 | **Crescimento** | Mais lojas, GPS tempo real, filas | Manter web na Vercel; API em VPS ou Fly; Redis (Upstash) |
 | **Muito volume** | Fiscal, integrações pesadas | VPS ou Kubernetes com Postgres gerenciado |
 
-### Arquitetura do MVP
+### Arquitetura alvo (com subdomínios)
 
 ```
 Usuários
@@ -26,7 +84,7 @@ api.SEUDOMINIO  ──►  Railway (NestJS apps/api)
 Neon PostgreSQL
 ```
 
-Substitua `SEUDOMINIO` pelo seu domínio (ex.: `gasminharede.com.br`).
+Hoje o domínio raiz (`thlgasdopovo.com.br`) aponta direto para a Vercel. O subdomínio `api.` no Railway é opcional e pode ser configurado depois.
 
 ---
 
@@ -61,9 +119,11 @@ NEXT_PUBLIC_API_URL="http://localhost:3001/api/v1"
 | `DATABASE_URL` | Railway | `postgresql://...@neon.tech/gas_erp?sslmode=require` |
 | `JWT_SECRET` | Railway | string longa aleatória (`openssl rand -base64 48`) |
 | `JWT_EXPIRES_IN` | Railway | `7d` |
-| `WEB_URL` | Railway | `https://app.SEUDOMINIO` |
+| `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
 | `NODE_ENV` | Railway | `production` |
-| `NEXT_PUBLIC_API_URL` | Vercel | `https://api.SEUDOMINIO/api/v1` |
+| `RESEND_API_KEY` | Railway | chave da [Resend](https://resend.com) (recuperação de senha) |
+| `EMAIL_FROM` | Railway | `Gas ERP <noreply@thlgasdopovo.com.br>` (domínio verificado na Resend) |
+| `NEXT_PUBLIC_API_URL` | Vercel | `https://gas-erpapi-production.up.railway.app/api/v1` |
 
 Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
 
@@ -112,9 +172,13 @@ Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
 
 4. Aguarde o deploy e anote a URL `*.up.railway.app`.
 
-5. Teste o login:
+5. Teste a API:
    ```bash
-   curl -X POST https://SUA-URL-RAILWAY.up.railway.app/api/v1/auth/login \
+   # Health check (sem autenticação)
+   curl https://gas-erpapi-production.up.railway.app/api/v1/health
+
+   # Login
+   curl -X POST https://gas-erpapi-production.up.railway.app/api/v1/auth/login \
      -H "Content-Type: application/json" \
      -d '{"email":"master@gas.com","password":"admin123"}'
    ```
@@ -137,37 +201,52 @@ Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
 
 ### Fase D — Domínio e DNS
 
-No painel do seu registrador (Registro.br, Cloudflare, etc.):
+#### Configuração atual (Hostinger + domínio raiz)
+
+1. **Hostinger** → DNS apontando para a Vercel (nameservers ou registros indicados pela Vercel).
+2. **Vercel** → Settings → Domains → `thlgasdopovo.com.br` adicionado e validado.
+3. **Railway** → `WEB_URL=https://thlgasdopovo.com.br` (sem aspas, sem `/` no final).
+4. **Vercel** → `NEXT_PUBLIC_API_URL=https://gas-erpapi-production.up.railway.app/api/v1` + redeploy.
+
+> **Importante:** variáveis `NEXT_PUBLIC_*` são embutidas no build do Next.js. Sempre **redeploy** na Vercel após alterá-las.
+
+#### Configuração com subdomínios (opcional, recomendado depois)
+
+No painel DNS da **Hostinger**:
 
 | Subdomínio | Tipo | Destino |
 |------------|------|---------|
-| `app` | CNAME | valor indicado pela Vercel (ex.: `cname.vercel-dns.com`) |
+| `@` (raiz) | A / CNAME | valor indicado pela Vercel |
+| `www` | CNAME | `cname.vercel-dns.com` (ou redirect na Vercel) |
 | `api` | CNAME | valor indicado pelo Railway |
 
 Depois:
 
-1. **Vercel** → Project → Settings → Domains → adicione `app.SEUDOMINIO`
-2. **Railway** → Service → Settings → Custom Domain → `api.SEUDOMINIO`
+1. **Vercel** → Domains → `thlgasdopovo.com.br` e/ou `app.thlgasdopovo.com.br`
+2. **Railway** → Settings → Custom Domain → `api.thlgasdopovo.com.br`
 3. Atualize variáveis:
-   - Railway: `WEB_URL=https://app.SEUDOMINIO`
-   - Vercel: `NEXT_PUBLIC_API_URL=https://api.SEUDOMINIO/api/v1`
+   - Railway: `WEB_URL=https://thlgasdopovo.com.br`
+   - Vercel: `NEXT_PUBLIC_API_URL=https://api.thlgasdopovo.com.br/api/v1`
 4. Redeploy API e Web
 
 ### Fase E — Validação
 
-- [ ] `https://app.SEUDOMINIO/login` abre sem erro
-- [ ] Login com `master@gas.com` / `admin123` funciona
+- [x] Site abre em `https://thlgasdopovo.com.br`
+- [x] API responde em `/api/v1/health` (`status: ok`, `database: ok`)
+- [x] CORS configurado (`WEB_URL` = domínio do front)
+- [ ] Login com `master@gas.com` / `admin123` validado em produção
 - [ ] Painel master mostra as 3 lojas (seed)
 - [ ] Nova venda em uma loja → estoque baixa
 - [ ] Resumo diário exibe dados
-- [ ] DevTools → Network: sem erro de CORS
+- [ ] DevTools → Network: sem erro de CORS em todas as telas
 
 ### Fase F — Segurança pós-MVP
 
 - [ ] Trocar senha do usuário master e demais contas demo
-- [ ] Não rodar `pnpm db:seed` em produção (`NODE_ENV=production` bloqueia)
+- [x] Não rodar `pnpm db:seed` em produção (`NODE_ENV=production` bloqueia)
 - [ ] Confirmar `JWT_SECRET` único e não versionado no git
-- [ ] HTTPS ativo em app e api
+- [x] HTTPS ativo no app (`thlgasdopovo.com.br`)
+- [ ] HTTPS no domínio customizado da API (quando `api.` for configurado)
 
 ---
 
@@ -228,6 +307,14 @@ DATABASE_URL="..." pnpm db:deploy
 - `NEXT_PUBLIC_API_URL` deve terminar em `/api/v1`
 - Rebuild na Vercel após mudar a variável (é embedada no build)
 
+### E-mail de recuperação de senha não chega
+
+- Configure `RESEND_API_KEY` e `EMAIL_FROM` no Railway
+- Verifique o domínio do remetente na [Resend](https://resend.com/domains)
+- Sem API key, o link aparece nos **logs do Railway** (modo fallback)
+- Confirme que `WEB_URL` aponta para o front (`https://thlgasdopovo.com.br`)
+- Rode `pnpm db:deploy` para criar a tabela `PasswordResetToken`
+
 ---
 
 ## Custos estimados (início)
@@ -241,10 +328,63 @@ DATABASE_URL="..." pnpm db:deploy
 
 ---
 
-## Próximas fases (fora deste MVP)
+## Próximos passos
 
-- Ambiente **staging** (`staging.SEUDOMINIO`)
-- **CI/CD** com GitHub Actions
+### Imediato (esta semana)
+
+1. **Validar login em produção** — `https://thlgasdopovo.com.br/login`
+2. **Trocar senhas demo** — usar Minha conta ou recuperação por e-mail
+3. **Configurar Resend** — `RESEND_API_KEY` + `EMAIL_FROM` no Railway; verificar domínio na Resend
+4. **Rodar migration** — `pnpm db:deploy` com `DATABASE_URL` do Neon (tabela `PasswordResetToken`)
+5. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
+6. **Testar fluxos MVP** — venda, estoque, clientes, resumo diário
+
+### Refinamentos MVP (concluídos)
+
+- [x] Minha conta — perfil e alteração de senha
+- [x] Recuperação de senha por e-mail (Resend)
+- [x] Edição de usuários e lojas (master)
+- [x] Confirmação ao desativar usuário/loja
+- [x] Mensagens de erro claras (e-mail duplicado)
+- [x] Logo e favicon no login
+- [x] Painel master sem seletor de loja (apenas em "Ir para loja")
+
+### Infraestrutura (curto prazo)
+
+| Passo | Descrição |
+|-------|-----------|
+| Subdomínio `api.` | Railway Custom Domain + CNAME na Hostinger; atualizar `NEXT_PUBLIC_API_URL` na Vercel |
+| Ambiente staging | Branch `staging` + projeto Neon/Railway/Vercel separados |
+| CI/CD | GitHub Actions: lint, build, `verify:deploy` em cada PR |
+| Monitoramento | Sentry (erros) + uptime no `/api/v1/health` |
+| Backups | Confirmar política de backup automático no Neon |
+
+### Produto — Fase 2 (implementações)
+
+| Módulo | Descrição | Prioridade |
+|--------|-----------|------------|
+| **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub já existe em `packages/shared`) | Alta |
+| **Financeiro** | Contas a pagar/receber, fluxo de caixa | Alta |
+| **Relatórios** | Exportação PDF/Excel, filtros avançados | Média |
+| **App entregador** | Expo/React Native — GPS, rotas, confirmação de entrega | Alta |
+| **App cliente** | Pedido online, rastreamento, pagamento (Pix/cartão) | Média |
+| **WhatsApp** | Notificações e pedidos via API Business | Média |
+| **Redis / filas** | Entregas em tempo real, jobs assíncronos (Upstash) | Média |
+| **Multi-tenant SaaS** | Onboarding de novas redes, billing por loja | Baixa (já preparado no schema) |
+
+### Melhorias técnicas (pendentes)
+
+- **Paginação** e busca em listagens grandes
+- **Auditoria** — expandir `AuditService` para mais ações
+- **Testes E2E** — Playwright no fluxo de login e venda
+- **Prisma config** — migrar de `package.json#prisma` para `prisma.config.ts`
+
+---
+
+## Próximas fases de infra (longo prazo)
+
+- Ambiente **staging** (`staging.thlgasdopovo.com.br`)
+- **CI/CD** completo com GitHub Actions
 - **Redis** (Upstash) para filas e real-time
 - **Sentry** para erros
-- **VPS / Fly.io** quando o volume justificar
+- **VPS / Fly.io** quando o volume justificar sair do Railway

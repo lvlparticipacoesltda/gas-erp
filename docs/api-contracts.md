@@ -5,6 +5,10 @@ Schemas Zod em `packages/shared/src/schemas/`.
 ## Auth
 - `POST /auth/login` — `{ email, password }`
 - `GET /auth/me` — usuário autenticado
+- `PATCH /auth/me` — `{ name?, email?, phone? }` — atualizar próprio perfil
+- `POST /auth/change-password` — `{ currentPassword, newPassword }`
+- `POST /auth/forgot-password` — `{ email }` — envia link por e-mail (Resend)
+- `POST /auth/reset-password` — `{ token, newPassword }`
 
 ## Deliveries (mobile prep)
 - `GET /deliveries/my` — entregas do entregador logado
