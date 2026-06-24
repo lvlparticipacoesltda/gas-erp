@@ -1,4 +1,5 @@
 export * from './enums';
+export { ZodError } from 'zod';
 export * from './schemas/auth';
 export * from './schemas/store';
 export * from './schemas/user';

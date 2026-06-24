@@ -4,23 +4,40 @@ Guia para colocar o Gas ERP em produção e evoluir a infraestrutura conforme o 
 
 ## Status atual (jun/2026)
 
-Deploy MVP **no ar** para a Rede Gás Litoral / THL Gás do Povo.
+Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Povo.
 
 | Item | Status | Detalhe |
 |------|--------|---------|
 | Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
-| Banco PostgreSQL (Neon) | ✅ | Migrations aplicadas + seed demo |
+| Banco PostgreSQL (Neon) | ✅ | 3 migrations aplicadas + seed demo |
 | API (Railway) | ✅ | `https://gas-erpapi-production.up.railway.app` |
 | Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
 | Domínio customizado | ✅ | `https://thlgasdopovo.com.br` → Vercel (DNS Hostinger) |
-| CORS | ✅ | `WEB_URL=https://thlgasdopovo.com.br` no Railway |
+| CORS | ✅ | Callback multi-origin; `WEB_URL=https://thlgasdopovo.com.br` |
 | Health check | ✅ | `GET /api/v1/health` |
+| Login e fluxos MVP | ✅ | Validado pelo cliente |
+| Minha conta + troca de senha | ✅ | `/master/settings` e `/store/[id]/settings` |
+| Recuperação de senha (código) | ✅ | Resend integrado; ver [resend-setup.md](resend-setup.md) |
+| Permissões por tela (RBAC) | ✅ | Ver [rbac.md](rbac.md) |
+| Usuário ↔ múltiplas lojas | ✅ | `StoreMultiSelect` com checkboxes |
 | Subdomínio `api.` | ⏳ | API ainda na URL `*.up.railway.app` (opcional) |
 | Subdomínio `www` | ⏳ | Redirecionar `www` → apex ou incluir no CORS |
+| Domínio Resend verificado | ⏳ | DNS na Hostinger pode estar pendente |
 | Senhas demo | ⏳ | Ainda `admin123` — trocar em produção |
 | CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
 | Módulo fiscal | ⏳ | Fase 2 |
 | Apps mobile | ⏳ | Fase 2 |
+
+### Commits recentes (main)
+
+| Commit | Descrição |
+|--------|-----------|
+| `d2fc64a` | Multi-select de lojas com checkboxes no cadastro de usuários |
+| `5b8ee16` | Rota `/master/settings` + permissões por tela por usuário |
+| `e6ee64b` | Recuperação de senha, logo, confirmações, erros claros |
+| `08d8cf0` | CORS callback para múltiplas origens em `WEB_URL` |
+| `0763a5b` | `GET /api/v1/health` |
+| `e3e003d` | Build Railway com `--prod=false` |
 
 ### URLs de produção
 
@@ -40,6 +57,8 @@ Deploy MVP **no ar** para a Rede Gás Litoral / THL Gás do Povo.
 | `JWT_EXPIRES_IN` | Railway | `7d` |
 | `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
 | `NODE_ENV` | Railway | `production` |
+| `RESEND_API_KEY` | Railway | chave Resend (recuperação de senha) |
+| `EMAIL_FROM` | Railway | `Gas ERP <noreply@thlgasdopovo.com.br>` |
 | `NEXT_PUBLIC_API_URL` | Vercel | `https://gas-erpapi-production.up.railway.app/api/v1` |
 
 ### Arquitetura em produção (atual)
@@ -234,11 +253,15 @@ Depois:
 - [x] Site abre em `https://thlgasdopovo.com.br`
 - [x] API responde em `/api/v1/health` (`status: ok`, `database: ok`)
 - [x] CORS configurado (`WEB_URL` = domínio do front)
-- [ ] Login com `master@gas.com` / `admin123` validado em produção
-- [ ] Painel master mostra as 3 lojas (seed)
-- [ ] Nova venda em uma loja → estoque baixa
-- [ ] Resumo diário exibe dados
-- [ ] DevTools → Network: sem erro de CORS em todas as telas
+- [x] Login com `master@gas.com` / `admin123` validado em produção
+- [x] Painel master mostra as lojas (seed)
+- [x] Fluxos principais testados pelo cliente (jun/2026)
+- [ ] Nova venda em uma loja → estoque baixa (revalidar após mudanças)
+- [ ] Resumo diário exibe dados (revalidar após mudanças)
+- [x] DevTools → Network: sem erro de CORS nas telas principais
+- [x] Cadastro de usuário com múltiplas lojas (checkboxes)
+- [x] Permissões por tela refletem no menu da loja
+- [ ] E-mail de recuperação de senha entregue (depende Resend + DNS)
 
 ### Fase F — Segurança pós-MVP
 
@@ -332,24 +355,28 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 
 ## Próximos passos
 
-### Imediato (esta semana)
+### Imediato
 
-1. **Validar login em produção** — `https://thlgasdopovo.com.br/login`
-2. **Trocar senhas demo** — usar Minha conta ou recuperação por e-mail
-3. **Configurar Resend** — guia completo: [resend-setup.md](resend-setup.md)
-4. **Rodar migration** — `pnpm db:deploy` com `DATABASE_URL` do Neon (tabela `PasswordResetToken`)
-5. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
-6. **Testar fluxos MVP** — venda, estoque, clientes, resumo diário
+1. **Finalizar Resend** — verificar domínio `thlgasdopovo.com.br` na Resend + DNS Hostinger ([resend-setup.md](resend-setup.md))
+2. **Trocar senhas demo** — Minha conta ou recuperação por e-mail
+3. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
+4. **Subdomínio `api.`** (opcional) — Railway Custom Domain + atualizar `NEXT_PUBLIC_API_URL`
+5. **Revalidar fluxos críticos** — venda, estoque, resumo diário após deploys recentes
 
-### Refinamentos MVP (concluídos)
+### Refinamentos MVP (concluídos — jun/2026)
 
-- [x] Minha conta — perfil e alteração de senha
-- [x] Recuperação de senha por e-mail (Resend)
+- [x] Minha conta — perfil e alteração de senha (`/master/settings`, `/store/[id]/settings`)
+- [x] Recuperação de senha por e-mail (Resend + `PasswordResetToken`)
 - [x] Edição de usuários e lojas (master)
 - [x] Confirmação ao desativar usuário/loja
-- [x] Mensagens de erro claras (e-mail duplicado)
+- [x] Mensagens de erro claras (`apps/web/src/lib/errors.ts`)
 - [x] Logo e favicon no login
-- [x] Painel master sem seletor de loja (apenas em "Ir para loja")
+- [x] Painel master sem seletor de loja na sidebar (apenas `/master/go-to-store`)
+- [x] Dashboard master com cards clicáveis para entrar na loja
+- [x] Permissões por tela por usuário (`User.permissions`, ver [rbac.md](rbac.md))
+- [x] Menu da loja e guard de rota filtrados por permissão
+- [x] Vínculo usuário ↔ **múltiplas lojas** (`StoreMultiSelect` com checkboxes)
+- [x] Coluna "Lojas" na listagem de usuários do master
 
 ### Infraestrutura (curto prazo)
 

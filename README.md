@@ -2,6 +2,8 @@
 
 Sistema de gestão multi-loja para distribuidoras/revendas de gás (GLP).
 
+**Cliente piloto:** Rede Gás Litoral / THL Gás do Povo — [thlgasdopovo.com.br](https://thlgasdopovo.com.br)
+
 ## Stack
 
 - **Monorepo:** Turborepo + pnpm
@@ -14,24 +16,26 @@ Sistema de gestão multi-loja para distribuidoras/revendas de gás (GLP).
 ```
 apps/web          Painel web (master + loja)
 apps/api          REST API NestJS
-packages/database Prisma schema + seeds
-packages/shared   Types, Zod schemas, enums
+packages/database Prisma schema + seeds + migrations
+packages/shared   Types, Zod schemas, enums, permissões
 ```
 
-## Setup
+## Setup local
 
 ```bash
 # 1. Instalar dependências
 pnpm install
 
-# 2. Subir PostgreSQL
+# 2. Subir PostgreSQL (Docker ou Homebrew)
 docker compose up -d
 
 # 3. Configurar ambiente
 cp .env.example .env
 
 # 4. Migrar e popular banco
-pnpm db:push
+pnpm db:push    # dev rápido
+# ou
+pnpm db:deploy  # migrations (recomendado, igual produção)
 pnpm db:seed
 
 # 5. Rodar em desenvolvimento
@@ -50,14 +54,47 @@ pnpm dev
 | Atendente | atendente@gas.com | admin123 | ATTENDANT |
 | Entregador | entregador@gas.com | admin123 | DELIVERER |
 
+> Em produção, troque essas senhas após validar o login.
+
+## Estado atual (jun/2026)
+
+MVP **em produção** e funcional. Refinamentos de UX, auth e RBAC concluídos na pré-Fase 2.
+
+| Área | Status |
+|------|--------|
+| Deploy (Vercel + Railway + Neon) | ✅ No ar |
+| Domínio `thlgasdopovo.com.br` | ✅ |
+| Auth + JWT multi-tenant | ✅ |
+| Painel master (lojas, usuários, dashboard) | ✅ |
+| Painel loja (vendas, clientes, estoque, etc.) | ✅ |
+| Minha conta (perfil + senha) | ✅ |
+| Recuperação de senha (Resend) | ✅ Código pronto; domínio Resend pode estar pendente |
+| Permissões por tela (RBAC granular) | ✅ |
+| Vínculo usuário ↔ múltiplas lojas | ✅ Checkboxes no cadastro |
+| Edição de lojas e usuários | ✅ |
+| Confirmação ao desativar | ✅ |
+| Módulo fiscal / financeiro / apps mobile | ⏳ Fase 2 |
+
+Documentação detalhada: [docs/deployment.md](docs/deployment.md) · [docs/rbac.md](docs/rbac.md) · [docs/architecture.md](docs/architecture.md)
+
 ## Módulos MVP
 
-- Auth + RBAC multi-tenant
-- **Minha conta** — editar perfil e alterar senha (`/settings`)
-- **Recuperação de senha** — e-mail via Resend (`/forgot-password`)
-- Painel master (lojas, usuários, visão consolidada)
-- **Edição** de lojas e usuários (master)
-- **Ir para loja** — seleção de unidade ao sair do painel master
+### Autenticação e conta
+- Login JWT com `organizationId`, `storeIds[]` e `permissions[]`
+- **Minha conta** — `/master/settings` (master) ou `/store/[storeId]/settings` (loja)
+- **Recuperação de senha** — `/forgot-password` → e-mail Resend → `/reset-password`
+- `PATCH /auth/me` e `POST /auth/change-password`
+
+### Painel master
+- Dashboard consolidado (cards clicáveis para ir à loja)
+- CRUD de lojas e usuários
+- **Ir para loja** — `/master/go-to-store` (sem seletor fixo na sidebar)
+- Permissões por tela por usuário (checkboxes)
+- Vínculo com **uma ou mais lojas** por usuário (`StoreMultiSelect`)
+
+### Painel loja
+- Menu filtrado por permissões do usuário
+- Guard de rota — URLs não autorizadas redirecionam
 - Vendas (nova venda, histórico, status)
 - Clientes com endereços
 - Produtos e estoque por loja
@@ -65,6 +102,19 @@ pnpm dev
 - Entregadores e entregas
 - Resumo diário
 - API de tracking GPS (preparada para app mobile)
+
+## Rotas principais (web)
+
+| Rota | Quem |
+|------|------|
+| `/login` | Público |
+| `/forgot-password`, `/reset-password` | Público |
+| `/master` | ORG_MASTER |
+| `/master/users`, `/master/stores` | ORG_MASTER |
+| `/master/settings` | ORG_MASTER — Minha conta |
+| `/master/go-to-store` | ORG_MASTER — escolher loja |
+| `/store/[storeId]/*` | Usuários com acesso à loja |
+| `/settings` | Redirect conforme papel |
 
 ## Deploy
 
@@ -77,6 +127,7 @@ Guia completo: [docs/deployment.md](docs/deployment.md)
 | **App** | https://thlgasdopovo.com.br |
 | **API** | https://gas-erpapi-production.up.railway.app/api/v1 |
 | **Health** | https://gas-erpapi-production.up.railway.app/api/v1/health |
+| **GitHub** | `lvlparticipacoesltda/gas-erp` |
 | **Stack** | Vercel (web) + Railway (API) + Neon (PostgreSQL) |
 | **DNS** | Hostinger → Vercel |
 
@@ -88,15 +139,22 @@ Guia completo: [docs/deployment.md](docs/deployment.md)
 | Crescimento | Web na Vercel; API em VPS/Fly; Redis (Upstash) |
 | Alto volume | VPS ou Kubernetes + Postgres gerenciado |
 
-**Produção rápida:** Neon (banco) → Railway (`apps/api`) → Vercel (`apps/web`) → DNS do domínio.
+## Migrations (banco)
 
-> As credenciais `admin123` do seed são apenas para demo. **Troque-as** após validar o login em produção.
+| Migration | Conteúdo |
+|-----------|----------|
+| `20250624000000_init` | Schema inicial |
+| `20250624140000_password_reset_tokens` | Recuperação de senha |
+| `20250624180000_user_permissions` | `User.permissions String[]` |
+
+Aplicar em produção: `pnpm db:deploy` (também roda no `releaseCommand` do Railway).
 
 ## Próximos passos
 
-Ver lista completa em [docs/deployment.md#próximos-passos](docs/deployment.md#próximos-passos). Resumo:
+Ver [docs/deployment.md#próximos-passos](docs/deployment.md#próximos-passos). Resumo:
 
-1. Validar login e fluxos MVP em produção
-2. Trocar senhas demo
-3. Subdomínio `api.thlgasdopovo.com.br` (opcional)
-4. Módulo fiscal, financeiro e app entregador (Fase 2)
+1. Finalizar verificação do domínio na Resend (e-mail em produção)
+2. Trocar senhas demo em produção
+3. Redirect `www` → apex (opcional)
+4. Subdomínio `api.` no Railway (opcional)
+5. **Fase 2:** fiscal, financeiro, app entregador, relatórios

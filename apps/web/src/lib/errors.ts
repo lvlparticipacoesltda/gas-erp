@@ -19,5 +19,8 @@ function mapKnownErrors(message: string): string {
   if (lower.includes('credenciais inválidas')) return 'E-mail ou senha incorretos.';
   if (lower.includes('senha atual incorreta')) return 'Senha atual incorreta.';
   if (lower.includes('link inválido ou expirado')) return message;
+  if (lower.includes('estoque insuficiente')) return message;
+  if (lower.includes('preço unitário') || lower.includes('valor do pagamento')) return message;
+  if (lower.includes('produto obrigatório') || lower.includes('referência inválida')) return message;
   return message;
 }

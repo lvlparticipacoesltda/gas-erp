@@ -73,6 +73,17 @@ export class SalesService {
       0,
     );
 
+    const payments = data.payments?.length
+      ? data.payments
+      : [{ method: 'CASH' as const, amount: total }];
+
+    const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    if (total > 0 && paidTotal <= 0) {
+      throw new BadRequestException(
+        'Informe o valor do pagamento. Verifique o preço unitário do produto.',
+      );
+    }
+
     const sale = await this.prisma.$transaction(async (tx) => {
       const created = await tx.sale.create({
         data: {
@@ -101,9 +112,7 @@ export class SalesService {
               total: item.quantity * item.unitPrice - (item.discount ?? 0),
             })),
           },
-          payments: data.payments?.length
-            ? { create: data.payments }
-            : undefined,
+          payments: { create: payments },
           statusLogs: { create: { status: SaleStatus.CONFIRMED, userId: user.id } },
         },
         include: this.saleInclude,

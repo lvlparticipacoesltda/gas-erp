@@ -2,6 +2,8 @@
 
 Guia para enviar e-mails de “Esqueci minha senha” no Gas ERP usando [Resend](https://resend.com).
 
+**Status (jun/2026):** integração no código concluída (`MailService`, rotas auth, tabela `PasswordResetToken`). Pendente: verificação do domínio `thlgasdopovo.com.br` na Resend + registros DNS na Hostinger para envio a qualquer usuário.
+
 ---
 
 ## Visão geral

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { PAYMENT_METHODS, SALE_CHANNELS } from '../enums';
 
 export const saleItemSchema = z.object({
-  productId: z.string(),
+  productId: z.string().min(1, 'Produto obrigatório'),
   quantity: z.number().int().positive(),
   unitPrice: z.number().nonnegative(),
   discount: z.number().nonnegative().optional(),
@@ -10,7 +10,7 @@ export const saleItemSchema = z.object({
 
 export const salePaymentSchema = z.object({
   method: z.enum(PAYMENT_METHODS),
-  amount: z.number().positive(),
+  amount: z.number().nonnegative(),
 });
 
 export const createSaleSchema = z.object({

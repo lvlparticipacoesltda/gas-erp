@@ -7,9 +7,14 @@ import { Button, Card, Input, Label, PageHeader, Select } from '@/components/ui'
 import { api, getToken } from '@/lib/api';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, SALE_CHANNELS } from '@gas-erp/shared';
 
-interface Product { id: string; name: string; storeSettings?: { price: number }[] }
+interface Product { id: string; name: string; storeSettings?: { price: number | string }[] }
 interface Customer { id: string; name: string; phone?: string; addresses: { id: string; street: string; number?: string; city: string; state: string; neighborhood?: string }[] }
 interface Deliverer { id: string; user: { name: string } }
+
+function parsePrice(value: number | string | undefined): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export default function NewSalePage() {
   const { storeId } = useParams<{ storeId: string }>();
@@ -18,6 +23,8 @@ export default function NewSalePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     customerId: '',
     productId: '',
@@ -43,11 +50,15 @@ export default function NewSalePage() {
       setCustomers(c.data);
       setDeliverers(d);
       if (p[0]) {
-        const price = Number(p[0].storeSettings?.[0]?.price ?? 0);
+        const price = parsePrice(p[0].storeSettings?.[0]?.price);
         setForm((f) => ({ ...f, productId: p[0].id, unitPrice: price }));
       }
     });
   }, [storeId, search]);
+
+  function productPrice(product?: Product): number {
+    return parsePrice(product?.storeSettings?.[0]?.price);
+  }
 
   function onCustomerChange(id: string) {
     const customer = customers.find((c) => c.id === id);
@@ -68,36 +79,60 @@ export default function NewSalePage() {
     setForm((f) => ({
       ...f,
       productId: id,
-      unitPrice: Number(product?.storeSettings?.[0]?.price ?? 0),
+      unitPrice: productPrice(product),
     }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError('');
+
+    if (!form.productId) {
+      setError('Selecione um produto para continuar.');
+      return;
+    }
+
     const total = form.quantity * form.unitPrice;
-    await api('/sales', {
-      method: 'POST',
-      body: JSON.stringify({
-        storeId,
-        customerId: form.customerId || undefined,
-        channel: form.channel,
-        delivererId: form.delivererId || undefined,
-        deliveryStreet: form.deliveryStreet,
-        deliveryNumber: form.deliveryNumber,
-        deliveryNeighborhood: form.deliveryNeighborhood,
-        deliveryCity: form.deliveryCity,
-        deliveryState: form.deliveryState,
-        items: [{ productId: form.productId, quantity: form.quantity, unitPrice: form.unitPrice }],
-        payments: [{ method: form.paymentMethod, amount: total }],
-      }),
-    }, getToken());
-    router.push(`/store/${storeId}/sales`);
+    if (total <= 0) {
+      setError('Informe um preço unitário válido. Configure o preço em Produtos, se necessário.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api('/sales', {
+        method: 'POST',
+        body: JSON.stringify({
+          storeId,
+          customerId: form.customerId || undefined,
+          channel: form.channel,
+          delivererId: form.delivererId || undefined,
+          deliveryStreet: form.deliveryStreet,
+          deliveryNumber: form.deliveryNumber,
+          deliveryNeighborhood: form.deliveryNeighborhood,
+          deliveryCity: form.deliveryCity,
+          deliveryState: form.deliveryState,
+          items: [{ productId: form.productId, quantity: form.quantity, unitPrice: form.unitPrice }],
+          payments: [{ method: form.paymentMethod, amount: total }],
+        }),
+      }, getToken());
+      router.push(`/store/${storeId}/sales`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao registrar a venda');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <AppShell mode="store">
       <PageHeader title="Nova venda" subtitle="Cliente → Produto → Entrega → Pagamento" />
       <Card>
+        {error && (
+          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2"><Label>Buscar cliente</Label><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nome ou telefone" /></div>
           <div>
@@ -144,7 +179,7 @@ export default function NewSalePage() {
           <div><Label>Número</Label><Input value={form.deliveryNumber} onChange={(e) => setForm({ ...form, deliveryNumber: e.target.value })} /></div>
           <div><Label>Bairro</Label><Input value={form.deliveryNeighborhood} onChange={(e) => setForm({ ...form, deliveryNeighborhood: e.target.value })} /></div>
           <div><Label>Cidade</Label><Input value={form.deliveryCity} onChange={(e) => setForm({ ...form, deliveryCity: e.target.value })} /></div>
-          <div className="md:col-span-2"><Button type="submit">Confirmar venda</Button></div>
+          <div className="md:col-span-2"><Button type="submit" disabled={submitting || products.length === 0}>{submitting ? 'Salvando...' : 'Confirmar venda'}</Button></div>
         </form>
       </Card>
     </AppShell>

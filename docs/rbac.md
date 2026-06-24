@@ -1,21 +1,33 @@
 # RBAC
 
+Controle de acesso do Gas ERP: papéis, lojas vinculadas e permissões granulares por tela.
+
 ## Papéis (roles)
 
-| Papel | Escopo |
-|-------|--------|
-| PLATFORM_ADMIN | SaaS futuro |
-| ORG_MASTER | Painel admin + todas as lojas |
-| STORE_MANAGER | Loja(s) vinculada(s) — telas padrão completas |
-| ATTENDANT | Vendas e clientes |
-| FINANCE | Vendas, resumo e clientes |
-| DELIVERER | Dashboard (app mobile na fase 2) |
+| Papel | Escopo | Lojas |
+|-------|--------|-------|
+| PLATFORM_ADMIN | SaaS futuro | Todas |
+| ORG_MASTER | Painel admin master | Todas (automático) |
+| STORE_MANAGER | Operação da loja | Uma ou mais (UserStore) |
+| ATTENDANT | Vendas e clientes | Uma ou mais |
+| FINANCE | Vendas, resumo, clientes | Uma ou mais |
+| DELIVERER | Dashboard (app mobile na fase 2) | Uma ou mais |
 
-Token JWT contém `organizationId`, `storeIds[]` e `permissions[]` (telas efetivas).
+Token JWT contém `organizationId`, `storeIds[]` e `permissions[]` (telas efetivas após `resolveUserPermissions`).
+
+## Vínculo usuário ↔ lojas
+
+- Relação **N:N** via tabela `UserStore`
+- **ORG_MASTER** não precisa de lojas vinculadas — acesso implícito a todas
+- Demais papéis precisam de **ao menos uma loja**
+- UI: **Master → Usuários → Lojas** — componente `StoreMultiSelect` (checkboxes, Todas/Limpar, contador)
+- Na loja, o usuário alterna entre lojas vinculadas pelo seletor no painel
+
+> Antes usava `<select multiple>` (exigia Cmd+clique no Mac). Substituído por checkboxes em jun/2026.
 
 ## Permissões por tela (loja)
 
-O Master define, por usuário, quais telas aparecem no menu da loja:
+O master define, por usuário, quais telas aparecem no menu da loja.
 
 | Chave | Tela |
 |-------|------|
@@ -29,10 +41,46 @@ O Master define, por usuário, quais telas aparecem no menu da loja:
 | `store.deliverers` | Entregadores |
 | `store.daily-summary` | Resumo diário |
 
-- Lista vazia no banco = usa **padrão do papel**
-- Lista customizada = apenas as telas marcadas
-- `ORG_MASTER` / `PLATFORM_ADMIN` ignoram restrições de tela
+### Regras
 
-Configuração em **Master → Usuários → Editar → Telas permitidas**.
+- Lista **vazia** no banco → usa **padrão do papel** (`ROLE_DEFAULT_PERMISSIONS`)
+- Lista **customizada** → apenas as telas marcadas
+- `ORG_MASTER` / `PLATFORM_ADMIN` **ignoram** restrições de tela
 
-Header `X-Store-Id` ou query `storeId` para operações por loja na API.
+### Padrões por papel
+
+| Papel | Telas padrão |
+|-------|----------------|
+| STORE_MANAGER | Todas |
+| ATTENDANT | dashboard, sales, sales.new, customers |
+| FINANCE | dashboard, sales, daily-summary, customers |
+| DELIVERER | dashboard |
+
+Configuração: **Master → Usuários → Editar → Telas permitidas** (`permission-checkboxes.tsx`).
+
+## Onde é aplicado
+
+| Camada | Arquivo | Comportamento |
+|--------|---------|---------------|
+| Shared | `packages/shared/src/permissions.ts` | Chaves, defaults, `hasScreenPermission` |
+| API | `auth.service.ts`, `users.service.ts` | JWT e CRUD com `permissions` |
+| Web nav | `app-shell.tsx` | Filtra itens do menu da loja |
+| Web guard | `store/[storeId]/layout.tsx` | Bloqueia URL sem permissão |
+| Formulário | `master/users/page.tsx` | Checkboxes de tela + lojas |
+
+## API
+
+- `POST /users`, `PATCH /users/:id` aceitam `storeIds: string[]` e `permissions?: string[]`
+- Operações por loja: header `X-Store-Id` ou query `storeId`
+
+## Schema (Prisma)
+
+```prisma
+model User {
+  // ...
+  permissions String[] @default([])
+  stores      UserStore[]
+}
+```
+
+Migration: `20250624180000_user_permissions`

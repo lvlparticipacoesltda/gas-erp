@@ -65,6 +65,13 @@ export class ProductsService {
     await this.findOne(user, productId);
     const data = updateProductPriceSchema.parse(input);
     assertStoreAccess(user, data.storeId);
+
+    await this.prisma.stockBalance.upsert({
+      where: { productId_storeId: { productId, storeId: data.storeId } },
+      update: {},
+      create: { productId, storeId: data.storeId, available: 0 },
+    });
+
     return this.prisma.productStoreSetting.upsert({
       where: { productId_storeId: { productId, storeId: data.storeId } },
       update: { price: data.price, active: data.active ?? true },
