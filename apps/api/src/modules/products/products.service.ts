@@ -42,13 +42,17 @@ export class ProductsService {
       },
     });
 
-    if (storeId && data.price !== undefined) {
+    if (storeId) {
       assertStoreAccess(user, storeId);
-      await this.prisma.productStoreSetting.create({
-        data: { productId: product.id, storeId, price: data.price },
+      await this.prisma.productStoreSetting.upsert({
+        where: { productId_storeId: { productId: product.id, storeId } },
+        update: { price: data.price ?? 0 },
+        create: { productId: product.id, storeId, price: data.price ?? 0 },
       });
-      await this.prisma.stockBalance.create({
-        data: { productId: product.id, storeId, available: 0 },
+      await this.prisma.stockBalance.upsert({
+        where: { productId_storeId: { productId: product.id, storeId } },
+        update: {},
+        create: { productId: product.id, storeId, available: 0 },
       });
     }
 

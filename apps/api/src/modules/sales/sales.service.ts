@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createSaleSchema, updateSaleStatusSchema } from '@gas-erp/shared';
+import { createSaleSchema, updateSaleStatusSchema, type CreateSaleInput } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { StockService } from '../stock/stock.service';
@@ -84,6 +84,8 @@ export class SalesService {
       );
     }
 
+    await this.validateSaleReferences(user, data);
+
     const sale = await this.prisma.$transaction(async (tx) => {
       const created = await tx.sale.create({
         data: {
@@ -95,13 +97,13 @@ export class SalesService {
           status: SaleStatus.CONFIRMED,
           total,
           notes: data.notes,
-          deliveryStreet: data.deliveryStreet,
-          deliveryNumber: data.deliveryNumber,
-          deliveryComplement: data.deliveryComplement,
-          deliveryNeighborhood: data.deliveryNeighborhood,
-          deliveryCity: data.deliveryCity,
-          deliveryState: data.deliveryState,
-          deliveryLandmark: data.deliveryLandmark,
+          deliveryStreet: data.deliveryStreet || undefined,
+          deliveryNumber: data.deliveryNumber || undefined,
+          deliveryComplement: data.deliveryComplement || undefined,
+          deliveryNeighborhood: data.deliveryNeighborhood || undefined,
+          deliveryCity: data.deliveryCity || undefined,
+          deliveryState: data.deliveryState || undefined,
+          deliveryLandmark: data.deliveryLandmark || undefined,
           confirmedAt: new Date(),
           items: {
             create: data.items.map((item) => ({
@@ -115,7 +117,7 @@ export class SalesService {
           payments: { create: payments },
           statusLogs: { create: { status: SaleStatus.CONFIRMED, userId: user.id } },
         },
-        include: this.saleInclude,
+        select: { id: true },
       });
 
       for (const item of data.items) {
@@ -152,8 +154,83 @@ export class SalesService {
       });
     });
 
-    await this.audit.log(user, 'CREATE', 'Sale', sale!.id);
+    if (!sale) {
+      throw new BadRequestException('Não foi possível registrar a venda.');
+    }
+
+    try {
+      await this.audit.log(user, 'CREATE', 'Sale', sale.id);
+    } catch {
+      // Venda já foi salva; falha de auditoria não deve bloquear o fluxo.
+    }
+
     return sale;
+  }
+
+  private async validateSaleReferences(user: AuthUser, data: CreateSaleInput) {
+    const store = await this.prisma.store.findFirst({
+      where: { id: data.storeId, organizationId: user.organizationId },
+    });
+    if (!store) {
+      throw new BadRequestException('Loja não encontrada.');
+    }
+
+    if (data.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: {
+          id: data.customerId,
+          organizationId: user.organizationId,
+          active: true,
+        },
+      });
+      if (!customer) {
+        throw new BadRequestException('Cliente não encontrado ou inativo.');
+      }
+    }
+
+    if (data.delivererId) {
+      const deliverer = await this.prisma.deliverer.findFirst({
+        where: {
+          id: data.delivererId,
+          storeId: data.storeId,
+          store: { organizationId: user.organizationId },
+        },
+      });
+      if (!deliverer) {
+        throw new BadRequestException('Entregador não encontrado nesta loja.');
+      }
+    }
+
+    for (const item of data.items) {
+      const product = await this.prisma.product.findFirst({
+        where: {
+          id: item.productId,
+          organizationId: user.organizationId,
+          active: true,
+        },
+        include: {
+          storeSettings: { where: { storeId: data.storeId } },
+          stockBalances: { where: { storeId: data.storeId } },
+        },
+      });
+
+      if (!product) {
+        throw new BadRequestException('Produto não encontrado ou inativo.');
+      }
+
+      const balance = product.stockBalances[0];
+      if (!balance) {
+        throw new BadRequestException(
+          `Produto "${product.name}" sem estoque cadastrado nesta loja. Ajuste em Estoque.`,
+        );
+      }
+
+      if (balance.available < item.quantity) {
+        throw new BadRequestException(
+          `Estoque insuficiente para "${product.name}" (disponível: ${balance.available}).`,
+        );
+      }
+    }
   }
 
   async updateStatus(user: AuthUser, id: string, input: unknown) {

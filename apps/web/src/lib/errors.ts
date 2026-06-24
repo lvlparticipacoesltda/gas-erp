@@ -22,5 +22,8 @@ function mapKnownErrors(message: string): string {
   if (lower.includes('estoque insuficiente')) return message;
   if (lower.includes('preço unitário') || lower.includes('valor do pagamento')) return message;
   if (lower.includes('produto obrigatório') || lower.includes('referência inválida')) return message;
+  if (lower.includes('estoque insuficiente') || lower.includes('sem estoque cadastrado')) return message;
+  if (lower.includes('cliente não encontrado') || lower.includes('entregador não encontrado')) return message;
+  if (lower.includes('loja não encontrada') || lower.includes('produto não encontrado')) return message;
   return message;
 }

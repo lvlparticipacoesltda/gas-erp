@@ -118,7 +118,12 @@ export default function NewSalePage() {
       }, getToken());
       router.push(`/store/${storeId}/sales`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao registrar a venda');
+      const message = err instanceof Error ? err.message : 'Erro ao registrar a venda';
+      setError(
+        message.includes('banco de dados')
+          ? `${message} Verifique estoque, preço do produto na loja e se cliente/entregador existem.`
+          : message,
+      );
     } finally {
       setSubmitting(false);
     }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PAYMENT_METHODS, SALE_CHANNELS } from '../enums';
+import { optionalId } from './helpers';
 
 export const saleItemSchema = z.object({
   productId: z.string().min(1, 'Produto obrigatório'),
@@ -15,10 +16,10 @@ export const salePaymentSchema = z.object({
 
 export const createSaleSchema = z.object({
   storeId: z.string(),
-  customerId: z.string().optional(),
+  customerId: optionalId,
   channel: z.enum(SALE_CHANNELS).optional(),
   notes: z.string().optional(),
-  delivererId: z.string().optional(),
+  delivererId: optionalId,
   deliveryStreet: z.string().optional(),
   deliveryNumber: z.string().optional(),
   deliveryComplement: z.string().optional(),
