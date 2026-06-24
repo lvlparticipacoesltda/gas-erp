@@ -10,6 +10,7 @@ import {
   PermissionCheckboxes,
   permissionsToPayload,
 } from '@/components/permission-checkboxes';
+import { StoreMultiSelect } from '@/components/store-multi-select';
 
 interface UserRow {
   id: string;
@@ -25,6 +26,11 @@ interface UserRow {
 interface Store {
   id: string;
   name: string;
+  code: string;
+}
+
+function needsStoreAssignment(role: string) {
+  return role !== 'ORG_MASTER' && role !== 'PLATFORM_ADMIN';
 }
 
 const emptyCreate = {
@@ -93,6 +99,10 @@ export default function MasterUsersPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError('');
+    if (needsStoreAssignment(form.role) && form.storeIds.length === 0) {
+      setFormError('Selecione ao menos uma loja para este usuário.');
+      return;
+    }
     try {
       await api(
         '/users',
@@ -122,6 +132,11 @@ export default function MasterUsersPage() {
         `Desativar o usuário "${editing.name}"?\n\nEle não poderá mais fazer login no sistema.`,
       );
       if (!ok) return;
+    }
+
+    if (needsStoreAssignment(editForm.role) && editForm.storeIds.length === 0) {
+      setFormError('Selecione ao menos uma loja para este usuário.');
+      return;
     }
 
     setFormError('');
@@ -199,22 +214,18 @@ export default function MasterUsersPage() {
                   ))}
                 </Select>
               </div>
-              <div>
-                <Label>Lojas</Label>
-                <Select
-                  multiple
-                  value={editForm.storeIds}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, storeIds: Array.from(e.target.selectedOptions, (o) => o.value) })
-                  }
-                >
-                  {stores.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+              {needsStoreAssignment(editForm.role) ? (
+                <StoreMultiSelect
+                  stores={stores}
+                  selected={editForm.storeIds}
+                  onChange={(storeIds) => setEditForm({ ...editForm, storeIds })}
+                  required
+                />
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Usuários Master têm acesso a todas as lojas da rede automaticamente.
+                </p>
+              )}
               <PermissionCheckboxes
                 role={editForm.role}
                 selected={editForm.permissions}
@@ -270,22 +281,18 @@ export default function MasterUsersPage() {
                   ))}
                 </Select>
               </div>
-              <div>
-                <Label>Lojas</Label>
-                <Select
-                  multiple
-                  value={form.storeIds}
-                  onChange={(e) =>
-                    setForm({ ...form, storeIds: Array.from(e.target.selectedOptions, (o) => o.value) })
-                  }
-                >
-                  {stores.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+              {needsStoreAssignment(form.role) ? (
+                <StoreMultiSelect
+                  stores={stores}
+                  selected={form.storeIds}
+                  onChange={(storeIds) => setForm({ ...form, storeIds })}
+                  required
+                />
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Usuários Master têm acesso a todas as lojas da rede automaticamente.
+                </p>
+              )}
               <PermissionCheckboxes
                 role={form.role}
                 selected={form.permissions.length ? form.permissions : effectivePermissions(form.role, [])}
@@ -301,6 +308,7 @@ export default function MasterUsersPage() {
             <tr>
               <th className="p-3">Nome</th>
               <th className="p-3">Papel</th>
+              <th className="p-3">Lojas</th>
               <th className="p-3">Status</th>
               <th className="p-3" />
             </tr>
@@ -313,6 +321,11 @@ export default function MasterUsersPage() {
                   <div className="text-xs text-slate-500">{u.email}</div>
                 </td>
                 <td className="p-3">{ROLE_LABELS[u.role]}</td>
+                <td className="p-3 text-slate-600">
+                  {!needsStoreAssignment(u.role)
+                    ? 'Todas'
+                    : u.userStores.map((us) => us.store.name).join(', ') || '—'}
+                </td>
                 <td className="p-3">
                   <Badge tone={u.active ? 'success' : 'danger'}>{u.active ? 'Ativo' : 'Inativo'}</Badge>
                 </td>
