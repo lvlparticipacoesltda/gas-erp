@@ -18,6 +18,15 @@ const CODE_MESSAGES: Record<string, { status: number; message: string }> = {
     message: 'Banco desatualizado. Aplique as migrations (pnpm db:deploy no Railway).',
   },
   P2025: { status: HttpStatus.NOT_FOUND, message: 'Registro não encontrado.' },
+  P2028: {
+    status: HttpStatus.INTERNAL_SERVER_ERROR,
+    message:
+      'Falha na transação do banco (Neon). Use a URL direta do Postgres no Railway, sem "-pooler".',
+  },
+  P2034: {
+    status: HttpStatus.CONFLICT,
+    message: 'Conflito ao salvar. Tente novamente em alguns segundos.',
+  },
 };
 
 @Catch(Prisma.PrismaClientKnownRequestError)
@@ -38,7 +47,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
 
     response.status(mapped.status).json({
       statusCode: mapped.status,
-      message: mapped.message,
+      message: `${mapped.message} [${exception.code}]`,
       code: exception.code,
       error: mapped.status === HttpStatus.BAD_REQUEST ? 'Bad Request' : 'Internal Server Error',
     });

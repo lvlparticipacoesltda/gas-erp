@@ -6,6 +6,8 @@ import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 
+type DbClient = PrismaService | Prisma.TransactionClient;
+
 @Injectable()
 export class StockService {
   constructor(private prisma: PrismaService) {}
@@ -40,58 +42,56 @@ export class StockService {
     const data = adjustStockSchema.parse(input);
     assertStoreAccess(user, data.storeId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const balance = await tx.stockBalance.upsert({
-        where: { productId_storeId: { productId: data.productId, storeId: data.storeId } },
-        update: {},
-        create: { productId: data.productId, storeId: data.storeId, available: 0 },
-      });
+    const balance = await this.prisma.stockBalance.upsert({
+      where: { productId_storeId: { productId: data.productId, storeId: data.storeId } },
+      update: {},
+      create: { productId: data.productId, storeId: data.storeId, available: 0 },
+    });
 
-      const newQty = balance.available + data.quantity;
-      if (newQty < 0) throw new BadRequestException('Estoque insuficiente');
+    const newQty = balance.available + data.quantity;
+    if (newQty < 0) throw new BadRequestException('Estoque insuficiente');
 
-      await tx.stockBalance.update({
-        where: { id: balance.id },
-        data: { available: newQty },
-      });
+    await this.prisma.stockBalance.update({
+      where: { id: balance.id },
+      data: { available: newQty },
+    });
 
-      await tx.stockMovement.create({
-        data: {
-          productId: data.productId,
-          storeId: data.storeId,
-          userId: user.id,
-          type: data.quantity >= 0 ? StockMovementType.IN : StockMovementType.OUT,
-          quantity: Math.abs(data.quantity),
-          reason: data.reason,
-        },
-      });
+    await this.prisma.stockMovement.create({
+      data: {
+        productId: data.productId,
+        storeId: data.storeId,
+        userId: user.id,
+        type: data.quantity >= 0 ? StockMovementType.IN : StockMovementType.OUT,
+        quantity: Math.abs(data.quantity),
+        reason: data.reason,
+      },
+    });
 
-      return tx.stockBalance.findUnique({
-        where: { id: balance.id },
-        include: { product: true },
-      });
+    return this.prisma.stockBalance.findUnique({
+      where: { id: balance.id },
+      include: { product: true },
     });
   }
 
   async deductForSale(
-    tx: Prisma.TransactionClient,
+    db: DbClient,
     storeId: string,
     productId: string,
     quantity: number,
     userId: string,
     saleId: string,
   ) {
-    const balance = await tx.stockBalance.findUnique({
+    const balance = await db.stockBalance.findUnique({
       where: { productId_storeId: { productId, storeId } },
     });
     if (!balance || balance.available < quantity) {
       throw new BadRequestException('Estoque insuficiente para o produto');
     }
-    await tx.stockBalance.update({
+    await db.stockBalance.update({
       where: { id: balance.id },
       data: { available: balance.available - quantity },
     });
-    await tx.stockMovement.create({
+    await db.stockMovement.create({
       data: {
         productId,
         storeId,
@@ -105,23 +105,23 @@ export class StockService {
   }
 
   async restoreForCancelledSale(
-    tx: Prisma.TransactionClient,
+    db: DbClient,
     storeId: string,
     productId: string,
     quantity: number,
     userId: string,
     saleId: string,
   ) {
-    const balance = await tx.stockBalance.upsert({
+    const balance = await db.stockBalance.upsert({
       where: { productId_storeId: { productId, storeId } },
       update: {},
       create: { productId, storeId, available: 0 },
     });
-    await tx.stockBalance.update({
+    await db.stockBalance.update({
       where: { id: balance.id },
       data: { available: balance.available + quantity },
     });
-    await tx.stockMovement.create({
+    await db.stockMovement.create({
       data: {
         productId,
         storeId,

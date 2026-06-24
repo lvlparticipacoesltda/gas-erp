@@ -64,20 +64,38 @@ export class CustomersService {
   }
 
   async update(user: AuthUser, id: string, input: unknown) {
-    await this.findOne(user, id);
+    const customer = await this.findOne(user, id);
     const data = updateCustomerSchema.parse(input);
-    return this.prisma.customer.update({
+    const { addresses, ...customerData } = data;
+
+    await this.prisma.customer.update({
       where: { id },
       data: {
-        name: data.name,
-        email: data.email || null,
-        phone: data.phone,
-        document: data.document,
-        notes: data.notes,
-        categoryId: data.categoryId,
+        ...(customerData.name !== undefined ? { name: customerData.name } : {}),
+        ...(customerData.email !== undefined ? { email: customerData.email || null } : {}),
+        ...(customerData.phone !== undefined ? { phone: customerData.phone } : {}),
+        ...(customerData.document !== undefined ? { document: customerData.document } : {}),
+        ...(customerData.notes !== undefined ? { notes: customerData.notes } : {}),
+        ...(customerData.categoryId !== undefined ? { categoryId: customerData.categoryId } : {}),
       },
-      include: { addresses: true, category: true },
     });
+
+    if (addresses?.[0]) {
+      const addr = addresses[0];
+      const existing = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0];
+      if (existing) {
+        await this.prisma.customerAddress.update({
+          where: { id: existing.id },
+          data: addr,
+        });
+      } else {
+        await this.prisma.customerAddress.create({
+          data: { ...addr, customerId: id, isDefault: addr.isDefault ?? true },
+        });
+      }
+    }
+
+    return this.findOne(user, id);
   }
 
   async addAddress(user: AuthUser, customerId: string, input: unknown) {

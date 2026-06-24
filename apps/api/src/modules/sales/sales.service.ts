@@ -86,72 +86,78 @@ export class SalesService {
 
     await this.validateSaleReferences(user, data);
 
-    const sale = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.sale.create({
-        data: {
-          storeId: data.storeId,
-          customerId: data.customerId,
-          attendantId: user.id,
-          delivererId: data.delivererId,
-          channel: data.channel ?? 'PHONE',
-          status: SaleStatus.CONFIRMED,
-          total,
-          notes: data.notes,
-          deliveryStreet: data.deliveryStreet || undefined,
-          deliveryNumber: data.deliveryNumber || undefined,
-          deliveryComplement: data.deliveryComplement || undefined,
-          deliveryNeighborhood: data.deliveryNeighborhood || undefined,
-          deliveryCity: data.deliveryCity || undefined,
-          deliveryState: data.deliveryState || undefined,
-          deliveryLandmark: data.deliveryLandmark || undefined,
-          confirmedAt: new Date(),
-          items: {
-            create: data.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              discount: item.discount ?? 0,
-              total: item.quantity * item.unitPrice - (item.discount ?? 0),
-            })),
-          },
-          payments: { create: payments },
-          statusLogs: { create: { status: SaleStatus.CONFIRMED, userId: user.id } },
+    const created = await this.prisma.sale.create({
+      data: {
+        storeId: data.storeId,
+        customerId: data.customerId,
+        attendantId: user.id,
+        delivererId: data.delivererId,
+        channel: data.channel ?? 'PHONE',
+        status: SaleStatus.CONFIRMED,
+        total,
+        notes: data.notes,
+        deliveryStreet: data.deliveryStreet || undefined,
+        deliveryNumber: data.deliveryNumber || undefined,
+        deliveryComplement: data.deliveryComplement || undefined,
+        deliveryNeighborhood: data.deliveryNeighborhood || undefined,
+        deliveryCity: data.deliveryCity || undefined,
+        deliveryState: data.deliveryState || undefined,
+        deliveryLandmark: data.deliveryLandmark || undefined,
+        confirmedAt: new Date(),
+        items: {
+          create: data.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discount: item.discount ?? 0,
+            total: item.quantity * item.unitPrice - (item.discount ?? 0),
+          })),
         },
-        select: { id: true },
-      });
+        payments: { create: payments },
+        statusLogs: { create: { status: SaleStatus.CONFIRMED, userId: user.id } },
+      },
+      select: { id: true },
+    });
 
+    const deducted: { productId: string; quantity: number }[] = [];
+
+    try {
       for (const item of data.items) {
         await this.stockService.deductForSale(
-          tx,
+          this.prisma,
           data.storeId,
           item.productId,
           item.quantity,
           user.id,
           created.id,
         );
+        deducted.push({ productId: item.productId, quantity: item.quantity });
       }
 
       if (data.delivererId) {
-        await tx.sale.update({
+        await this.prisma.sale.update({
           where: { id: created.id },
           data: { status: SaleStatus.IN_DELIVERY },
         });
-        await tx.delivery.create({
+        await this.prisma.delivery.create({
           data: {
             saleId: created.id,
             delivererId: data.delivererId,
             status: DeliveryStatus.PENDING,
           },
         });
-        await tx.saleStatusLog.create({
+        await this.prisma.saleStatusLog.create({
           data: { saleId: created.id, status: SaleStatus.IN_DELIVERY, userId: user.id },
         });
       }
+    } catch (error) {
+      await this.rollbackSaleCreate(created.id, data.storeId, deducted, user.id);
+      throw error;
+    }
 
-      return tx.sale.findUnique({
-        where: { id: created.id },
-        include: this.saleInclude,
-      });
+    const sale = await this.prisma.sale.findUnique({
+      where: { id: created.id },
+      include: this.saleInclude,
     });
 
     if (!sale) {
@@ -167,7 +173,49 @@ export class SalesService {
     return sale;
   }
 
+  private async rollbackSaleCreate(
+    saleId: string,
+    storeId: string,
+    deducted: { productId: string; quantity: number }[],
+    userId: string,
+  ) {
+    for (const item of deducted) {
+      try {
+        await this.stockService.restoreForCancelledSale(
+          this.prisma,
+          storeId,
+          item.productId,
+          item.quantity,
+          userId,
+          saleId,
+        );
+      } catch {
+        // Melhor esforço ao reverter estoque.
+      }
+    }
+
+    try {
+      await this.prisma.sale.update({
+        where: { id: saleId },
+        data: {
+          status: SaleStatus.CANCELLED,
+          canceledAt: new Date(),
+          canceledReason: 'Falha ao concluir a venda',
+        },
+      });
+    } catch {
+      // Venda parcial pode exigir revisão manual.
+    }
+  }
+
   private async validateSaleReferences(user: AuthUser, data: CreateSaleInput) {
+    const attendant = await this.prisma.user.findFirst({
+      where: { id: user.id, organizationId: user.organizationId, active: true },
+    });
+    if (!attendant) {
+      throw new BadRequestException('Sessão inválida. Faça login novamente.');
+    }
+
     const store = await this.prisma.store.findFirst({
       where: { id: data.storeId, organizationId: user.organizationId },
     });
@@ -180,11 +228,10 @@ export class SalesService {
         where: {
           id: data.customerId,
           organizationId: user.organizationId,
-          active: true,
         },
       });
       if (!customer) {
-        throw new BadRequestException('Cliente não encontrado ou inativo.');
+        throw new BadRequestException('Cliente não encontrado.');
       }
     }
 
