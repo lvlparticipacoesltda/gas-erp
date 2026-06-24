@@ -107,7 +107,7 @@ Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
    - `DATABASE_URL` — Neon
    - `JWT_SECRET` — valor gerado no passo A.5
    - `JWT_EXPIRES_IN` — `7d`
-   - `WEB_URL` — `https://app.SEUDOMINIO` (ou URL Vercel temporária até o DNS)
+   - `WEB_URL` — `https://app.SEUDOMINIO` (ou URL Vercel temporária até o DNS). **Sem aspas** e sem barra no final. Ex.: `https://gas-erp.vercel.app`
    - `NODE_ENV` — `production`
 
 4. Aguarde o deploy e anote a URL `*.up.railway.app`.
@@ -194,6 +194,10 @@ pnpm build
 ### Erro de CORS no browser
 
 - Confirme `WEB_URL` no Railway = URL exata do front (com `https://`, sem barra final)
+- **Não use aspas** no valor no Railway — use `https://thlgasdopovo.com.br`, não `"https://thlgasdopovo.com.br"`
+- Vários domínios (com e sem `www`): separe por vírgula, ex. `https://thlgasdopovo.com.br,https://www.thlgasdopovo.com.br`
+- Se aparecer `ERR_INVALID_CHAR` em `Access-Control-Allow-Origin`, o valor de `WEB_URL` provavelmente tem aspas, espaço ou quebra de linha
+- Se aparecer `header contains multiple values` com as duas URLs juntas, faça deploy da API mais recente (CORS com callback) ou use só uma URL em `WEB_URL` por enquanto
 - Redeploy da API após alterar `WEB_URL`
 
 ### API retorna 502 / não sobe
