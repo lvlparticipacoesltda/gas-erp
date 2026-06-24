@@ -1,0 +1,24 @@
+{
+  "name": "gas-erp",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev --parallel",
+    "lint": "turbo lint",
+    "db:generate": "pnpm --filter @gas-erp/database generate",
+    "db:migrate": "pnpm --filter @gas-erp/database migrate",
+    "db:push": "pnpm --filter @gas-erp/database push",
+    "db:deploy": "pnpm --filter @gas-erp/database deploy",
+    "db:seed": "pnpm --filter @gas-erp/database seed",
+    "db:studio": "pnpm --filter @gas-erp/database studio",
+    "verify:deploy": "bash scripts/verify-deploy-ready.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  }
+}

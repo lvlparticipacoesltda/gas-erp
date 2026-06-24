@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter @gas-erp/shared build && pnpm --filter @gas-erp/api build"
+
+[deploy]
+startCommand = "node apps/api/dist/main.js"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

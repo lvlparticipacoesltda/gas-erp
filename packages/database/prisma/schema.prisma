@@ -1,0 +1,476 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  ORG_MASTER
+  STORE_MANAGER
+  ATTENDANT
+  FINANCE
+  DELIVERER
+}
+
+enum SaleStatus {
+  DRAFT
+  CONFIRMED
+  IN_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum SaleChannel {
+  PHONE
+  WHATSAPP
+  APP
+  IN_STORE
+}
+
+enum PaymentMethod {
+  CASH
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  CHECK
+  CUSTOMER_CREDIT
+  OTHER
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum StockBucket {
+  AVAILABLE
+  IN_TRANSIT
+  LENT
+}
+
+enum StockTransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum DelivererStatus {
+  AVAILABLE
+  ON_DELIVERY
+  OFFLINE
+}
+
+enum DeliveryStatus {
+  PENDING
+  IN_PROGRESS
+  DELIVERED
+  CANCELLED
+}
+
+enum FiscalDocumentStatus {
+  PENDING
+  ISSUED
+  CANCELLED
+  ERROR
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stores              Store[]
+  users               User[]
+  customers           Customer[]
+  customerCategories  CustomerCategory[]
+  products            Product[]
+  auditLogs           AuditLog[]
+}
+
+model Store {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  code           String
+  city           String?
+  state          String?
+  address        String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userStores          UserStore[]
+  productSettings     ProductStoreSetting[]
+  stockBalances       StockBalance[]
+  stockMovements      StockMovement[]
+  transfersFrom       StockTransfer[]       @relation("TransferFrom")
+  transfersTo         StockTransfer[]       @relation("TransferTo")
+  sales               Sale[]
+  deliverers          Deliverer[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  passwordHash   String
+  name           String
+  phone          String?
+  role           UserRole
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userStores     UserStore[]
+  salesAttendant Sale[]          @relation("SaleAttendant")
+  deliverer      Deliverer?
+  auditLogs      AuditLog[]
+  statusLogs     SaleStatusLog[]
+  stockMovements StockMovement[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+}
+
+model UserStore {
+  id        String   @id @default(cuid())
+  userId    String
+  storeId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+}
+
+model CustomerCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customers    Customer[]
+
+  @@unique([organizationId, name])
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  organizationId String
+  categoryId     String?
+  name           String
+  email          String?
+  phone          String?
+  document       String?
+  notes          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     CustomerCategory?  @relation(fields: [categoryId], references: [id])
+  addresses    CustomerAddress[]
+  sales        Sale[]
+
+  @@index([organizationId])
+  @@index([phone])
+  @@index([name])
+}
+
+model CustomerAddress {
+  id           String   @id @default(cuid())
+  customerId   String
+  label        String?
+  street       String
+  number       String?
+  complement   String?
+  neighborhood String?
+  city         String
+  state        String
+  zipCode      String?
+  landmark     String?
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  organizationId String
+  sku            String
+  name           String
+  description    String?
+  unit           String   @default("UN")
+  productType    String   @default("GLP")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  storeSettings   ProductStoreSetting[]
+  stockBalances   StockBalance[]
+  stockMovements  StockMovement[]
+  saleItems       SaleItem[]
+  transferItems   StockTransferItem[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+}
+
+model ProductStoreSetting {
+  id        String   @id @default(cuid())
+  productId String
+  storeId   String
+  price     Decimal  @db.Decimal(12, 2)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, storeId])
+}
+
+model StockBalance {
+  id        String   @id @default(cuid())
+  productId String
+  storeId   String
+  available Int      @default(0)
+  inTransit Int      @default(0) @map("in_transit")
+  lent      Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, storeId])
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  productId   String
+  storeId     String
+  userId      String?
+  type        StockMovementType
+  bucket      StockBucket       @default(AVAILABLE)
+  quantity    Int
+  reason      String
+  referenceId String?
+  createdAt   DateTime          @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([storeId, createdAt])
+  @@index([productId])
+}
+
+model StockTransfer {
+  id           String              @id @default(cuid())
+  fromStoreId  String
+  toStoreId    String
+  status       StockTransferStatus @default(PENDING)
+  notes        String?
+  requestedAt  DateTime            @default(now())
+  completedAt  DateTime?
+
+  fromStore Store               @relation("TransferFrom", fields: [fromStoreId], references: [id])
+  toStore   Store               @relation("TransferTo", fields: [toStoreId], references: [id])
+  items     StockTransferItem[]
+
+  @@index([fromStoreId])
+  @@index([toStoreId])
+}
+
+model StockTransferItem {
+  id         String @id @default(cuid())
+  transferId String
+  productId  String
+  quantity   Int
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product       @relation(fields: [productId], references: [id])
+
+  @@index([transferId])
+}
+
+model Deliverer {
+  id        String          @id @default(cuid())
+  userId    String          @unique
+  storeId   String
+  status    DelivererStatus @default(AVAILABLE)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store      Store      @relation(fields: [storeId], references: [id])
+  sales      Sale[]     @relation("SaleDeliverer")
+  deliveries Delivery[]
+
+  @@index([storeId])
+}
+
+model Sale {
+  id                    String      @id @default(cuid())
+  storeId               String
+  customerId            String?
+  attendantId           String?
+  delivererId           String?
+  status                SaleStatus  @default(DRAFT)
+  channel               SaleChannel @default(PHONE)
+  total                 Decimal     @db.Decimal(12, 2) @default(0)
+  notes                 String?
+  deliveryStreet        String?
+  deliveryNumber        String?
+  deliveryComplement    String?
+  deliveryNeighborhood  String?
+  deliveryCity          String?
+  deliveryState         String?
+  deliveryLandmark      String?
+  canceledReason        String?
+  confirmedAt           DateTime?
+  deliveredAt           DateTime?
+  canceledAt            DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  store       Store            @relation(fields: [storeId], references: [id])
+  customer    Customer?        @relation(fields: [customerId], references: [id])
+  attendant   User?            @relation("SaleAttendant", fields: [attendantId], references: [id])
+  deliverer   Deliverer?       @relation("SaleDeliverer", fields: [delivererId], references: [id])
+  items       SaleItem[]
+  payments    SalePayment[]
+  statusLogs  SaleStatusLog[]
+  delivery    Delivery?
+  fiscalDocs  FiscalDocument[]
+
+  @@index([storeId, createdAt])
+  @@index([status])
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  productId String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(12, 2)
+  discount  Decimal @db.Decimal(12, 2) @default(0)
+  total     Decimal @db.Decimal(12, 2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+}
+
+model SalePayment {
+  id        String        @id @default(cuid())
+  saleId    String
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  createdAt DateTime      @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+}
+
+model SaleStatusLog {
+  id        String     @id @default(cuid())
+  saleId    String
+  userId    String?
+  status    SaleStatus
+  notes     String?
+  createdAt DateTime   @default(now())
+
+  sale Sale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([saleId])
+}
+
+model Delivery {
+  id          String         @id @default(cuid())
+  saleId      String         @unique
+  delivererId String
+  status      DeliveryStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  sale            Sale                    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  deliverer       Deliverer               @relation(fields: [delivererId], references: [id])
+  trackingPoints  DeliveryTrackingPoint[]
+
+  @@index([delivererId, status])
+}
+
+model DeliveryTrackingPoint {
+  id         String   @id @default(cuid())
+  deliveryId String
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  recordedAt DateTime @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, recordedAt])
+}
+
+model FiscalDocument {
+  id         String               @id @default(cuid())
+  saleId     String
+  type       String
+  status     FiscalDocumentStatus @default(PENDING)
+  provider   String?
+  accessKey  String?
+  payload    Json?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String
+  entity         String
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt])
+}

@@ -1,0 +1,122 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { api, clearAuth, getCurrentStoreId, getStoredUser, getToken, setCurrentStoreId } from '@/lib/api';
+import { NavLink } from '@/components/ui';
+import { ROLE_LABELS } from '@gas-erp/shared';
+import type { AuthUser } from '@gas-erp/shared';
+
+interface Store {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export function AppShell({ children, mode }: { children: React.ReactNode; mode: 'master' | 'store' }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [storeId, setStoreId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = getToken();
+    const stored = getStoredUser<AuthUser>();
+    if (!token || !stored) {
+      router.replace('/login');
+      return;
+    }
+    setUser(stored);
+    api<Store[]>('/stores', {}, token).then((data) => {
+      setStores(data);
+      const current = getCurrentStoreId();
+      if (current) setStoreId(current);
+      else if (data[0]) {
+        setStoreId(data[0].id);
+        setCurrentStoreId(data[0].id);
+      }
+    });
+  }, [router]);
+
+  function logout() {
+    clearAuth();
+    router.replace('/login');
+  }
+
+  function onStoreChange(id: string) {
+    setStoreId(id);
+    setCurrentStoreId(id);
+    if (mode === 'store') router.push(`/store/${id}/dashboard`);
+  }
+
+  if (!user) return <div className="flex min-h-screen items-center justify-center">Carregando...</div>;
+
+  const storeLinks = storeId
+    ? [
+        { href: `/store/${storeId}/dashboard`, label: 'Dashboard' },
+        { href: `/store/${storeId}/sales/new`, label: 'Nova venda' },
+        { href: `/store/${storeId}/sales`, label: 'Vendas' },
+        { href: `/store/${storeId}/customers`, label: 'Clientes' },
+        { href: `/store/${storeId}/products`, label: 'Produtos' },
+        { href: `/store/${storeId}/stock`, label: 'Estoque' },
+        { href: `/store/${storeId}/stock/transfers`, label: 'Transferências' },
+        { href: `/store/${storeId}/deliverers`, label: 'Entregadores' },
+        { href: `/store/${storeId}/daily-summary`, label: 'Resumo diário' },
+      ]
+    : [];
+
+  const masterLinks = [
+    { href: '/master/dashboard', label: 'Visão geral' },
+    { href: '/master/stores', label: 'Lojas' },
+    { href: '/master/users', label: 'Usuários' },
+  ];
+
+  const links = mode === 'master' ? masterLinks : storeLinks;
+
+  return (
+    <div className="min-h-screen lg:flex">
+      <aside className="w-full border-r border-slate-200 bg-white lg:min-h-screen lg:w-64">
+        <div className="border-b border-slate-200 p-4">
+          <div className="text-lg font-bold text-sky-700">Gas ERP</div>
+          <div className="mt-1 text-xs text-slate-500">{ROLE_LABELS[user.role] ?? user.role}</div>
+          <div className="text-sm font-medium">{user.name}</div>
+        </div>
+        <div className="p-4">
+          {stores.length > 0 && (
+            <select
+              className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              value={storeId ?? ''}
+              onChange={(e) => onStoreChange(e.target.value)}
+            >
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <nav className="space-y-1">
+            {links.map((l) => (
+              <NavLink key={l.href} href={l.href} active={pathname === l.href}>
+                {l.label}
+              </NavLink>
+            ))}
+            {user.role === 'ORG_MASTER' && mode === 'store' && (
+              <NavLink href="/master/dashboard">Painel Master</NavLink>
+            )}
+            {user.role === 'ORG_MASTER' && mode === 'master' && storeId && (
+              <NavLink href={`/store/${storeId}/dashboard`}>Ir para loja</NavLink>
+            )}
+          </nav>
+        </div>
+        <div className="p-4">
+          <button onClick={logout} className="text-sm text-red-600 hover:underline">
+            Sair
+          </button>
+        </div>
+      </aside>
+      <main className="flex-1 p-6">{children}</main>
+    </div>
+  );
+}

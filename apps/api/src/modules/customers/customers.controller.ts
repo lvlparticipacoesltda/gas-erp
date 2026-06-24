@@ -1,0 +1,41 @@
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { CustomersService } from './customers.service';
+import { JwtAuthGuard } from '../../common/guards';
+import { CurrentUser } from '../../common/decorators';
+import { AuthUser } from '@gas-erp/shared';
+
+@Controller('customers')
+@UseGuards(JwtAuthGuard)
+export class CustomersController {
+  constructor(private customersService: CustomersService) {}
+
+  @Get()
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.customersService.findAll(user, search, Number(page) || 1, Number(pageSize) || 20);
+  }
+
+  @Get(':id')
+  findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.customersService.findOne(user, id);
+  }
+
+  @Post()
+  create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.customersService.create(user, body);
+  }
+
+  @Patch(':id')
+  update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.customersService.update(user, id, body);
+  }
+
+  @Post(':id/addresses')
+  addAddress(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.customersService.addAddress(user, id, body);
+  }
+}
