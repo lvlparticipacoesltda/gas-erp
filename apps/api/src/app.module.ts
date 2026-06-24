@@ -11,6 +11,7 @@ import { SalesModule } from './modules/sales/sales.module';
 import { DeliverersModule } from './modules/deliverers/deliverers.module';
 import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { PrismaModule } from './prisma/prisma.module';
     DeliverersModule,
     DeliveriesModule,
     DashboardModule,
+    HealthModule,
   ],
 })
 export class AppModule {}
