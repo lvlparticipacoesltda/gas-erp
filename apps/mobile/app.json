@@ -13,7 +13,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#0F172A"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gaserp.entregador",
@@ -60,7 +62,17 @@
       ]
     ],
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "165eab5a-801a-45a3-ae81-e0a6ef28e7f3"
+      }
+    },
+    "owner": "lvlparticipacoesltda1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/165eab5a-801a-45a3-ae81-e0a6ef28e7f3"
     }
   }
 }
