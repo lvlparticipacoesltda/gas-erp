@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PAYMENT_METHODS, SALE_CHANNELS } from '../enums';
+import { FULFILLMENT_TYPES, PAYMENT_METHODS, SALE_CHANNELS } from '../enums';
 import { optionalId } from './helpers';
 
 export const saleItemSchema = z.object({
@@ -29,6 +29,7 @@ export const createSaleSchema = z.object({
   deliveryLandmark: z.string().optional(),
   items: z.array(saleItemSchema).min(1),
   payments: z.array(salePaymentSchema).optional(),
+  fulfillmentType: z.enum(FULFILLMENT_TYPES).optional(),
 });
 
 export const updateSaleStatusSchema = z.object({

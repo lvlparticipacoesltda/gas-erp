@@ -86,24 +86,29 @@ export class SalesService {
 
     await this.validateSaleReferences(user, data);
 
+    const isPickup = data.fulfillmentType === 'PICKUP';
+    const initialStatus = isPickup ? SaleStatus.DELIVERED : SaleStatus.CONFIRMED;
+    const channel = isPickup ? 'IN_STORE' : (data.channel ?? 'PHONE');
+
     const created = await this.prisma.sale.create({
       data: {
         storeId: data.storeId,
         customerId: data.customerId,
         attendantId: user.id,
-        delivererId: data.delivererId,
-        channel: data.channel ?? 'PHONE',
-        status: SaleStatus.CONFIRMED,
+        delivererId: isPickup ? undefined : data.delivererId,
+        channel,
+        status: initialStatus,
         total,
         notes: data.notes,
-        deliveryStreet: data.deliveryStreet || undefined,
-        deliveryNumber: data.deliveryNumber || undefined,
-        deliveryComplement: data.deliveryComplement || undefined,
-        deliveryNeighborhood: data.deliveryNeighborhood || undefined,
-        deliveryCity: data.deliveryCity || undefined,
-        deliveryState: data.deliveryState || undefined,
-        deliveryLandmark: data.deliveryLandmark || undefined,
+        deliveryStreet: isPickup ? undefined : data.deliveryStreet || undefined,
+        deliveryNumber: isPickup ? undefined : data.deliveryNumber || undefined,
+        deliveryComplement: isPickup ? undefined : data.deliveryComplement || undefined,
+        deliveryNeighborhood: isPickup ? undefined : data.deliveryNeighborhood || undefined,
+        deliveryCity: isPickup ? undefined : data.deliveryCity || undefined,
+        deliveryState: isPickup ? undefined : data.deliveryState || undefined,
+        deliveryLandmark: isPickup ? undefined : data.deliveryLandmark || undefined,
         confirmedAt: new Date(),
+        deliveredAt: isPickup ? new Date() : undefined,
         items: {
           create: data.items.map((item) => ({
             productId: item.productId,
@@ -114,7 +119,14 @@ export class SalesService {
           })),
         },
         payments: { create: payments },
-        statusLogs: { create: { status: SaleStatus.CONFIRMED, userId: user.id } },
+        statusLogs: {
+          create: isPickup
+            ? [
+                { status: SaleStatus.CONFIRMED, userId: user.id },
+                { status: SaleStatus.DELIVERED, userId: user.id },
+              ]
+            : [{ status: SaleStatus.CONFIRMED, userId: user.id }],
+        },
       },
       select: { id: true },
     });
@@ -134,7 +146,7 @@ export class SalesService {
         deducted.push({ productId: item.productId, quantity: item.quantity });
       }
 
-      if (data.delivererId) {
+      if (!isPickup && data.delivererId) {
         await this.prisma.sale.update({
           where: { id: created.id },
           data: { status: SaleStatus.IN_DELIVERY },
@@ -245,6 +257,15 @@ export class SalesService {
       });
       if (!deliverer) {
         throw new BadRequestException('Entregador não encontrado nesta loja.');
+      }
+    }
+
+    if (data.fulfillmentType === 'DELIVERY' && data.customerId) {
+      const hasAddress =
+        data.deliveryStreet?.trim() ||
+        data.deliveryCity?.trim();
+      if (!hasAddress) {
+        throw new BadRequestException('Informe o endereço de entrega.');
       }
     }
 

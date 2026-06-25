@@ -27,6 +27,10 @@ export const PAYMENT_METHODS = [
 
 export const SALE_CHANNELS = ['PHONE', 'WHATSAPP', 'APP', 'IN_STORE'] as const;
 
+export const FULFILLMENT_TYPES = ['PICKUP', 'DELIVERY'] as const;
+
+export const DELIVERY_STATUSES = ['PENDING', 'IN_PROGRESS', 'DELIVERED', 'CANCELLED'] as const;
+
 export const DELIVERER_STATUSES = ['AVAILABLE', 'ON_DELIVERY', 'OFFLINE'] as const;
 
 export const STOCK_TRANSFER_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED'] as const;
@@ -45,6 +49,25 @@ export const SALE_STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Rascunho',
   CONFIRMED: 'Confirmada',
   IN_DELIVERY: 'Em entrega',
+  DELIVERED: 'Entregue',
+  CANCELLED: 'Cancelada',
+};
+
+export const SALE_CHANNEL_LABELS: Record<string, string> = {
+  PHONE: 'Telefone',
+  WHATSAPP: 'WhatsApp',
+  APP: 'App',
+  IN_STORE: 'Portaria',
+};
+
+export const FULFILLMENT_TYPE_LABELS: Record<string, string> = {
+  PICKUP: 'Portaria (retirada)',
+  DELIVERY: 'Entrega',
+};
+
+export const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Aguardando',
+  IN_PROGRESS: 'Em rota',
   DELIVERED: 'Entregue',
   CANCELLED: 'Cancelada',
 };

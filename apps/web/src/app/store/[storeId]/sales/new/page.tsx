@@ -2,37 +2,65 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
-import { Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
+import { SalesWithSidebar } from '@/components/sales-with-sidebar';
+import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, SALE_CHANNELS } from '@gas-erp/shared';
+import { formatCurrency } from '@/lib/utils';
+import { parsePrice } from '@/lib/sale-utils';
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  SALE_CHANNELS,
+  SALE_CHANNEL_LABELS,
+} from '@gas-erp/shared';
 
 interface Product { id: string; name: string; storeSettings?: { price: number | string }[] }
-interface Customer { id: string; name: string; phone?: string; addresses: { id: string; street: string; number?: string; city: string; state: string; neighborhood?: string }[] }
+interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  addresses: {
+    street: string;
+    number?: string;
+    neighborhood?: string;
+    city: string;
+    state: string;
+  }[];
+}
 interface Deliverer { id: string; user: { name: string } }
 
-function parsePrice(value: number | string | undefined): number {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
+type Step = 1 | 2 | 3;
+
+const STEPS = [
+  { n: 1, label: 'Cliente' },
+  { n: 2, label: 'Produto' },
+  { n: 3, label: 'Entrega' },
+] as const;
 
 export default function NewSalePage() {
   const { storeId } = useParams<{ storeId: string }>();
   const router = useRouter();
+  const [step, setStep] = useState<Step>(1);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({
+
+  const [draft, setDraft] = useState({
     customerId: '',
+    customerName: '',
     productId: '',
     quantity: 1,
     unitPrice: 0,
     channel: 'PHONE',
-    delivererId: '',
     paymentMethod: 'PIX',
+    fulfillmentType: 'DELIVERY' as 'PICKUP' | 'DELIVERY',
+    delivererId: '',
+    notes: '',
     deliveryStreet: '',
     deliveryNumber: '',
     deliveryNeighborhood: '',
@@ -49,23 +77,31 @@ export default function NewSalePage() {
       setProducts(p);
       setCustomers(c.data);
       setDeliverers(d);
-      if (p[0]) {
-        const price = parsePrice(p[0].storeSettings?.[0]?.price);
-        setForm((f) => ({ ...f, productId: p[0].id, unitPrice: price }));
-      }
     });
   }, [storeId, search]);
 
-  function productPrice(product?: Product): number {
-    return parsePrice(product?.storeSettings?.[0]?.price);
-  }
+  const selectedProduct = products.find((p) => p.id === draft.productId);
+  const total = draft.quantity * draft.unitPrice;
 
-  function onCustomerChange(id: string) {
-    const customer = customers.find((c) => c.id === id);
-    const addr = customer?.addresses[0];
-    setForm((f) => ({
-      ...f,
-      customerId: id,
+  function selectCustomer(customer: Customer | null) {
+    if (!customer) {
+      setDraft((d) => ({
+        ...d,
+        customerId: '',
+        customerName: 'Cliente não identificado',
+        deliveryStreet: '',
+        deliveryNumber: '',
+        deliveryNeighborhood: '',
+        deliveryCity: '',
+        deliveryState: 'SP',
+      }));
+      return;
+    }
+    const addr = customer.addresses[0];
+    setDraft((d) => ({
+      ...d,
+      customerId: customer.id,
+      customerName: customer.name,
       deliveryStreet: addr?.street ?? '',
       deliveryNumber: addr?.number ?? '',
       deliveryNeighborhood: addr?.neighborhood ?? '',
@@ -74,27 +110,43 @@ export default function NewSalePage() {
     }));
   }
 
-  function onProductChange(id: string) {
+  function selectProduct(id: string) {
     const product = products.find((p) => p.id === id);
-    setForm((f) => ({
-      ...f,
+    setDraft((d) => ({
+      ...d,
       productId: id,
-      unitPrice: productPrice(product),
+      unitPrice: parsePrice(product?.storeSettings?.[0]?.price),
     }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function goNext() {
     setError('');
-
-    if (!form.productId) {
-      setError('Selecione um produto para continuar.');
+    if (step === 1) {
+      setStep(2);
+      if (!draft.productId && products[0]) selectProduct(products[0].id);
       return;
     }
+    if (step === 2) {
+      if (!draft.productId) {
+        setError('Selecione um produto.');
+        return;
+      }
+      if (total <= 0) {
+        setError('Informe um preço válido para o produto.');
+        return;
+      }
+      setStep(3);
+    }
+  }
 
-    const total = form.quantity * form.unitPrice;
-    if (total <= 0) {
-      setError('Informe um preço unitário válido. Configure o preço em Produtos, se necessário.');
+  async function submitSale(requireDeliverer: boolean) {
+    setError('');
+    if (draft.fulfillmentType === 'DELIVERY' && !draft.deliveryStreet.trim()) {
+      setError('Informe o endereço de entrega.');
+      return;
+    }
+    if (requireDeliverer && !draft.delivererId) {
+      setError('Selecione um entregador.');
       return;
     }
 
@@ -104,26 +156,28 @@ export default function NewSalePage() {
         method: 'POST',
         body: JSON.stringify({
           storeId,
-          customerId: form.customerId || undefined,
-          channel: form.channel,
-          delivererId: form.delivererId || undefined,
-          deliveryStreet: form.deliveryStreet,
-          deliveryNumber: form.deliveryNumber,
-          deliveryNeighborhood: form.deliveryNeighborhood,
-          deliveryCity: form.deliveryCity,
-          deliveryState: form.deliveryState,
-          items: [{ productId: form.productId, quantity: form.quantity, unitPrice: form.unitPrice }],
-          payments: [{ method: form.paymentMethod, amount: total }],
+          customerId: draft.customerId || undefined,
+          channel: draft.fulfillmentType === 'PICKUP' ? 'IN_STORE' : draft.channel,
+          fulfillmentType: draft.fulfillmentType,
+          delivererId:
+            draft.fulfillmentType === 'DELIVERY' ? draft.delivererId || undefined : undefined,
+          notes: draft.notes || undefined,
+          deliveryStreet: draft.deliveryStreet,
+          deliveryNumber: draft.deliveryNumber,
+          deliveryNeighborhood: draft.deliveryNeighborhood,
+          deliveryCity: draft.deliveryCity,
+          deliveryState: draft.deliveryState,
+          items: [{
+            productId: draft.productId,
+            quantity: draft.quantity,
+            unitPrice: draft.unitPrice,
+          }],
+          payments: [{ method: draft.paymentMethod, amount: total }],
         }),
       }, getToken());
       router.push(`/store/${storeId}/sales`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao registrar a venda';
-      setError(
-        message.includes('banco de dados')
-          ? `${message} Verifique estoque, preço do produto na loja e se cliente/entregador existem.`
-          : message,
-      );
+      setError(err instanceof Error ? err.message : 'Erro ao registrar a venda');
     } finally {
       setSubmitting(false);
     }
@@ -131,62 +185,293 @@ export default function NewSalePage() {
 
   return (
     <AppShell mode="store">
-      <PageHeader title="Nova venda" subtitle="Cliente → Produto → Entrega → Pagamento" />
-      <Card>
+      <SalesWithSidebar storeId={storeId}>
+        <div className="mb-4">
+          <Link href={`/store/${storeId}/sales`} className="text-sm text-sky-600 hover:underline">
+            ← Voltar ao histórico
+          </Link>
+        </div>
+
+        <h1 className="text-2xl font-bold text-slate-900">Nova venda</h1>
+
+        {/* Stepper */}
+        <div className="my-6 flex items-center gap-2">
+          {STEPS.map((s, i) => (
+            <div key={s.n} className="flex flex-1 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => s.n < step && setStep(s.n as Step)}
+                className={`flex flex-col items-center gap-1 ${s.n <= step ? 'text-sky-700' : 'text-slate-400'}`}
+              >
+                <span
+                  className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold ${
+                    s.n < step
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : s.n === step
+                        ? 'border-sky-600 bg-sky-600 text-white'
+                        : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  {s.n < step ? '✓' : s.n}
+                </span>
+                <span className="text-xs font-medium">{s.label}</span>
+                {s.n === 1 && draft.customerName && (
+                  <span className="max-w-[100px] truncate text-[10px] text-slate-500">{draft.customerName}</span>
+                )}
+                {s.n === 2 && selectedProduct && step > 2 && (
+                  <span className="max-w-[100px] truncate text-[10px] text-slate-500">
+                    {draft.quantity}x {selectedProduct.name}
+                  </span>
+                )}
+              </button>
+              {i < STEPS.length - 1 && (
+                <div className={`hidden h-0.5 flex-1 sm:block ${s.n < step ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+              )}
+            </div>
+          ))}
+        </div>
+
         {error && (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
+          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
-        <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-          <div className="md:col-span-2"><Label>Buscar cliente</Label><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nome ou telefone" /></div>
-          <div>
-            <Label>Cliente</Label>
-            <Select value={form.customerId} onChange={(e) => onCustomerChange(e.target.value)}>
-              <option value="">Cliente não identificado</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+
+        {/* Step 1 — Cliente */}
+        {step === 1 && (
+          <Card>
+            <Label>Buscar cliente</Label>
+            <Input
+              className="mb-4"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nome ou telefone"
+            />
+
+            <div className="mb-4 max-h-64 space-y-2 overflow-y-auto">
+              {customers.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => selectCustomer(c)}
+                  className={`w-full rounded-lg border p-3 text-left transition hover:border-sky-300 ${
+                    draft.customerId === c.id ? 'border-sky-500 bg-sky-50' : 'border-slate-200'
+                  }`}
+                >
+                  <div className="font-medium">{c.name}</div>
+                  {c.phone && <div className="text-sm text-slate-500">{c.phone}</div>}
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-6 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => selectCustomer(null)}>
+                Cliente não identificado
+              </Button>
+            </div>
+
+            <Label>Canal de venda</Label>
+            <div className="mt-2 flex flex-wrap gap-4">
+              {SALE_CHANNELS.filter((c) => c !== 'IN_STORE').map((c) => (
+                <label key={c} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="channel"
+                    checked={draft.channel === c}
+                    onChange={() => setDraft({ ...draft, channel: c })}
+                  />
+                  {SALE_CHANNEL_LABELS[c] ?? c}
+                </label>
+              ))}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <Button type="button" onClick={goNext}>Continuar →</Button>
+            </div>
+          </Card>
+        )}
+
+        {/* Step 2 — Produto */}
+        {step === 2 && (
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <h2 className="mb-4 font-semibold">Produtos</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {products.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => selectProduct(p.id)}
+                    className={`rounded-xl border p-4 text-left transition hover:border-sky-300 ${
+                      draft.productId === p.id ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-200' : 'border-slate-200'
+                    }`}
+                  >
+                    <div className="font-medium">{p.name}</div>
+                    <div className="mt-1 text-sm text-sky-700">
+                      {formatCurrency(parsePrice(p.storeSettings?.[0]?.price))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {selectedProduct && (
+                <div className="mt-6 flex items-center gap-4">
+                  <Label>Quantidade</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setDraft((d) => ({ ...d, quantity: Math.max(1, d.quantity - 1) }))}
+                    >
+                      −
+                    </Button>
+                    <span className="w-8 text-center font-semibold">{draft.quantity}</span>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setDraft((d) => ({ ...d, quantity: d.quantity + 1 }))}
+                    >
+                      +
+                    </Button>
+                  </div>
+                  <div className="ml-auto">
+                    <Label>Preço unit.</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      className="w-28"
+                      value={draft.unitPrice}
+                      onChange={(e) => setDraft({ ...draft, unitPrice: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6">
+                <Label>Pagamento</Label>
+                <Select
+                  value={draft.paymentMethod}
+                  onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })}
+                >
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
+                  ))}
+                </Select>
+              </div>
+            </Card>
+
+            <Card>
+              <h2 className="mb-4 font-semibold">Resumo</h2>
+              <p className="text-sm text-slate-600">Cliente: {draft.customerName || '—'}</p>
+              {selectedProduct && (
+                <p className="mt-2 text-sm">
+                  {draft.quantity}x {selectedProduct.name}
+                </p>
+              )}
+              <p className="mt-4 text-xl font-bold text-slate-900">{formatCurrency(total)}</p>
+              <div className="mt-6 flex gap-2">
+                <Button type="button" variant="secondary" onClick={() => setStep(1)}>← Voltar</Button>
+                <Button type="button" onClick={goNext}>Continuar →</Button>
+              </div>
+            </Card>
           </div>
-          <div>
-            <Label>Canal</Label>
-            <Select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })}>
-              {SALE_CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
-          </div>
-          <div>
-            <Label>Produto</Label>
-            <Select value={form.productId} onChange={(e) => onProductChange(e.target.value)} required>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <Label>Quantidade</Label>
-            <Input type="number" min={1} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
-          </div>
-          <div>
-            <Label>Preço unitário</Label>
-            <Input type="number" step="0.01" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })} />
-          </div>
-          <div>
-            <Label>Entregador</Label>
-            <Select value={form.delivererId} onChange={(e) => setForm({ ...form, delivererId: e.target.value })}>
-              <option value="">Sem entregador</option>
-              {deliverers.map((d) => <option key={d.id} value={d.id}>{d.user.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <Label>Pagamento</Label>
-            <Select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}>
-              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}
-            </Select>
-          </div>
-          <div><Label>Logradouro</Label><Input value={form.deliveryStreet} onChange={(e) => setForm({ ...form, deliveryStreet: e.target.value })} /></div>
-          <div><Label>Número</Label><Input value={form.deliveryNumber} onChange={(e) => setForm({ ...form, deliveryNumber: e.target.value })} /></div>
-          <div><Label>Bairro</Label><Input value={form.deliveryNeighborhood} onChange={(e) => setForm({ ...form, deliveryNeighborhood: e.target.value })} /></div>
-          <div><Label>Cidade</Label><Input value={form.deliveryCity} onChange={(e) => setForm({ ...form, deliveryCity: e.target.value })} /></div>
-          <div className="md:col-span-2"><Button type="submit" disabled={submitting || products.length === 0}>{submitting ? 'Salvando...' : 'Confirmar venda'}</Button></div>
-        </form>
-      </Card>
+        )}
+
+        {/* Step 3 — Entrega / Portaria */}
+        {step === 3 && (
+          <Card>
+            <h2 className="mb-4 font-semibold">Tipo de venda</h2>
+            <div className="mb-6 flex flex-wrap gap-4">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-sky-500 has-[:checked]:bg-sky-50">
+                <input
+                  type="radio"
+                  name="fulfillment"
+                  checked={draft.fulfillmentType === 'PICKUP'}
+                  onChange={() => setDraft({ ...draft, fulfillmentType: 'PICKUP', delivererId: '' })}
+                />
+                <div>
+                  <div className="font-medium">Portaria</div>
+                  <div className="text-xs text-slate-500">Cliente retira na loja — status Entregue</div>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-sky-500 has-[:checked]:bg-sky-50">
+                <input
+                  type="radio"
+                  name="fulfillment"
+                  checked={draft.fulfillmentType === 'DELIVERY'}
+                  onChange={() => setDraft({ ...draft, fulfillmentType: 'DELIVERY' })}
+                />
+                <div>
+                  <div className="font-medium">Entrega</div>
+                  <div className="text-xs text-slate-500">Endereço + entregador — aparece na barra lateral</div>
+                </div>
+              </label>
+            </div>
+
+            {draft.fulfillmentType === 'DELIVERY' && (
+              <>
+                <h3 className="mb-3 font-medium">Endereço de entrega</h3>
+                <div className="mb-6 grid gap-3 md:grid-cols-2">
+                  <div className="md:col-span-2"><Label>Logradouro</Label><Input value={draft.deliveryStreet} onChange={(e) => setDraft({ ...draft, deliveryStreet: e.target.value })} /></div>
+                  <div><Label>Número</Label><Input value={draft.deliveryNumber} onChange={(e) => setDraft({ ...draft, deliveryNumber: e.target.value })} /></div>
+                  <div><Label>Bairro</Label><Input value={draft.deliveryNeighborhood} onChange={(e) => setDraft({ ...draft, deliveryNeighborhood: e.target.value })} /></div>
+                  <div><Label>Cidade</Label><Input value={draft.deliveryCity} onChange={(e) => setDraft({ ...draft, deliveryCity: e.target.value })} /></div>
+                  <div><Label>UF</Label><Input value={draft.deliveryState} maxLength={2} onChange={(e) => setDraft({ ...draft, deliveryState: e.target.value })} /></div>
+                </div>
+
+                <h3 className="mb-3 font-medium">Escolha o entregador</h3>
+                <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {deliverers.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => setDraft({ ...draft, delivererId: d.id })}
+                      className={`rounded-xl border p-3 text-left ${
+                        draft.delivererId === d.id ? 'border-orange-500 bg-orange-50' : 'border-slate-200'
+                      }`}
+                    >
+                      <span className="text-lg">🛵</span>
+                      <div className="mt-1 font-medium">{d.user.name}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="mb-6">
+              <Label>Observação (opcional)</Label>
+              <Input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Recado para o entregador" />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <Button type="button" variant="secondary" onClick={() => setStep(2)}>← Voltar</Button>
+              <div className="flex flex-wrap gap-2">
+                {draft.fulfillmentType === 'PICKUP' ? (
+                  <Button type="button" disabled={submitting} onClick={() => submitSale(false)}>
+                    {submitting ? 'Salvando...' : 'Concluir venda (portaria)'}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={submitting}
+                      onClick={() => submitSale(false)}
+                    >
+                      Finalizar sem entregador
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => submitSale(true)}
+                    >
+                      {submitting ? 'Salvando...' : 'Confirmar com entregador'}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
+      </SalesWithSidebar>
     </AppShell>
   );
 }
