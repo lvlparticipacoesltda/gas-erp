@@ -321,11 +321,13 @@ model StockTransferItem {
 }
 
 model Deliverer {
-  id        String          @id @default(cuid())
-  userId    String          @unique
-  status    DelivererStatus @default(AVAILABLE)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id                 String          @id @default(cuid())
+  userId             String          @unique
+  status             DelivererStatus @default(AVAILABLE)
+  expoPushToken      String?
+  pushTokenUpdatedAt DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   stores     DelivererStore[]

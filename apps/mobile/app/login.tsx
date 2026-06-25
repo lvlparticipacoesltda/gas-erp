@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Loading } from '@/components/ui';
 import { BrandLogo } from '@/components/BrandLogo';
 import { useAuth } from '@/lib/auth';
-import { colors, spacing } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 
 export default function LoginScreen() {
   const { login, token, initializing } = useAuth();

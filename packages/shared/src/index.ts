@@ -9,6 +9,7 @@ export * from './schemas/product';
 export * from './schemas/sale';
 export * from './schemas/stock';
 export * from './schemas/deliverer';
+export * from './schemas/push';
 export * from './schemas/delivery';
 export * from './permissions';
 export * from './sale-display';

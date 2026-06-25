@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MailModule } from './common/mail/mail.module';
+import { PushModule } from './common/push/push.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { UsersModule } from './modules/users/users.module';
@@ -22,6 +23,7 @@ import { PrismaModule } from './prisma/prisma.module';
       envFilePath: ['../../.env', '.env'],
     }),
     MailModule,
+    PushModule,
     PrismaModule,
     AuthModule,
     StoresModule,

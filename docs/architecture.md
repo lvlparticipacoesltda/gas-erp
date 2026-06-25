@@ -22,7 +22,8 @@ Monorepo Gas ERP — gestão multi-loja para distribuidoras de GLP.
 - **User.permissions** = telas customizadas (`String[]`; vazio = padrão do papel)
 - **StockBalance** por loja; **StockTransfer** entre lojas
 - **Sale** → baixa estoque; cancelamento repõe
-- **Delivery** + **DeliveryTrackingPoint** para GPS (fase mobile)
+- **Delivery** + **DeliveryTrackingPoint** para GPS (app entregador)
+- **DelivererStore** = entregador N:N com unidades (mesmo `DELIVERER` pode atender várias lojas)
 - **PasswordResetToken** para recuperação de senha
 
 ## Autenticação
@@ -92,10 +93,24 @@ App React Native (Expo SDK 56 + `expo-router`) para os entregadores. Consome a m
 | Listas | **Aguardando** / **Em rota** via `GET /deliveries/my` (pull-to-refresh + polling) |
 | Iniciar rota | `PATCH /deliveries/:id/status` → `IN_PROGRESS` (exclusivo do entregador) e abre o Google Maps via deep link |
 | Rota ativa | Timer + `Concluir entrega` (`PATCH` → `DELIVERED`) |
-| GPS | `expo-location` + `expo-task-manager` enviam pontos para `POST /deliveries/:id/tracking` em segundo plano durante `IN_PROGRESS` |
+| GPS | `expo-location` + `expo-task-manager` → `POST /deliveries/:id/tracking` em background durante `IN_PROGRESS` (requer permissão "o tempo todo") |
+| Push | `expo-notifications` — alertas de nova entrega e cancelamento (Expo Push) |
+| Branding | Nome da organização no header após login |
+| Divulgação GPS | Aviso destacado antes do prompt de background (requisito Play Store) |
 | Config | `EXPO_PUBLIC_API_URL` (default aponta para produção) |
+| Estado global | `DeliveriesProvider` no `_layout.tsx` raiz (todas as rotas) |
 
-Build e distribuição (EAS, Android): [deployment.md](deployment.md).
+Estrutura principal em `apps/mobile/src/`:
+
+| Arquivo | Função |
+|---------|--------|
+| `lib/api.ts` | Cliente HTTP + JWT |
+| `lib/auth.tsx` | Contexto de autenticação |
+| `lib/deliveries-context.tsx` | Cache e refresh das entregas |
+| `lib/location.ts` | Task de GPS em background |
+| `hooks/useDeliveries.ts` | Polling e pull-to-refresh |
+
+Build, emulador e comandos: [development.md](development.md) · EAS: [deployment.md](deployment.md) · Play Store: [playstore-checklist.md](playstore-checklist.md).
 
 ## Métrica de tempo de espera
 
@@ -161,13 +176,25 @@ E-mail (Resend): [resend-setup.md](resend-setup.md)
 | `20250624000000_init` | Schema inicial |
 | `20250624140000_password_reset_tokens` | Tokens de reset |
 | `20250624180000_user_permissions` | Campo `permissions` em User |
+| `20260625120000_deliverer_multi_store` | Tabela `DelivererStore` (entregador N:N unidades) |
 
 Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy.
+
+## Status do produto (jun/2026)
+
+| Área | Status |
+|------|--------|
+| Web MVP (vendas, estoque, entregas, dashboard) | ✅ Produção |
+| Status unificado venda/entrega | ✅ `packages/shared/src/sale-display.ts` |
+| Métricas tempo até rota | ✅ `delivery-metrics.ts` |
+| App entregador MVP | ✅ Emulador + EAS preview APK |
+| Play Store (AAB) | ⏳ Checklist em [playstore-checklist.md](playstore-checklist.md) |
+| Push notifications | ✅ Expo Push (nova entrega / cancelamento) |
 
 ## Fase 2 (planejado)
 
 - Fiscal (`FiscalProvider` stub em `packages/shared`)
 - Financeiro (contas, fluxo de caixa)
-- App entregador (Expo) — **MVP entregue** em `apps/mobile`; falta build/distribuição EAS e push notifications
+- Publicação Play Store + push notifications no app entregador
 - Redis/filas para real-time
 - CI/CD, staging, monitoramento

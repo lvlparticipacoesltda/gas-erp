@@ -6,6 +6,7 @@ import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { StockService } from '../stock/stock.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { PushService } from '../../common/push/push.service';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class SalesService {
     private prisma: PrismaService,
     private stockService: StockService,
     private audit: AuditService,
+    private push: PushService,
   ) {}
 
   private saleInclude = {
@@ -132,6 +134,7 @@ export class SalesService {
     });
 
     const deducted: { productId: string; quantity: number }[] = [];
+    let newDelivery: { id: string; delivererId: string } | null = null;
 
     try {
       for (const item of data.items) {
@@ -147,13 +150,15 @@ export class SalesService {
       }
 
       if (!isPickup && data.delivererId) {
-        await this.prisma.delivery.create({
+        const delivery = await this.prisma.delivery.create({
           data: {
             saleId: created.id,
             delivererId: data.delivererId,
             status: DeliveryStatus.PENDING,
           },
+          select: { id: true, delivererId: true },
         });
+        newDelivery = delivery;
       }
     } catch (error) {
       await this.rollbackSaleCreate(created.id, data.storeId, deducted, user.id);
@@ -173,6 +178,12 @@ export class SalesService {
       await this.audit.log(user, 'CREATE', 'Sale', sale.id);
     } catch {
       // Venda já foi salva; falha de auditoria não deve bloquear o fluxo.
+    }
+
+    if (newDelivery) {
+      void this.push
+        .notifyNewDelivery(newDelivery.delivererId, newDelivery.id)
+        .catch(() => undefined);
     }
 
     return sale;
@@ -303,7 +314,7 @@ export class SalesService {
       throw new BadRequestException('Venda não pode ser alterada');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       if (data.status === 'CANCELLED') {
         for (const item of sale.items) {
           await this.stockService.restoreForCancelledSale(
@@ -333,8 +344,11 @@ export class SalesService {
         data: { saleId: id, status: data.status as SaleStatus, userId: user.id },
       });
 
+      let pushNewDelivery: { delivererId: string; deliveryId: string } | null = null;
+      let pushCancelled: { delivererId: string; deliveryId: string } | null = null;
+
       if (data.status === 'IN_DELIVERY' && data.delivererId) {
-        await tx.delivery.upsert({
+        const delivery = await tx.delivery.upsert({
           where: { saleId: id },
           update: { delivererId: data.delivererId, status: DeliveryStatus.PENDING },
           create: {
@@ -342,7 +356,27 @@ export class SalesService {
             delivererId: data.delivererId,
             status: DeliveryStatus.PENDING,
           },
+          select: { id: true, delivererId: true },
         });
+        if (data.delivererId !== sale.delivererId || !sale.delivery) {
+          pushNewDelivery = { delivererId: delivery.delivererId, deliveryId: delivery.id };
+        }
+      }
+
+      if (data.status === 'CANCELLED' && sale.delivery) {
+        await tx.delivery.update({
+          where: { saleId: id },
+          data: { status: DeliveryStatus.CANCELLED },
+        });
+        if (
+          sale.delivery.status === DeliveryStatus.PENDING ||
+          sale.delivery.status === DeliveryStatus.IN_PROGRESS
+        ) {
+          pushCancelled = {
+            delivererId: sale.delivery.delivererId,
+            deliveryId: sale.delivery.id,
+          };
+        }
       }
 
       if (data.status === 'DELIVERED' && sale.delivery) {
@@ -353,7 +387,20 @@ export class SalesService {
       }
 
       await this.audit.log(user, 'UPDATE_STATUS', 'Sale', id, { status: data.status });
-      return updated;
+      return { updated, pushNewDelivery, pushCancelled };
     });
+
+    if (result.pushNewDelivery) {
+      void this.push
+        .notifyNewDelivery(result.pushNewDelivery.delivererId, result.pushNewDelivery.deliveryId)
+        .catch(() => undefined);
+    }
+    if (result.pushCancelled) {
+      void this.push
+        .notifyDeliveryCancelled(result.pushCancelled.delivererId, result.pushCancelled.deliveryId)
+        .catch(() => undefined);
+    }
+
+    return result.updated;
   }
 }

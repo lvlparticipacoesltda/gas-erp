@@ -1,13 +1,27 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { DeliverersService } from './deliverers.service';
-import { JwtAuthGuard } from '../../common/guards';
-import { CurrentUser } from '../../common/decorators';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
+import { CurrentUser, Roles } from '../../common/decorators';
 import { AuthUser } from '@gas-erp/shared';
 
 @Controller('deliverers')
 @UseGuards(JwtAuthGuard)
 export class DeliverersController {
   constructor(private service: DeliverersService) {}
+
+  @Put('me/push-token')
+  @UseGuards(RolesGuard)
+  @Roles('DELIVERER')
+  registerPushToken(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.service.registerPushToken(user, body);
+  }
+
+  @Delete('me/push-token')
+  @UseGuards(RolesGuard)
+  @Roles('DELIVERER')
+  clearPushToken(@CurrentUser() user: AuthUser) {
+    return this.service.clearPushToken(user);
+  }
 
   @Get()
   findAll(@CurrentUser() user: AuthUser, @Query('storeId') storeId?: string) {

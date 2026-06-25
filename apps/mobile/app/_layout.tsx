@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { DeliveriesProvider } from '@/lib/deliveries-context';
+import { PushNotificationsBridge } from '@/components/PushNotificationsBridge';
 import { recoverStaleLocationTracking } from '@/lib/location';
 import { colors } from '@/theme';
 
@@ -19,7 +20,12 @@ function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
   }, [token]);
 
   if (!token) return children;
-  return <DeliveriesProvider>{children}</DeliveriesProvider>;
+  return (
+    <DeliveriesProvider>
+      <PushNotificationsBridge />
+      {children}
+    </DeliveriesProvider>
+  );
 }
 
 export default function RootLayout() {

@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createDelivererSchema, updateDelivererSchema } from '@gas-erp/shared';
+import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 
@@ -78,6 +78,38 @@ export class DeliverersService {
       },
       include: this.include,
     });
+  }
+
+  async registerPushToken(user: AuthUser, input: unknown) {
+    if (user.role !== 'DELIVERER') {
+      throw new ForbiddenException('Apenas entregadores podem registrar push token');
+    }
+
+    const { token } = registerPushTokenSchema.parse(input);
+    const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
+    if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+
+    return this.prisma.deliverer.update({
+      where: { id: deliverer.id },
+      data: { expoPushToken: token, pushTokenUpdatedAt: new Date() },
+      select: { id: true, pushTokenUpdatedAt: true },
+    });
+  }
+
+  async clearPushToken(user: AuthUser) {
+    if (user.role !== 'DELIVERER') {
+      throw new ForbiddenException('Apenas entregadores podem remover push token');
+    }
+
+    const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
+    if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+
+    await this.prisma.deliverer.update({
+      where: { id: deliverer.id },
+      data: { expoPushToken: null, pushTokenUpdatedAt: null },
+    });
+
+    return { ok: true };
   }
 
   /** Garante que todas as lojas informadas pertencem à organização do usuário. */

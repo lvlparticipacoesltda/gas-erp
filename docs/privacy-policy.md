@@ -22,8 +22,15 @@ entrega.
 | Nome, e-mail e telefone | Identificação e autenticação do entregador | No login |
 | **Localização precisa (GPS)**, inclusive em segundo plano | Acompanhar o trajeto da entrega em tempo real e medir o tempo de rota | **Somente durante uma rota ativa** |
 | Dados das entregas atribuídas (cliente, endereço, itens) | Permitir a realização da entrega | Enquanto há entregas atribuídas |
+| Token de notificação push (Expo) | Alertar sobre novas entregas e cancelamentos | Após conceder permissão de notificações |
 
-## 2. Localização em segundo plano
+## 2. Notificações push
+
+O App pode enviar notificações para avisar o entregador sobre **novas entregas
+atribuídas** ou **cancelamentos**. O token é registrado no servidor da distribuidora
+após o login e removido no logout. As notificações não são usadas para publicidade.
+
+## 3. Localização em segundo plano
 
 O App coleta a localização **apenas enquanto existe uma rota de entrega ativa**, que o
 próprio entregador inicia ao tocar em "Iniciar rota". A coleta:
@@ -36,7 +43,7 @@ próprio entregador inicia ao tocar em "Iniciar rota". A coleta:
 
 A localização **não** é coletada quando não há rota em andamento.
 
-## 3. Como usamos e compartilhamos
+## 4. Como usamos e compartilhamos
 
 Os dados de localização são enviados ao servidor da distribuidora à qual o entregador
 está vinculado e ficam visíveis apenas para a equipe daquela empresa, para fins de
@@ -44,12 +51,12 @@ operação logística. **Não vendemos** dados pessoais nem os usamos para publi
 
 Cada empresa (organização) tem seus dados isolados das demais.
 
-## 4. Retenção
+## 5. Retenção
 
 Os pontos de trajeto são mantidos pelo período necessário à operação e auditoria das
 entregas e podem ser removidos mediante solicitação, respeitadas obrigações legais.
 
-## 5. Direitos do titular e exclusão de conta
+## 6. Direitos do titular e exclusão de conta
 
 O entregador pode solicitar acesso, correção ou exclusão de seus dados pelo contato
 acima. A exclusão da conta e dos dados associados pode ser solicitada por:
@@ -57,11 +64,11 @@ acima. A exclusão da conta e dos dados associados pode ser solicitada por:
 - e-mail para [email de contato], ou
 - solicitação ao gestor da distribuidora, que remove o vínculo no painel.
 
-## 6. Segurança
+## 7. Segurança
 
 As credenciais são armazenadas de forma segura no dispositivo (armazenamento cifrado do
 sistema) e a comunicação com o servidor ocorre por HTTPS.
 
-## 7. Alterações
+## 8. Alterações
 
 Esta política pode ser atualizada periodicamente. A data no topo indica a última revisão.

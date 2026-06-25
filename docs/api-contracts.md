@@ -50,6 +50,22 @@ N:N via `DelivererStore`).
 - `POST /deliverers` — `{ userId, storeIds: string[], status? }` (≥ 1 unidade)
 - `PATCH /deliverers/:id` — `{ storeIds?: string[], status? }`. `storeIds` substitui o
   conjunto de unidades atendidas. Todas as unidades devem pertencer à organização.
+- `PUT /deliverers/me/push-token` — `{ token: "ExponentPushToken[...]" }` (papel
+  `DELIVERER`). Registra token Expo Push no perfil do entregador logado.
+- `DELETE /deliverers/me/push-token` — remove token (logout do app).
+
+#### Push notifications (Expo)
+
+A API envia notificações via [Expo Push API](https://docs.expo.dev/push-notifications/sending-notifications/)
+quando:
+
+| Evento | Gatilho |
+|--------|---------|
+| Nova entrega atribuída | Venda confirmada com `delivererId` ou status `IN_DELIVERY` com entregador |
+| Entrega cancelada | Venda cancelada com entrega `PENDING` ou `IN_PROGRESS` |
+
+Payload `data`: `{ type: "NEW_DELIVERY" \| "DELIVERY_CANCELLED", deliveryId }`. O app
+abre `/delivery/:id` ao tocar na notificação.
 
 Ao criar uma venda com `delivererId`, a API valida que o entregador atende a
 `storeId` informado; caso contrário retorna `400` ("Entregador não atende esta unidade").
