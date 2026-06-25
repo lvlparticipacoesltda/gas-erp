@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 export const STORE_SCREEN_KEYS = [
-  'store.dashboard',
   'store.sales',
   'store.sales.new',
   'store.customers',
@@ -15,7 +14,6 @@ export const STORE_SCREEN_KEYS = [
 export type StoreScreenKey = (typeof STORE_SCREEN_KEYS)[number];
 
 export const STORE_SCREEN_LABELS: Record<StoreScreenKey, string> = {
-  'store.dashboard': 'Dashboard',
   'store.sales': 'Vendas',
   'store.sales.new': 'Nova venda',
   'store.customers': 'Clientes',
@@ -32,16 +30,30 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, StoreScreenKey[]> = {
   PLATFORM_ADMIN: ALL_STORE_SCREENS,
   ORG_MASTER: ALL_STORE_SCREENS,
   STORE_MANAGER: ALL_STORE_SCREENS,
-  ATTENDANT: ['store.dashboard', 'store.sales', 'store.sales.new', 'store.customers'],
-  FINANCE: ['store.dashboard', 'store.sales', 'store.daily-summary', 'store.customers'],
-  DELIVERER: ['store.dashboard'],
+  ATTENDANT: ['store.daily-summary', 'store.sales', 'store.sales.new', 'store.customers'],
+  FINANCE: ['store.daily-summary', 'store.sales', 'store.customers'],
+  DELIVERER: ['store.daily-summary'],
 };
+
+const LEGACY_SCREEN_ALIASES: Record<string, StoreScreenKey> = {
+  'store.dashboard': 'store.daily-summary',
+};
+
+function normalizeScreenKey(screen: string): StoreScreenKey | null {
+  const aliased = LEGACY_SCREEN_ALIASES[screen] ?? screen;
+  return STORE_SCREEN_KEYS.includes(aliased as StoreScreenKey)
+    ? (aliased as StoreScreenKey)
+    : null;
+}
 
 export function resolveUserPermissions(role: string, custom?: string[] | null): string[] {
   if (custom && custom.length > 0) {
-    return custom.filter((key) => STORE_SCREEN_KEYS.includes(key as StoreScreenKey));
+    const normalized = custom
+      .map((key) => normalizeScreenKey(key))
+      .filter((key): key is StoreScreenKey => key !== null);
+    return [...new Set(normalized)];
   }
-  return ROLE_DEFAULT_PERMISSIONS[role] ?? ['store.dashboard'];
+  return ROLE_DEFAULT_PERMISSIONS[role] ?? ['store.daily-summary'];
 }
 
 export function hasScreenPermission(
@@ -50,7 +62,9 @@ export function hasScreenPermission(
   screen: string,
 ): boolean {
   if (role === 'ORG_MASTER' || role === 'PLATFORM_ADMIN') return true;
-  return resolveUserPermissions(role, custom).includes(screen);
+  const normalized = normalizeScreenKey(screen);
+  if (!normalized) return false;
+  return resolveUserPermissions(role, custom).includes(normalized);
 }
 
 export const userPermissionsSchema = z.array(z.enum(STORE_SCREEN_KEYS)).optional();

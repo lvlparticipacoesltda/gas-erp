@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
@@ -32,6 +33,7 @@ export default function StockPage() {
   const [adjustForm, setAdjustForm] = useState({ productId: '', quantity: 0, reason: 'Ajuste manual de estoque' });
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const [b, m] = await Promise.all([
@@ -46,7 +48,7 @@ export default function StockPage() {
   }
 
   useEffect(() => {
-    load();
+    load().finally(() => setReady(true));
   }, [storeId]);
 
   async function handleAdjust(e: React.FormEvent) {
@@ -77,6 +79,14 @@ export default function StockPage() {
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao ajustar estoque');
     }
+  }
+
+  if (!ready) {
+    return (
+      <AppShell mode="store">
+        <PageLoader />
+      </AppShell>
+    );
   }
 
   return (

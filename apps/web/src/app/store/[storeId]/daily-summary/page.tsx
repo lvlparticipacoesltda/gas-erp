@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Card, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -26,14 +27,22 @@ export default function DailySummaryPage() {
     deliveries: { pending: number; completed: number };
     deliveryMetrics?: DeliveryMetrics;
   } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!storeId) return;
-    api<typeof data>(`/dashboard/store?storeId=${storeId}`, {}, getToken()).then(setData);
+    setLoading(true);
+    api<typeof data>(`/dashboard/store?storeId=${storeId}`, {}, getToken())
+      .then(setData)
+      .finally(() => setLoading(false));
   }, [storeId]);
 
   return (
     <AppShell mode="store">
+      {loading ? (
+        <PageLoader />
+      ) : (
+        <>
       <PageHeader title="Resumo diário" subtitle="Fechamento operacional da unidade" />
       <div className="grid gap-4 md:grid-cols-3">
         <Card><div className="text-sm text-slate-500">Faturamento</div><div className="text-2xl font-bold">{formatCurrency(data?.revenue ?? 0)}</div></Card>
@@ -75,6 +84,8 @@ export default function DailySummaryPage() {
           ))}
         </tbody>
       </Table>
+        </>
+      )}
     </AppShell>
   );
 }

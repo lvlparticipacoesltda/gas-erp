@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Card, PageHeader } from '@/components/ui';
 import { api, getToken, setCurrentStoreId } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -18,18 +19,25 @@ interface StoreStat {
 export default function MasterDashboardPage() {
   const router = useRouter();
   const [data, setData] = useState<{ stores: StoreStat[] } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ stores: StoreStat[] }>('/dashboard/master', {}, getToken()).then(setData);
+    api<{ stores: StoreStat[] }>('/dashboard/master', {}, getToken())
+      .then(setData)
+      .finally(() => setLoading(false));
   }, []);
 
   function openStore(id: string) {
     setCurrentStoreId(id);
-    router.push(`/store/${id}/dashboard`);
+    router.push(`/store/${id}/daily-summary`);
   }
 
   return (
     <AppShell mode="master">
+      {loading ? (
+        <PageLoader />
+      ) : (
+        <>
       <PageHeader title="Painel Master" subtitle="Visão consolidada de todas as unidades" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.stores.map((s) => (
@@ -65,6 +73,8 @@ export default function MasterDashboardPage() {
           </button>
         ))}
       </div>
+        </>
+      )}
     </AppShell>
   );
 }

@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { api, clearAuth, getCurrentStoreId, getStoredUser, getToken, setCurrentStoreId } from '@/lib/api';
-import { buildStoreHref, STORE_NAV_ITEMS } from '@/lib/store-nav';
+import { buildStoreHref, defaultStorePath, STORE_NAV_ITEMS } from '@/lib/store-nav';
 import { NavLink } from '@/components/ui';
 import { Logo } from '@/components/logo';
+import { BrandLoaderScreen } from '@/components/brand-loader';
 import { hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
@@ -55,10 +56,10 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
   function onStoreChange(id: string) {
     setStoreId(id);
     setCurrentStoreId(id);
-    router.push(`/store/${id}/dashboard`);
+    router.push(defaultStorePath(id, user!));
   }
 
-  if (!user) return <div className="flex min-h-screen items-center justify-center">Carregando...</div>;
+  if (!user) return <BrandLoaderScreen />;
 
   const storeLinks = storeId
     ? STORE_NAV_ITEMS.filter((item) => hasScreenPermission(user.role, user.permissions, item.screen)).map(
@@ -73,7 +74,6 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     { href: '/master/dashboard', label: 'Visão geral' },
     { href: '/master/stores', label: 'Lojas' },
     { href: '/master/users', label: 'Usuários' },
-    { href: '/master/go-to-store', label: 'Ir para loja' },
     { href: '/master/settings', label: 'Minha conta' },
   ];
 

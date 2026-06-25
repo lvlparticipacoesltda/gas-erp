@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -28,14 +28,17 @@ export function Card({ children, className }: { children: ReactNode; className?:
   return <div className={cn('rounded-xl border border-slate-200 bg-white p-6 shadow-sm', className)}>{children}</div>;
 }
 
-export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted"
-      {...props}
-    />
-  );
-}
+export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+  function Input(props, ref) {
+    return (
+      <input
+        ref={ref}
+        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted"
+        {...props}
+      />
+    );
+  },
+);
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -24,6 +25,7 @@ export default function SalesListPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [sales, setSales] = useState<Sale[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const query = statusFilter ? `&status=${statusFilter}` : '';
@@ -32,8 +34,18 @@ export default function SalesListPage() {
   }
 
   useEffect(() => {
-    load();
+    load().finally(() => setReady(true));
   }, [storeId, statusFilter]);
+
+  if (!ready) {
+    return (
+      <AppShell mode="store">
+        <SalesWithSidebar storeId={storeId}>
+          <PageLoader />
+        </SalesWithSidebar>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell mode="store">

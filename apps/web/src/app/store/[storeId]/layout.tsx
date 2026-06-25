@@ -5,7 +5,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { getStoredUser } from '@/lib/api';
 import { hasScreenPermission } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
-import { pathnameToStoreScreen } from '@/lib/store-nav';
+import { defaultStorePath, pathnameToStoreScreen } from '@/lib/store-nav';
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     if (!screen) return;
 
     if (!hasScreenPermission(user.role, user.permissions, screen)) {
-      router.replace(`/store/${storeId}/dashboard`);
+      router.replace(defaultStorePath(storeId, user));
     }
   }, [pathname, router, storeId]);
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button } from '@/components/ui';
+import { BrandLoader } from '@/components/brand-loader';
 import { api, getToken } from '@/lib/api';
 import { formatSaleAddress, timeAgo } from '@/lib/sale-utils';
 import {
@@ -118,7 +119,11 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-4 max-h-[calc(100vh-8rem)]">
-        {loading && <p className="text-sm text-slate-500 p-2">Carregando...</p>}
+        {loading && (
+          <div className="flex justify-center py-8">
+            <BrandLoader size="sm" showLabel={false} label="Carregando entregas" />
+          </div>
+        )}
 
         {!loading && deliveries.length === 0 && (
           <p className="rounded-lg border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-500">

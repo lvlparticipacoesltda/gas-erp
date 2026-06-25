@@ -30,7 +30,7 @@ export default function LoginPage() {
       if (res.user.role === 'ORG_MASTER' || res.user.role === 'PLATFORM_ADMIN') {
         router.push('/master/dashboard');
       } else if (res.user.storeIds?.[0]) {
-        router.push(`/store/${res.user.storeIds[0]}/dashboard`);
+        router.push(`/store/${res.user.storeIds[0]}/daily-summary`);
       } else {
         router.push('/master/dashboard');
       }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -30,12 +31,15 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
+  const [ready, setReady] = useState(false);
 
   async function load() {
     setProducts(await api<Product[]>(`/products?storeId=${storeId}`, {}, getToken()));
   }
 
-  useEffect(() => { load(); }, [storeId]);
+  useEffect(() => {
+    load().finally(() => setReady(true));
+  }, [storeId]);
 
   function startEdit(product: Product) {
     setFormError('');
@@ -95,6 +99,14 @@ export default function ProductsPage() {
       <div><Label>Preço nesta loja</Label><Input type="number" step="0.01" value={value.price} onChange={(e) => onChange({ ...value, price: Number(e.target.value) })} /></div>
     </>
   );
+
+  if (!ready) {
+    return (
+      <AppShell mode="store">
+        <PageLoader />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell mode="store">

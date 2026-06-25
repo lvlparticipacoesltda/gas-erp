@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 
@@ -30,13 +31,14 @@ export default function MasterStoresPage() {
     active: true,
   });
   const [formError, setFormError] = useState('');
+  const [ready, setReady] = useState(false);
 
   async function load() {
     setStores(await api<Store[]>('/stores', {}, getToken()));
   }
 
   useEffect(() => {
-    load();
+    load().finally(() => setReady(true));
   }, []);
 
   function startEdit(store: Store) {
@@ -83,6 +85,14 @@ export default function MasterStoresPage() {
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao salvar loja');
     }
+  }
+
+  if (!ready) {
+    return (
+      <AppShell mode="master">
+        <PageLoader />
+      </AppShell>
+    );
   }
 
   return (

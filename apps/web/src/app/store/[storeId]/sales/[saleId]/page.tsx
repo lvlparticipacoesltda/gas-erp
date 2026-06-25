@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -91,7 +92,7 @@ export default function SaleDetailPage() {
     return (
       <AppShell mode="store">
         <SalesWithSidebar storeId={storeId}>
-          <p className="text-slate-500">Carregando...</p>
+          <PageLoader />
         </SalesWithSidebar>
       </AppShell>
     );

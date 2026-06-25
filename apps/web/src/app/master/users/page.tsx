@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { ROLE_LABELS, USER_ROLES } from '@gas-erp/shared';
@@ -58,6 +59,7 @@ export default function MasterUsersPage() {
     permissions: [] as string[],
   });
   const [formError, setFormError] = useState('');
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const [u, s] = await Promise.all([
@@ -69,7 +71,7 @@ export default function MasterUsersPage() {
   }
 
   useEffect(() => {
-    load();
+    load().finally(() => setReady(true));
   }, []);
 
   function startEdit(user: UserRow) {
@@ -157,6 +159,14 @@ export default function MasterUsersPage() {
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao salvar usuário');
     }
+  }
+
+  if (!ready) {
+    return (
+      <AppShell mode="master">
+        <PageLoader />
+      </AppShell>
+    );
   }
 
   return (

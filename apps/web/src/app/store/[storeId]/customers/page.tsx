@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 
@@ -41,6 +42,7 @@ export default function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const res = await api<{ data: Customer[] }>(`/customers?search=${search}`, {}, getToken());
@@ -48,7 +50,7 @@ export default function CustomersPage() {
   }
 
   useEffect(() => {
-    load();
+    load().finally(() => setReady(true));
   }, [search]);
 
   function startEdit(customer: Customer) {
@@ -134,6 +136,14 @@ export default function CustomersPage() {
       <div><Label>UF</Label><Input value={value.state} onChange={(e) => onChange({ ...value, state: e.target.value })} maxLength={2} /></div>
     </>
   );
+
+  if (!ready) {
+    return (
+      <AppShell mode="store">
+        <PageLoader />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell mode="store">

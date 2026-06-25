@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-picker';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { parsePrice } from '@/lib/sale-utils';
@@ -17,18 +19,6 @@ import {
 } from '@gas-erp/shared';
 
 interface Product { id: string; name: string; storeSettings?: { price: number | string }[] }
-interface Customer {
-  id: string;
-  name: string;
-  phone?: string;
-  addresses: {
-    street: string;
-    number?: string;
-    neighborhood?: string;
-    city: string;
-    state: string;
-  }[];
-}
 interface Deliverer { id: string; user: { name: string } }
 
 type Step = 1 | 2 | 3;
@@ -44,11 +34,11 @@ export default function NewSalePage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
-  const [search, setSearch] = useState('');
+  const [customerPick, setCustomerPick] = useState<CustomerPickerValue>({ kind: 'none' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const [draft, setDraft] = useState({
     customerId: '',
@@ -71,20 +61,31 @@ export default function NewSalePage() {
   useEffect(() => {
     Promise.all([
       api<Product[]>(`/products?storeId=${storeId}`, {}, getToken()),
-      api<{ data: Customer[] }>(`/customers?search=${search}`, {}, getToken()),
       api<Deliverer[]>(`/deliverers?storeId=${storeId}`, {}, getToken()),
-    ]).then(([p, c, d]) => {
-      setProducts(p);
-      setCustomers(c.data);
-      setDeliverers(d);
-    });
-  }, [storeId, search]);
+    ])
+      .then(([p, d]) => {
+        setProducts(p);
+        setDeliverers(d);
+      })
+      .finally(() => setReady(true));
+  }, [storeId]);
 
-  const selectedProduct = products.find((p) => p.id === draft.productId);
-  const total = draft.quantity * draft.unitPrice;
-
-  function selectCustomer(customer: Customer | null) {
-    if (!customer) {
+  function applyCustomerPick(value: CustomerPickerValue) {
+    setCustomerPick(value);
+    if (value.kind === 'none') {
+      setDraft((d) => ({
+        ...d,
+        customerId: '',
+        customerName: '',
+        deliveryStreet: '',
+        deliveryNumber: '',
+        deliveryNeighborhood: '',
+        deliveryCity: '',
+        deliveryState: 'SP',
+      }));
+      return;
+    }
+    if (value.kind === 'anonymous') {
       setDraft((d) => ({
         ...d,
         customerId: '',
@@ -97,6 +98,7 @@ export default function NewSalePage() {
       }));
       return;
     }
+    const customer = value.customer;
     const addr = customer.addresses[0];
     setDraft((d) => ({
       ...d,
@@ -119,9 +121,16 @@ export default function NewSalePage() {
     }));
   }
 
+  const selectedProduct = products.find((p) => p.id === draft.productId);
+  const total = draft.quantity * draft.unitPrice;
+
   function goNext() {
     setError('');
     if (step === 1) {
+      if (customerPick.kind === 'none') {
+        setError('Selecione um cliente ou use venda sem cadastro.');
+        return;
+      }
       setStep(2);
       if (!draft.productId && products[0]) selectProduct(products[0].id);
       return;
@@ -183,6 +192,16 @@ export default function NewSalePage() {
     }
   }
 
+  if (!ready) {
+    return (
+      <AppShell mode="store">
+        <SalesWithSidebar storeId={storeId}>
+          <PageLoader />
+        </SalesWithSidebar>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell mode="store">
       <SalesWithSidebar storeId={storeId}>
@@ -238,49 +257,23 @@ export default function NewSalePage() {
         {/* Step 1 — Cliente */}
         {step === 1 && (
           <Card>
-            <Label>Buscar cliente</Label>
-            <Input
-              className="mb-4"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Nome ou telefone"
-            />
+            <CustomerPicker storeId={storeId} value={customerPick} onChange={applyCustomerPick} />
 
-            <div className="mb-4 max-h-64 space-y-2 overflow-y-auto">
-              {customers.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => selectCustomer(c)}
-                  className={`w-full rounded-lg border p-3 text-left transition hover:border-brand-light ${
-                    draft.customerId === c.id ? 'border-brand bg-brand-muted' : 'border-slate-200'
-                  }`}
-                >
-                  <div className="font-medium">{c.name}</div>
-                  {c.phone && <div className="text-sm text-slate-500">{c.phone}</div>}
-                </button>
-              ))}
-            </div>
-
-            <div className="mb-6 flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" onClick={() => selectCustomer(null)}>
-                Cliente não identificado
-              </Button>
-            </div>
-
-            <Label>Canal de venda</Label>
-            <div className="mt-2 flex flex-wrap gap-4">
-              {SALE_CHANNELS.filter((c) => c !== 'IN_STORE').map((c) => (
-                <label key={c} className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="channel"
-                    checked={draft.channel === c}
-                    onChange={() => setDraft({ ...draft, channel: c })}
-                  />
-                  {SALE_CHANNEL_LABELS[c] ?? c}
-                </label>
-              ))}
+            <div className="mt-6">
+              <Label>Canal de venda</Label>
+              <div className="mt-2 flex flex-wrap gap-4">
+                {SALE_CHANNELS.filter((c) => c !== 'IN_STORE').map((c) => (
+                  <label key={c} className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="channel"
+                      checked={draft.channel === c}
+                      onChange={() => setDraft({ ...draft, channel: c })}
+                    />
+                    {SALE_CHANNEL_LABELS[c] ?? c}
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end">

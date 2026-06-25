@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { DELIVERER_STATUS_LABELS } from '@gas-erp/shared';
@@ -36,9 +37,10 @@ export default function DeliverersPage() {
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [deliveriesCount, setDeliveriesCount] = useState(0);
   const [editing, setEditing] = useState<Deliverer | null>(null);
+  const [ready, setReady] = useState(false);
 
   const load = useCallback(() => {
-    Promise.all([
+    return Promise.all([
       api<Deliverer[]>(`/deliverers?storeId=${storeId}`, {}, getToken()),
       api<unknown[]>(`/deliveries?storeId=${storeId}`, {}, getToken()),
       api<StoreOption[]>('/stores', {}, getToken()),
@@ -50,8 +52,16 @@ export default function DeliverersPage() {
   }, [storeId]);
 
   useEffect(() => {
-    load();
+    load().finally(() => setReady(true));
   }, [load]);
+
+  if (!ready) {
+    return (
+      <AppShell mode="store">
+        <PageLoader />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell mode="store">

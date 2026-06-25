@@ -20,7 +20,7 @@ export function permissionsToPayload(role: string, selected: string[]): string[]
 
 export function effectivePermissions(role: string, custom?: string[]): string[] {
   if (custom && custom.length > 0) return custom;
-  return ROLE_DEFAULT_PERMISSIONS[role] ?? ['store.dashboard'];
+  return ROLE_DEFAULT_PERMISSIONS[role] ?? ['store.daily-summary'];
 }
 
 export function PermissionCheckboxes({
@@ -49,7 +49,7 @@ export function PermissionCheckboxes({
   }
 
   function applyRoleDefaults() {
-    onChange([...(ROLE_DEFAULT_PERMISSIONS[role] ?? ['store.dashboard'])]);
+    onChange([...(ROLE_DEFAULT_PERMISSIONS[role] ?? ['store.daily-summary'])]);
   }
 
   return (

@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentStoreId, getStoredUser } from '@/lib/api';
+import { BrandLoaderScreen } from '@/components/brand-loader';
 import type { AuthUser } from '@gas-erp/shared';
 
 export default function SettingsRedirectPage() {
@@ -23,5 +24,5 @@ export default function SettingsRedirectPage() {
     else router.replace('/login');
   }, [router]);
 
-  return <div className="flex min-h-screen items-center justify-center">Carregando...</div>;
+  return <BrandLoaderScreen />;
 }

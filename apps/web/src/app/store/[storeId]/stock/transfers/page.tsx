@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
+import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 
@@ -22,6 +23,7 @@ export default function StockTransfersPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [form, setForm] = useState({ toStoreId: '', productId: '', quantity: 1 });
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const [s, p, t] = await Promise.all([
@@ -36,7 +38,7 @@ export default function StockTransfersPage() {
     if (s.find((x) => x.id !== storeId)) setForm((f) => ({ ...f, toStoreId: s.find((x) => x.id !== storeId)!.id }));
   }
 
-  useEffect(() => { load(); }, [storeId]);
+  useEffect(() => { load().finally(() => setReady(true)); }, [storeId]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +67,14 @@ export default function StockTransfersPage() {
       body: JSON.stringify({ status: 'COMPLETED' }),
     }, getToken());
     load();
+  }
+
+  if (!ready) {
+    return (
+      <AppShell mode="store">
+        <PageLoader />
+      </AppShell>
+    );
   }
 
   return (
