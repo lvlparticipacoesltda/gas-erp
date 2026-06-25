@@ -42,10 +42,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 to-slate-100 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sand via-white to-sand p-4">
       <Card className="w-full max-w-md">
         <div className="mb-6">
-          <Logo />
+          <Logo tagline="Painel de gestão" />
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -68,7 +68,7 @@ export default function LoginPage() {
           </Button>
         </form>
         <p className="mt-4 text-center text-sm">
-          <Link href="/forgot-password" className="text-sky-600 hover:underline">
+          <Link href="/forgot-password" className="text-brand hover:underline">
             Esqueci minha senha
           </Link>
         </p>

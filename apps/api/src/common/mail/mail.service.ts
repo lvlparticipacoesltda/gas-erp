@@ -6,12 +6,12 @@ export class MailService {
 
   async sendPasswordReset(to: string, userName: string, resetUrl: string): Promise<boolean> {
     const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.EMAIL_FROM ?? 'Gas ERP <onboarding@resend.dev>';
+    const from = process.env.EMAIL_FROM ?? 'Gás do Povo <onboarding@resend.dev>';
 
-    const subject = 'Redefinição de senha — Gas ERP';
+    const subject = 'Redefinição de senha — Gás do Povo';
     const html = `
       <p>Olá, ${userName}.</p>
-      <p>Recebemos uma solicitação para redefinir sua senha no Gas ERP.</p>
+      <p>Recebemos uma solicitação para redefinir sua senha no painel Gás do Povo.</p>
       <p><a href="${resetUrl}">Clique aqui para criar uma nova senha</a></p>
       <p>O link expira em 1 hora. Se você não solicitou, ignore este e-mail.</p>
     `;

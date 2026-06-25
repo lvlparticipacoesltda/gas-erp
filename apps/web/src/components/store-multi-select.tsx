@@ -48,7 +48,7 @@ export function StoreMultiSelect({
           {required && <span className="text-red-500"> *</span>}
         </Label>
         <div className="flex gap-2 text-xs">
-          <button type="button" onClick={selectAll} className="text-sky-600 hover:underline">
+          <button type="button" onClick={selectAll} className="text-brand hover:underline">
             Todas
           </button>
           <span className="text-slate-300">|</span>
@@ -61,7 +61,7 @@ export function StoreMultiSelect({
       <p className="mb-2 text-xs text-slate-500">
         Marque uma ou mais lojas às quais este usuário terá acesso.
         {selected.length > 0 && (
-          <span className="font-medium text-sky-700"> {selected.length} selecionada(s)</span>
+          <span className="font-medium text-brand-dark"> {selected.length} selecionada(s)</span>
         )}
       </p>
 
@@ -73,14 +73,14 @@ export function StoreMultiSelect({
               key={store.id}
               className={cn(
                 'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition',
-                checked ? 'border-sky-200 bg-sky-50' : 'border-transparent hover:bg-slate-50',
+                checked ? 'border-brand-light bg-brand-muted' : 'border-transparent hover:bg-slate-50',
               )}
             >
               <input
                 type="checkbox"
                 checked={checked}
                 onChange={() => toggle(store.id)}
-                className="h-4 w-4 rounded border-slate-300 text-sky-600"
+                className="h-4 w-4 rounded border-slate-300 text-brand"
               />
               <span className="flex-1 font-medium text-slate-800">{store.name}</span>
               {store.code && <span className="text-xs text-slate-400">{store.code}</span>}

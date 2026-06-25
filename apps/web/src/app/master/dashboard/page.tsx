@@ -39,7 +39,7 @@ export default function MasterDashboardPage() {
             onClick={() => openStore(s.store.id)}
             className="text-left transition hover:scale-[1.01]"
           >
-            <Card className="cursor-pointer hover:border-sky-300 hover:shadow-md">
+            <Card className="cursor-pointer hover:border-brand-light hover:shadow-md">
               <div className="text-lg font-semibold">{s.store.name}</div>
               <div className="text-sm text-slate-500">{s.store.city} · {s.store.code}</div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -60,7 +60,7 @@ export default function MasterDashboardPage() {
                   <div className="font-semibold">{s.lowStockItems}</div>
                 </div>
               </div>
-              <div className="mt-3 text-sm font-medium text-sky-600">Abrir loja →</div>
+              <div className="mt-3 text-sm font-medium text-brand">Abrir loja →</div>
             </Card>
           </button>
         ))}

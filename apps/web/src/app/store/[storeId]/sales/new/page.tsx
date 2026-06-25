@@ -187,7 +187,7 @@ export default function NewSalePage() {
     <AppShell mode="store">
       <SalesWithSidebar storeId={storeId}>
         <div className="mb-4">
-          <Link href={`/store/${storeId}/sales`} className="text-sm text-sky-600 hover:underline">
+          <Link href={`/store/${storeId}/sales`} className="text-sm text-brand hover:underline">
             ← Voltar ao histórico
           </Link>
         </div>
@@ -201,14 +201,14 @@ export default function NewSalePage() {
               <button
                 type="button"
                 onClick={() => s.n < step && setStep(s.n as Step)}
-                className={`flex flex-col items-center gap-1 ${s.n <= step ? 'text-sky-700' : 'text-slate-400'}`}
+                className={`flex flex-col items-center gap-1 ${s.n <= step ? 'text-brand-dark' : 'text-slate-400'}`}
               >
                 <span
                   className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold ${
                     s.n < step
                       ? 'border-emerald-500 bg-emerald-500 text-white'
                       : s.n === step
-                        ? 'border-sky-600 bg-sky-600 text-white'
+                        ? 'border-brand bg-brand text-white'
                         : 'border-slate-200 bg-white'
                   }`}
                 >
@@ -252,8 +252,8 @@ export default function NewSalePage() {
                   key={c.id}
                   type="button"
                   onClick={() => selectCustomer(c)}
-                  className={`w-full rounded-lg border p-3 text-left transition hover:border-sky-300 ${
-                    draft.customerId === c.id ? 'border-sky-500 bg-sky-50' : 'border-slate-200'
+                  className={`w-full rounded-lg border p-3 text-left transition hover:border-brand-light ${
+                    draft.customerId === c.id ? 'border-brand bg-brand-muted' : 'border-slate-200'
                   }`}
                 >
                   <div className="font-medium">{c.name}</div>
@@ -300,12 +300,12 @@ export default function NewSalePage() {
                     key={p.id}
                     type="button"
                     onClick={() => selectProduct(p.id)}
-                    className={`rounded-xl border p-4 text-left transition hover:border-sky-300 ${
-                      draft.productId === p.id ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-200' : 'border-slate-200'
+                    className={`rounded-xl border p-4 text-left transition hover:border-brand-light ${
+                      draft.productId === p.id ? 'border-brand bg-brand-muted ring-2 ring-brand-light/40' : 'border-slate-200'
                     }`}
                   >
                     <div className="font-medium">{p.name}</div>
-                    <div className="mt-1 text-sm text-sky-700">
+                    <div className="mt-1 text-sm text-brand-dark">
                       {formatCurrency(parsePrice(p.storeSettings?.[0]?.price))}
                     </div>
                   </button>
@@ -380,7 +380,7 @@ export default function NewSalePage() {
           <Card>
             <h2 className="mb-4 font-semibold">Tipo de venda</h2>
             <div className="mb-6 flex flex-wrap gap-4">
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-sky-500 has-[:checked]:bg-sky-50">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-muted">
                 <input
                   type="radio"
                   name="fulfillment"
@@ -392,7 +392,7 @@ export default function NewSalePage() {
                   <div className="text-xs text-slate-500">Cliente retira na loja — status Entregue</div>
                 </div>
               </label>
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-sky-500 has-[:checked]:bg-sky-50">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-muted">
                 <input
                   type="radio"
                   name="fulfillment"

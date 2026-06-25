@@ -11,8 +11,9 @@ import {
 import { Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Loading } from '@/components/ui';
+import { BrandLogo } from '@/components/BrandLogo';
 import { useAuth } from '@/lib/auth';
-import { colors, radius, spacing } from '@/theme';
+import { colors, spacing } from '@/theme';
 
 export default function LoginScreen() {
   const { login, token, initializing } = useAuth();
@@ -57,11 +58,7 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.brand}>
-            <View style={styles.logo}>
-              <Text style={styles.logoEmoji}>🛵</Text>
-            </View>
-            <Text style={styles.title}>Gas Entregador</Text>
-            <Text style={styles.subtitle}>Acesse com sua conta de entregador</Text>
+            <BrandLogo />
           </View>
 
           <View style={styles.form}>
@@ -111,17 +108,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.navy, justifyContent: 'center' },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.xxl },
   brand: { alignItems: 'center', gap: spacing.sm },
-  logo: {
-    width: 72,
-    height: 72,
-    borderRadius: radius.lg,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoEmoji: { fontSize: 36 },
-  title: { fontSize: 24, fontWeight: '800', color: '#FFFFFF' },
-  subtitle: { fontSize: 14, color: '#CBD5E1' },
   form: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

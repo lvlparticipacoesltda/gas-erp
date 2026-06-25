@@ -186,7 +186,7 @@ function EditDelivererModal({
                   type="checkbox"
                   checked={selected.has(s.id)}
                   onChange={() => toggle(s.id)}
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600"
+                  className="h-4 w-4 rounded border-slate-300 text-brand"
                 />
                 {s.name}
               </label>

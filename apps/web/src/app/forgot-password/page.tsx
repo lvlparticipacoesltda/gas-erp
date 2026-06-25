@@ -32,7 +32,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 to-slate-100 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sand to-sand p-4">
       <Card className="w-full max-w-md">
         <div className="mb-6">
           <Logo size="sm" />
@@ -43,7 +43,7 @@ export default function ForgotPasswordPage() {
         {message ? (
           <div className="mt-6 space-y-4">
             <p className="text-sm text-emerald-700">{message}</p>
-            <Link href="/login" className="inline-block text-sm font-medium text-sky-600 hover:underline">
+            <Link href="/login" className="inline-block text-sm font-medium text-brand hover:underline">
               ← Voltar ao login
             </Link>
           </div>
@@ -63,7 +63,7 @@ export default function ForgotPasswordPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Enviando...' : 'Enviar link de redefinição'}
             </Button>
-            <Link href="/login" className="block text-center text-sm text-sky-600 hover:underline">
+            <Link href="/login" className="block text-center text-sm text-brand hover:underline">
               ← Voltar ao login
             </Link>
           </form>

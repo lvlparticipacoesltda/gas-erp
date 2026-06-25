@@ -56,7 +56,7 @@ export function PermissionCheckboxes({
     <div>
       <div className="mb-2 flex items-center justify-between">
         <Label>Telas permitidas na loja</Label>
-        <button type="button" onClick={applyRoleDefaults} className="text-xs text-sky-600 hover:underline">
+        <button type="button" onClick={applyRoleDefaults} className="text-xs text-brand hover:underline">
           Usar padrão do papel
         </button>
       </div>

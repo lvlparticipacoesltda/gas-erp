@@ -199,7 +199,7 @@ function DeliveryCard({
         <p className="mt-1 text-xs text-slate-500">{sale.customer.phone}</p>
       )}
       <p className="mt-2 text-xs text-slate-500">{products}</p>
-      <p className="mt-2 text-xs font-medium text-sky-700">🛵 {delivery.deliverer.user.name}</p>
+      <p className="mt-2 text-xs font-medium text-brand-dark">🛵 {delivery.deliverer.user.name}</p>
       {waitLabel && <p className="mt-2 text-xs font-medium text-amber-700">⏱ {waitLabel}</p>}
       {onAction && actionLabel && (
         <Button

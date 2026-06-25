@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Gas Entregador",
+    "name": "Gás do Povo Entregador",
     "slug": "gas-entregador",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#1C140C"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -30,7 +30,7 @@
       "package": "com.gaserp.entregador",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0F172A"
+        "backgroundColor": "#1C140C"
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
@@ -48,7 +48,7 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0F172A"
+          "backgroundColor": "#1C140C"
         }
       ],
       [

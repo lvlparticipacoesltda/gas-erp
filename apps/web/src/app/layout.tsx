@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Gas ERP',
-  description: 'Sistema de gestão para distribuidoras de gás',
+  title: 'Gás do Povo',
+  description: 'Gestão para distribuidoras de gás',
   icons: { icon: '/icon.svg' },
 };
 

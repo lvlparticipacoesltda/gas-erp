@@ -37,13 +37,13 @@ export default function GoToStorePage() {
             onClick={() => enterStore(store.id)}
             className="text-left transition hover:scale-[1.01]"
           >
-            <Card className="cursor-pointer hover:border-sky-300 hover:shadow-md">
+            <Card className="cursor-pointer hover:border-brand-light hover:shadow-md">
               <div className="text-lg font-semibold text-slate-900">{store.name}</div>
               <div className="mt-1 text-sm text-slate-500">
                 {store.code}
                 {store.city ? ` · ${store.city}` : ''}
               </div>
-              <div className="mt-3 text-sm font-medium text-sky-600">Abrir painel da loja →</div>
+              <div className="mt-3 text-sm font-medium text-brand">Abrir painel da loja →</div>
             </Card>
           </button>
         ))}

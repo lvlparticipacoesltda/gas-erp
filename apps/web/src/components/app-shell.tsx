@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { api, clearAuth, getCurrentStoreId, getStoredUser, getToken, setCurrentStoreId } from '@/lib/api';
 import { buildStoreHref, STORE_NAV_ITEMS } from '@/lib/store-nav';
 import { NavLink } from '@/components/ui';
+import { Logo } from '@/components/logo';
 import { hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
@@ -88,8 +89,8 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     <div className="min-h-screen lg:flex">
       <aside className="w-full border-r border-slate-200 bg-white lg:min-h-screen lg:w-64">
         <div className="border-b border-slate-200 p-4">
-          <div className="text-lg font-bold text-sky-700">Gas ERP</div>
-          <div className="mt-1 text-xs text-slate-500">{ROLE_LABELS[user.role] ?? user.role}</div>
+          <Logo size="sm" />
+          <div className="mt-2 text-xs text-slate-500">{ROLE_LABELS[user.role] ?? user.role}</div>
           <div className="text-sm font-medium">{user.name}</div>
         </div>
         <div className="p-4">

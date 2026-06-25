@@ -88,7 +88,7 @@ function ResetPasswordForm() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Salvando...' : 'Redefinir senha'}
           </Button>
-          <Link href="/forgot-password" className="block text-center text-sm text-sky-600 hover:underline">
+          <Link href="/forgot-password" className="block text-center text-sm text-brand hover:underline">
             Solicitar novo link
           </Link>
         </form>
@@ -99,7 +99,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 to-slate-100 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sand to-sand p-4">
       <Suspense fallback={<Card className="w-full max-w-md p-6">Carregando...</Card>}>
         <ResetPasswordForm />
       </Suspense>

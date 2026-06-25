@@ -110,7 +110,7 @@ export default function SaleDetailPage() {
   return (
     <AppShell mode="store">
       <SalesWithSidebar storeId={storeId}>
-        <Link href={`/store/${storeId}/sales`} className="text-sm text-sky-600 hover:underline">
+        <Link href={`/store/${storeId}/sales`} className="text-sm text-brand hover:underline">
           ← Voltar ao histórico
         </Link>
 

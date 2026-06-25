@@ -12,7 +12,7 @@ export function Button({
     <button
       className={cn(
         'inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition',
-        variant === 'primary' && 'bg-sky-600 text-white hover:bg-sky-700',
+        variant === 'primary' && 'bg-brand text-white hover:bg-brand-dark',
         variant === 'secondary' && 'border border-slate-200 bg-white hover:bg-slate-50',
         variant === 'danger' && 'bg-red-600 text-white hover:bg-red-700',
         className,
@@ -31,7 +31,7 @@ export function Card({ children, className }: { children: ReactNode; className?:
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted"
       {...props}
     />
   );
@@ -40,7 +40,7 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500"
+      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
       {...props}
     />
   );
@@ -68,7 +68,7 @@ export function NavLink({ href, children, active }: { href: string; children: Re
       href={href}
       className={cn(
         'block rounded-lg px-3 py-2 text-sm font-medium transition',
-        active ? 'bg-sky-50 text-sky-700' : 'text-slate-600 hover:bg-slate-50',
+        active ? 'bg-brand-muted text-brand-dark' : 'text-slate-600 hover:bg-slate-50',
       )}
     >
       {children}
