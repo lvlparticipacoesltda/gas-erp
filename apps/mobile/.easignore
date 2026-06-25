@@ -1,0 +1,6 @@
+# Pasta nativa local (expo run:android) — EAS gera via prebuild no servidor.
+android/
+ios/
+
+# Artefatos de build local
+android/app/build/
