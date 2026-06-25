@@ -117,14 +117,19 @@ async function main() {
     },
   });
 
-  await prisma.deliverer.upsert({
+  const deliverer = await prisma.deliverer.upsert({
     where: { userId: delivererUser.id },
     update: {},
     create: {
       userId: delivererUser.id,
-      storeId: stores[0].id,
       status: DelivererStatus.AVAILABLE,
     },
+  });
+
+  await prisma.delivererStore.upsert({
+    where: { delivererId_storeId: { delivererId: deliverer.id, storeId: stores[0].id } },
+    update: {},
+    create: { delivererId: deliverer.id, storeId: stores[0].id },
   });
 
   const category = await prisma.customerCategory.upsert({

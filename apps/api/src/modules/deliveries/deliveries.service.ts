@@ -3,9 +3,48 @@ import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { deliveryTrackingSchema, updateDeliveryStatusSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
+import { getElapsedWaitingSeconds, getWaitTimeSeconds } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
+
+type DeliveryWithSale = {
+  status: DeliveryStatus;
+  startedAt: Date | null;
+  sale: {
+    createdAt: Date;
+    deliveryStreet: string | null;
+    deliveryNumber: string | null;
+    deliveryComplement: string | null;
+    deliveryNeighborhood: string | null;
+    deliveryCity: string | null;
+    deliveryState: string | null;
+    deliveryLandmark: string | null;
+  };
+};
+
+function buildDeliveryAddress(sale: DeliveryWithSale['sale']): string | null {
+  const parts: string[] = [];
+  const streetLine = [sale.deliveryStreet, sale.deliveryNumber].filter(Boolean).join(', ');
+  if (streetLine) parts.push(streetLine);
+  if (sale.deliveryComplement) parts.push(sale.deliveryComplement);
+  if (sale.deliveryNeighborhood) parts.push(sale.deliveryNeighborhood);
+  const cityLine = [sale.deliveryCity, sale.deliveryState].filter(Boolean).join(' - ');
+  if (cityLine) parts.push(cityLine);
+  if (sale.deliveryLandmark) parts.push(`Ref.: ${sale.deliveryLandmark}`);
+  return parts.length ? parts.join(', ') : null;
+}
+
+function withDeliveryMetrics<T extends DeliveryWithSale>(delivery: T, now: Date) {
+  const waitTimeSeconds = getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
+  const elapsedWaitingSeconds = getElapsedWaitingSeconds(delivery.sale.createdAt, now);
+  return {
+    ...delivery,
+    deliveryAddress: buildDeliveryAddress(delivery.sale),
+    waitTimeSeconds,
+    elapsedWaitingSeconds,
+  };
+}
 
 @Injectable()
 export class DeliveriesService {
@@ -14,7 +53,7 @@ export class DeliveriesService {
   async findByStore(user: AuthUser, storeId: string) {
     assertStoreAccess(user, storeId);
 
-    return this.prisma.delivery.findMany({
+    const deliveries = await this.prisma.delivery.findMany({
       where: {
         sale: { storeId, status: { in: [SaleStatus.CONFIRMED, SaleStatus.IN_DELIVERY] } },
         status: { in: [DeliveryStatus.PENDING, DeliveryStatus.IN_PROGRESS] },
@@ -32,13 +71,16 @@ export class DeliveriesService {
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    const now = new Date();
+    return deliveries.map((delivery) => withDeliveryMetrics(delivery, now));
   }
 
   async findByDeliverer(user: AuthUser) {
     const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
     if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
 
-    return this.prisma.delivery.findMany({
+    const deliveries = await this.prisma.delivery.findMany({
       where: { delivererId: deliverer.id, status: { not: DeliveryStatus.CANCELLED } },
       include: {
         sale: { include: { customer: true, items: { include: { product: true } }, payments: true } },
@@ -46,6 +88,9 @@ export class DeliveriesService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    const now = new Date();
+    return deliveries.map((delivery) => withDeliveryMetrics(delivery, now));
   }
 
   async addTrackingPoint(user: AuthUser, deliveryId: string, input: unknown) {
@@ -103,6 +148,11 @@ export class DeliveriesService {
     const isStoreStaff = STORE_STAFF_ROLES.has(user.role);
     if (!isDeliverer && !isStoreStaff) {
       throw new ForbiddenException('Sem permissão');
+    }
+
+    // Apenas o entregador dono pode iniciar a rota (IN_PROGRESS).
+    if (status === 'IN_PROGRESS' && !(user.role === 'DELIVERER' && isDeliverer)) {
+      throw new ForbiddenException('Apenas o entregador responsável pode iniciar a rota');
     }
 
     const updated = await this.prisma.delivery.update({

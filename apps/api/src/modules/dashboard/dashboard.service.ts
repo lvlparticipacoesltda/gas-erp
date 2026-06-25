@@ -3,7 +3,9 @@ import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
-import { PAYMENT_METHOD_LABELS } from '@gas-erp/shared';
+import { PAYMENT_METHOD_LABELS, getWaitTimeSeconds } from '@gas-erp/shared';
+
+const SLOW_DELIVERY_THRESHOLD_SECONDS = 900;
 
 @Injectable()
 export class DashboardService {
@@ -97,11 +99,33 @@ export class DashboardService {
 
     const deliveries = await this.prisma.delivery.findMany({
       where: { sale: { storeId, createdAt: { gte: day, lt: nextDay } } },
-      include: { sale: true },
+      include: { sale: { include: { customer: true } } },
     });
 
     const pendingDeliveries = deliveries.filter((d) => d.status === 'PENDING').length;
+    const inProgressDeliveries = deliveries.filter((d) => d.status === 'IN_PROGRESS').length;
     const completedDeliveries = deliveries.filter((d) => d.status === 'DELIVERED').length;
+
+    const waitTimes: number[] = [];
+    const slowDeliveries: { saleId: string; customerName: string; waitTimeSeconds: number }[] = [];
+    for (const delivery of deliveries) {
+      const waitTimeSeconds = getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
+      if (waitTimeSeconds == null) continue;
+      waitTimes.push(waitTimeSeconds);
+      if (waitTimeSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS) {
+        slowDeliveries.push({
+          saleId: delivery.saleId,
+          customerName: delivery.sale.customer?.name ?? 'Cliente avulso',
+          waitTimeSeconds,
+        });
+      }
+    }
+
+    const avgWaitTimeSeconds = waitTimes.length
+      ? Math.round(waitTimes.reduce((sum, value) => sum + value, 0) / waitTimes.length)
+      : 0;
+    const maxWaitTimeSeconds = waitTimes.length ? Math.max(...waitTimes) : 0;
+    slowDeliveries.sort((a, b) => b.waitTimeSeconds - a.waitTimeSeconds);
 
     return {
       date: day.toISOString().slice(0, 10),
@@ -110,6 +134,14 @@ export class DashboardService {
       productsSold: Object.values(productsSold),
       stockMovements: movements.length,
       deliveries: { pending: pendingDeliveries, completed: completedDeliveries },
+      deliveryMetrics: {
+        avgWaitTimeSeconds,
+        maxWaitTimeSeconds,
+        pendingCount: pendingDeliveries,
+        inProgressCount: inProgressDeliveries,
+        completedCount: completedDeliveries,
+        slowDeliveries,
+      },
       salesCount: sales.length,
     };
   }

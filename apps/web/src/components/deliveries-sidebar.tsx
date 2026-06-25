@@ -4,15 +4,24 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatSaleAddress, timeAgo } from '@/lib/sale-utils';
-import { getDeliveryDisplayStatus } from '@gas-erp/shared';
+import {
+  formatWaitTime,
+  getDeliveryDisplayStatus,
+  getElapsedWaitingSeconds,
+} from '@gas-erp/shared';
 
 interface DeliveryRow {
   id: string;
   status: string;
   createdAt: string;
+  startedAt?: string | null;
+  deliveryAddress?: string | null;
+  waitTimeSeconds?: number | null;
+  elapsedWaitingSeconds?: number;
   sale: {
     id: string;
     status: string;
+    createdAt: string;
     deliveryStreet?: string | null;
     deliveryNumber?: string | null;
     deliveryNeighborhood?: string | null;
@@ -53,7 +62,7 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
     return () => clearInterval(timer);
   }, [load]);
 
-  async function updateDelivery(id: string, status: 'IN_PROGRESS' | 'DELIVERED') {
+  async function updateDelivery(id: string, status: 'DELIVERED') {
     setActionId(id);
     try {
       await api(`/deliveries/${id}/status`, {
@@ -127,13 +136,7 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
             </h3>
             <div className="space-y-2">
               {pending.map((d) => (
-                <DeliveryCard
-                  key={d.id}
-                  delivery={d}
-                  busy={actionId === d.id}
-                  onAction={() => updateDelivery(d.id, 'IN_PROGRESS')}
-                  actionLabel="Iniciar rota"
-                />
+                <DeliveryCard key={d.id} delivery={d} busy={actionId === d.id} />
               ))}
             </div>
           </section>
@@ -173,13 +176,14 @@ function DeliveryCard({
 }: {
   delivery: DeliveryRow;
   busy: boolean;
-  onAction: () => void;
-  actionLabel: string;
+  onAction?: () => void;
+  actionLabel?: string;
 }) {
   const { sale } = delivery;
   const products = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
-  const address = formatSaleAddress(sale);
+  const address = delivery.deliveryAddress ?? formatSaleAddress(sale);
   const display = getDeliveryDisplayStatus(delivery);
+  const waitLabel = getWaitLabel(delivery);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -196,15 +200,29 @@ function DeliveryCard({
       )}
       <p className="mt-2 text-xs text-slate-500">{products}</p>
       <p className="mt-2 text-xs font-medium text-sky-700">🛵 {delivery.deliverer.user.name}</p>
-      <Button
-        type="button"
-        className="mt-3 w-full !py-1.5 text-xs"
-        variant={display.key === 'IN_PROGRESS' ? 'primary' : 'secondary'}
-        disabled={busy}
-        onClick={onAction}
-      >
-        {busy ? 'Salvando...' : actionLabel}
-      </Button>
+      {waitLabel && <p className="mt-2 text-xs font-medium text-amber-700">⏱ {waitLabel}</p>}
+      {onAction && actionLabel && (
+        <Button
+          type="button"
+          className="mt-3 w-full !py-1.5 text-xs"
+          variant={display.key === 'IN_PROGRESS' ? 'primary' : 'secondary'}
+          disabled={busy}
+          onClick={onAction}
+        >
+          {busy ? 'Salvando...' : actionLabel}
+        </Button>
+      )}
     </div>
   );
+}
+
+function getWaitLabel(delivery: DeliveryRow): string | null {
+  if (delivery.status === 'PENDING') {
+    const seconds = delivery.elapsedWaitingSeconds ?? getElapsedWaitingSeconds(delivery.sale.createdAt);
+    return `Aguardando há ${formatWaitTime(seconds)}`;
+  }
+  if (delivery.status === 'IN_PROGRESS' && delivery.startedAt) {
+    return `Em rota há ${formatWaitTime(getElapsedWaitingSeconds(delivery.startedAt))}`;
+  }
+  return null;
 }

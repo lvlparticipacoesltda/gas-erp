@@ -2,6 +2,18 @@
 
 Monorepo Gas ERP — gestão multi-loja para distribuidoras de GLP.
 
+## Estrutura e stack
+
+| Pacote | Stack | Função |
+|--------|-------|--------|
+| `apps/web` | Next.js (App Router) | Painel master e de loja |
+| `apps/api` | NestJS (`/api/v1`) | API REST |
+| `apps/mobile` | Expo SDK 56 + `expo-router` (React Native) | App do entregador (Android primeiro) |
+| `packages/shared` | TypeScript | Tipos, schemas Zod, labels, permissões e métricas (`delivery-metrics.ts`) |
+| `packages/database` | Prisma | Schema, client e migrations |
+
+`apps/web`, `apps/api` e `apps/mobile` consomem `@gas-erp/shared` (tipos, `getSaleDisplayStatus`, helpers de métrica) garantindo regras consistentes entre web, API e app.
+
 ## Modelo de dados
 
 - **Organization** = tenant (SaaS-ready)
@@ -70,6 +82,34 @@ Componentes relevantes:
 | `store-multi-select.tsx` | Vínculo N lojas (checkboxes) |
 | `settings-content.tsx` | Perfil e troca de senha |
 
+## App do entregador (Expo — `apps/mobile`)
+
+App React Native (Expo SDK 56 + `expo-router`) para os entregadores. Consome a mesma API (`/api/v1`).
+
+| Recurso | Implementação |
+|---------|---------------|
+| Auth | Login restrito ao papel `DELIVERER`; JWT em `expo-secure-store` |
+| Listas | **Aguardando** / **Em rota** via `GET /deliveries/my` (pull-to-refresh + polling) |
+| Iniciar rota | `PATCH /deliveries/:id/status` → `IN_PROGRESS` (exclusivo do entregador) e abre o Google Maps via deep link |
+| Rota ativa | Timer + `Concluir entrega` (`PATCH` → `DELIVERED`) |
+| GPS | `expo-location` + `expo-task-manager` enviam pontos para `POST /deliveries/:id/tracking` em segundo plano durante `IN_PROGRESS` |
+| Config | `EXPO_PUBLIC_API_URL` (default aponta para produção) |
+
+Build e distribuição (EAS, Android): [deployment.md](deployment.md).
+
+## Métrica de tempo de espera
+
+Calcula quanto tempo uma venda com entrega esperou até a rota começar:
+
+```text
+tempoEspera = delivery.startedAt - sale.createdAt
+```
+
+- `startedAt` é preenchido quando o entregador inicia a rota (`IN_PROGRESS`) no app.
+- Enquanto `PENDING`, mostra-se o tempo decorrido desde `sale.createdAt`.
+- Helpers puros em `packages/shared/src/delivery-metrics.ts` (`getWaitTimeSeconds`, `getElapsedWaitingSeconds`, `formatWaitTime`), reutilizados por API, web e app.
+- A API expõe `waitTimeSeconds` / `elapsedWaitingSeconds` nas listas de entregas e o bloco `deliveryMetrics` em `GET /dashboard/store` (ver [api-contracts.md](api-contracts.md)).
+
 ## API
 
 Base URL: `/api/v1`
@@ -128,6 +168,6 @@ Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy.
 
 - Fiscal (`FiscalProvider` stub em `packages/shared`)
 - Financeiro (contas, fluxo de caixa)
-- App entregador (Expo) — GPS via `/deliveries/:id/tracking`
+- App entregador (Expo) — **MVP entregue** em `apps/mobile`; falta build/distribuição EAS e push notifications
 - Redis/filas para real-time
 - CI/CD, staging, monitoramento

@@ -244,12 +244,13 @@ export class SalesService {
       const deliverer = await this.prisma.deliverer.findFirst({
         where: {
           id: data.delivererId,
-          storeId: data.storeId,
-          store: { organizationId: user.organizationId },
+          stores: {
+            some: { storeId: data.storeId, store: { organizationId: user.organizationId } },
+          },
         },
       });
       if (!deliverer) {
-        throw new BadRequestException('Entregador não encontrado nesta loja.');
+        throw new BadRequestException('Entregador não atende esta unidade.');
       }
     }
 

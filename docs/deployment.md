@@ -26,7 +26,8 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Senhas demo | ⏳ | Ainda `admin123` — trocar em produção |
 | CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
 | Módulo fiscal | ⏳ | Fase 2 |
-| Apps mobile | ⏳ | Fase 2 |
+| App entregador (Expo) | 🟡 | MVP entregue (código em `apps/mobile`); build/distribuição via EAS pendente |
+| App cliente | ⏳ | Fase 2 |
 
 ### Commits recentes (main)
 
@@ -104,6 +105,87 @@ Neon PostgreSQL
 ```
 
 Hoje o domínio raiz (`thlgasdopovo.com.br`) aponta direto para a Vercel. O subdomínio `api.` no Railway é opcional e pode ser configurado depois.
+
+---
+
+## App do entregador (Expo — `apps/mobile`)
+
+App React Native (Expo SDK 56 + `expo-router`) usado pelos entregadores para ver entregas atribuídas, iniciar a rota (abre o Google Maps), acompanhar o tempo em rota, concluir a entrega e enviar GPS em segundo plano. O foco inicial é **Android**, perfil de uso típico dos entregadores.
+
+- JWT guardado com `expo-secure-store`
+- GPS em segundo plano com `expo-location` + `expo-task-manager` durante entregas `IN_PROGRESS`
+- Login restrito ao papel `DELIVERER` (usuário criado pelo painel master)
+- Consome a mesma API (`/api/v1`) do painel web
+
+### Variáveis de ambiente
+
+| Variável | Onde | Valor |
+|----------|------|-------|
+| `EXPO_PUBLIC_API_URL` | `apps/mobile/.env` ou perfil EAS | URL base da API **incluindo `/api/v1`**. Default no código aponta para produção (`https://gas-erpapi-production.up.railway.app/api/v1`) |
+
+> Variáveis `EXPO_PUBLIC_*` são embutidas no bundle em build/start. Ao mudar o valor, reinicie o `expo start` ou gere um novo build EAS.
+
+`.env` local (ver [`apps/mobile/.env.example`](../apps/mobile/.env.example)):
+
+```env
+# Default já aponta para produção; descomente para apontar para a API local
+# EXPO_PUBLIC_API_URL=http://localhost:3001/api/v1
+EXPO_PUBLIC_API_URL=https://gas-erpapi-production.up.railway.app/api/v1
+```
+
+> Para testar contra a API local em um dispositivo físico, use o IP da máquina na rede (ex.: `http://192.168.0.10:3001/api/v1`), não `localhost`.
+
+### Desenvolvimento local
+
+```bash
+# Na raiz do monorepo
+pnpm install
+pnpm --filter @gas-erp/mobile start
+```
+
+> **GPS em segundo plano não funciona no Expo Go.** As permissões de background location e o foreground service exigem um **dev build** (perfil `development` do EAS) ou um build interno (`preview`). No Expo Go é possível testar login, listas, detalhe e abertura do Maps, mas o tracking em background só roda em dev build/EAS.
+
+### Build interno Android (EAS)
+
+A configuração de build está em [`apps/mobile/eas.json`](../apps/mobile/eas.json), com três perfis:
+
+| Perfil | Uso | Saída Android |
+|--------|-----|---------------|
+| `development` | Dev build com `developmentClient` para testar GPS em background | APK interno |
+| `preview` | Build interno para validação dos entregadores | APK |
+| `production` | Build de loja (Play Store) | App Bundle (`.aab`) |
+
+Pré-requisitos: conta [Expo](https://expo.dev) e EAS CLI (`npm install -g eas-cli`).
+
+```bash
+cd apps/mobile
+
+# 1. Login na conta Expo (uma vez)
+npx eas login
+
+# 2. Vincular o projeto ao EAS (gera extra.eas.projectId no app.json)
+npx eas init
+
+# 3. Build interno (APK) para distribuir aos entregadores
+npx eas build -p android --profile preview
+
+# Dev build (necessário para testar GPS em background localmente)
+npx eas build -p android --profile development
+
+# Build de produção (App Bundle para a Play Store)
+npx eas build -p android --profile production
+```
+
+> Os comandos `eas build` exigem login e credenciais (keystore Android gerenciado pelo EAS). Não são executados no CI/local sem autenticação.
+
+### Distribuição interna do APK
+
+1. Rode `npx eas build -p android --profile preview`.
+2. Ao terminar, o EAS retorna um **link de download do APK** (também visível no dashboard `expo.dev`).
+3. Compartilhe o link com os entregadores (WhatsApp/e-mail). No Android, é preciso permitir **instalar de fontes desconhecidas** para instalar o APK fora da Play Store.
+4. Para atualizações, basta gerar um novo build `preview` e reenviar o link.
+
+> iOS fica para uma etapa seguinte (TestFlight via `npx eas build -p ios --profile preview` + `eas submit`), exige conta Apple Developer paga.
 
 ---
 
@@ -395,7 +477,7 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 | **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub já existe em `packages/shared`) | Alta |
 | **Financeiro** | Contas a pagar/receber, fluxo de caixa | Alta |
 | **Relatórios** | Exportação PDF/Excel, filtros avançados | Média |
-| **App entregador** | Expo/React Native — GPS, rotas, confirmação de entrega | Alta |
+| **App entregador** | Expo/React Native — GPS, rotas, confirmação de entrega. **MVP entregue** em `apps/mobile`; falta build/distribuição via EAS (ver seção acima) | Alta |
 | **App cliente** | Pedido online, rastreamento, pagamento (Pix/cartão) | Média |
 | **WhatsApp** | Notificações e pedidos via API Business | Média |
 | **Redis / filas** | Entregas em tempo real, jobs assíncronos (Upstash) | Média |

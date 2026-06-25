@@ -72,6 +72,12 @@ export const DELIVERY_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelada',
 };
 
+export const DELIVERER_STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: 'Disponível',
+  ON_DELIVERY: 'Em rota',
+  OFFLINE: 'Offline',
+};
+
 export const ROLE_LABELS: Record<string, string> = {
   PLATFORM_ADMIN: 'Admin Plataforma',
   ORG_MASTER: 'Master',
