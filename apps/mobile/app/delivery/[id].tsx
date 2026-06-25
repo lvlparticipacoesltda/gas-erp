@@ -176,7 +176,7 @@ export default function DeliveryDetailScreen() {
 
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Itens</Text>
-          {delivery.sale.items.map((item) => (
+          {delivery.sale.items?.map((item) => (
             <View key={item.id} style={styles.itemRow}>
               <Text style={styles.itemQty}>{item.quantity}x</Text>
               <Text style={styles.itemName}>{item.product.name}</Text>

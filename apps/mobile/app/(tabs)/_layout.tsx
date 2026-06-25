@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { View } from 'react-native';
 import { Loading } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { DeliveriesProvider, useDeliveriesContext } from '@/lib/deliveries-context';
+import { useDeliveriesContext } from '@/lib/deliveries-context';
 import { colors } from '@/theme';
 
 function TabsNav() {
@@ -51,9 +51,5 @@ export default function TabsLayout() {
   }
   if (!token) return <Redirect href="/login" />;
 
-  return (
-    <DeliveriesProvider>
-      <TabsNav />
-    </DeliveriesProvider>
-  );
+  return <TabsNav />;
 }
