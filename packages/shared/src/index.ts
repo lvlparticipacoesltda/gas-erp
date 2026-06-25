@@ -11,5 +11,6 @@ export * from './schemas/stock';
 export * from './schemas/deliverer';
 export * from './schemas/delivery';
 export * from './permissions';
+export * from './sale-display';
 export * from './types';
 export * from './fiscal/fiscal-provider';

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatSaleAddress, timeAgo } from '@/lib/sale-utils';
-import { DELIVERY_STATUS_LABELS } from '@gas-erp/shared';
+import { getDeliveryDisplayStatus } from '@gas-erp/shared';
 
 interface DeliveryRow {
   id: string;
@@ -12,6 +12,7 @@ interface DeliveryRow {
   createdAt: string;
   sale: {
     id: string;
+    status: string;
     deliveryStreet?: string | null;
     deliveryNumber?: string | null;
     deliveryNeighborhood?: string | null;
@@ -154,7 +155,6 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
                   busy={actionId === d.id}
                   onAction={() => updateDelivery(d.id, 'DELIVERED')}
                   actionLabel="Confirmar entrega"
-                  tone="success"
                 />
               ))}
             </div>
@@ -170,23 +170,22 @@ function DeliveryCard({
   busy,
   onAction,
   actionLabel,
-  tone = 'warning',
 }: {
   delivery: DeliveryRow;
   busy: boolean;
   onAction: () => void;
   actionLabel: string;
-  tone?: 'warning' | 'success';
 }) {
   const { sale } = delivery;
   const products = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
   const address = formatSaleAddress(sale);
+  const display = getDeliveryDisplayStatus(delivery);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <Badge tone={tone === 'success' ? 'success' : 'warning'}>
-          {DELIVERY_STATUS_LABELS[delivery.status] ?? delivery.status}
+        <Badge tone={display.tone === 'success' ? 'success' : display.tone === 'danger' ? 'danger' : 'warning'}>
+          {display.label}
         </Badge>
         <span className="text-xs text-red-500">{timeAgo(delivery.createdAt)}</span>
       </div>
@@ -200,7 +199,7 @@ function DeliveryCard({
       <Button
         type="button"
         className="mt-3 w-full !py-1.5 text-xs"
-        variant={tone === 'success' ? 'primary' : 'secondary'}
+        variant={display.key === 'IN_PROGRESS' ? 'primary' : 'secondary'}
         disabled={busy}
         onClick={onAction}
       >

@@ -10,6 +10,7 @@ import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
 import {
+  getSaleDisplayStatus,
   PAYMENT_METHOD_LABELS,
   SALE_CHANNEL_LABELS,
   SALE_STATUS_LABELS,
@@ -103,6 +104,7 @@ export default function SaleDetailPage() {
     city: sale.deliveryCity,
     state: sale.deliveryState,
   });
+  const display = getSaleDisplayStatus(sale);
   const canEdit = sale.status !== 'CANCELLED';
 
   return (
@@ -125,7 +127,7 @@ export default function SaleDetailPage() {
           <Card>
             <h2 className="mb-4 font-semibold">Detalhes</h2>
             <dl className="space-y-2 text-sm">
-              <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><Badge>{SALE_STATUS_LABELS[sale.status] ?? sale.status}</Badge></dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><Badge tone={display.tone}>{display.label}</Badge></dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Canal</dt><dd>{SALE_CHANNEL_LABELS[sale.channel] ?? sale.channel}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Atendente</dt><dd>{sale.attendant?.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{sale.deliverer?.user.name ?? '—'}</dd></div>

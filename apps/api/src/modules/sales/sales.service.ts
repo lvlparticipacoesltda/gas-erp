@@ -147,19 +147,12 @@ export class SalesService {
       }
 
       if (!isPickup && data.delivererId) {
-        await this.prisma.sale.update({
-          where: { id: created.id },
-          data: { status: SaleStatus.IN_DELIVERY },
-        });
         await this.prisma.delivery.create({
           data: {
             saleId: created.id,
             delivererId: data.delivererId,
             status: DeliveryStatus.PENDING,
           },
-        });
-        await this.prisma.saleStatusLog.create({
-          data: { saleId: created.id, status: SaleStatus.IN_DELIVERY, userId: user.id },
         });
       }
     } catch (error) {

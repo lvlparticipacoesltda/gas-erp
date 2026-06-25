@@ -8,7 +8,7 @@ import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { SALE_STATUS_LABELS } from '@gas-erp/shared';
+import { getSaleDisplayStatus, SALE_STATUS_LABELS } from '@gas-erp/shared';
 
 interface Sale {
   id: string;
@@ -17,6 +17,7 @@ interface Sale {
   total: number | string;
   customer?: { name: string };
   deliverer?: { user: { name: string } };
+  delivery?: { status: string } | null;
 }
 
 export default function SalesListPage() {
@@ -63,14 +64,16 @@ export default function SalesListPage() {
             </tr>
           </thead>
           <tbody>
-            {sales.map((s) => (
+            {sales.map((s) => {
+              const display = getSaleDisplayStatus(s);
+              return (
               <tr key={s.id} className="border-t border-slate-100">
                 <td className="p-3">{formatDate(s.createdAt)}</td>
                 <td className="p-3">{s.customer?.name ?? '-'}</td>
                 <td className="p-3">{s.deliverer?.user.name ?? '-'}</td>
                 <td className="p-3">
-                  <Badge tone={s.status === 'DELIVERED' ? 'success' : s.status === 'CANCELLED' ? 'danger' : s.status === 'IN_DELIVERY' ? 'warning' : 'default'}>
-                    {SALE_STATUS_LABELS[s.status] ?? s.status}
+                  <Badge tone={display.tone}>
+                    {display.label}
                   </Badge>
                 </td>
                 <td className="p-3">{formatCurrency(s.total)}</td>
@@ -80,7 +83,7 @@ export default function SalesListPage() {
                   </Link>
                 </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </Table>
       </SalesWithSidebar>

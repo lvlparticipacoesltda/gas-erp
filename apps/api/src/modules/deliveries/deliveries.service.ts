@@ -139,6 +139,14 @@ export class DeliveriesService {
         where: { id: delivery.saleId },
         data: { status: SaleStatus.IN_DELIVERY },
       });
+      await this.prisma.saleStatusLog.create({
+        data: {
+          saleId: delivery.saleId,
+          status: SaleStatus.IN_DELIVERY,
+          userId: user.id,
+          notes: 'Entregador iniciou a rota',
+        },
+      });
       await this.prisma.deliverer.update({
         where: { id: delivery.delivererId },
         data: { status: 'ON_DELIVERY' },
