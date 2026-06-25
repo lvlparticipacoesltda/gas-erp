@@ -96,24 +96,33 @@ export default function DeliveryDetailScreen() {
 
     setBusy(true);
     try {
-      const permissions = await startDeliveryTracking(delivery.id);
-      if (!permissions.foreground) {
-        Alert.alert(
-          'Localização necessária',
-          'Permita o acesso à localização para iniciar a rota e compartilhar seu trajeto.',
-        );
-        await stopDeliveryTracking().catch(() => undefined);
-        return;
-      }
-      if (!permissions.background) {
-        Alert.alert(
-          'Localização em segundo plano',
-          'Para o melhor acompanhamento, permita a localização "o tempo todo" nas configurações. A rota seguirá funcionando com o app aberto.',
-        );
-      }
+      // 1. Marca a rota no servidor (ação principal — não depende de GPS).
       await updateDeliveryStatus(delivery.id, 'IN_PROGRESS');
       await refresh();
+
+      // 2. Abre navegação.
       if (address) await openGoogleMaps(address);
+
+      // 3. GPS em segundo plano (opcional; falha não deve derrubar o app).
+      try {
+        const permissions = await startDeliveryTracking(delivery.id);
+        if (!permissions.foreground) {
+          Alert.alert(
+            'Localização',
+            'Rota iniciada. Permita o acesso à localização nas configurações para compartilhar o trajeto.',
+          );
+        } else if (!permissions.background) {
+          Alert.alert(
+            'Localização em segundo plano',
+            'Rota iniciada. Para rastrear com o app fechado, permita localização "o tempo todo" nas configurações.',
+          );
+        }
+      } catch {
+        Alert.alert(
+          'GPS indisponível',
+          'A rota foi iniciada, mas não foi possível ativar o rastreamento GPS neste dispositivo.',
+        );
+      }
     } catch (err) {
       await stopDeliveryTracking().catch(() => undefined);
       Alert.alert('Erro', err instanceof Error ? err.message : 'Não foi possível iniciar a rota.');

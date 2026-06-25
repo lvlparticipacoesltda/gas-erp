@@ -1,16 +1,23 @@
 import '@/lib/location';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { DeliveriesProvider } from '@/lib/deliveries-context';
+import { recoverStaleLocationTracking } from '@/lib/location';
 import { colors } from '@/theme';
 
 /** Entregas compartilhadas entre abas e tela de detalhe (/delivery/[id]). */
 function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
   const { token } = useAuth();
+
+  useEffect(() => {
+    if (!token) return;
+    recoverStaleLocationTracking().catch(() => undefined);
+  }, [token]);
+
   if (!token) return children;
   return <DeliveriesProvider>{children}</DeliveriesProvider>;
 }
