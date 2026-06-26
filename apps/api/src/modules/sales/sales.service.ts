@@ -1,13 +1,22 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BackdateApprovalStatus, DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createSaleSchema, updateSaleStatusSchema, type CreateSaleInput, canManageSales, toNumber } from '@gas-erp/shared';
+import {
+  createSaleSchema,
+  updateSaleStatusSchema,
+  rejectSaleBackdateSchema,
+  type CreateSaleInput,
+  canManageSales,
+  resolveSaleBackdateInput,
+  toNumber,
+} from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { StockService } from '../stock/stock.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { PushService } from '../../common/push/push.service';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
+import type { Prisma } from '@gas-erp/database';
 
 @Injectable()
 export class SalesService {
@@ -22,12 +31,17 @@ export class SalesService {
     customer: true,
     attendant: { select: { id: true, name: true } },
     deliverer: { include: { user: { select: { id: true, name: true } } } },
+    backdateApprovedBy: { select: { id: true, name: true } },
     items: { include: { product: true } },
     payments: true,
     delivery: true,
     statusLogs: {
       orderBy: { createdAt: 'asc' as const },
       include: { user: { select: { id: true, name: true, email: true } } },
+    },
+    backdateLogs: {
+      orderBy: { createdAt: 'asc' as const },
+      include: { user: { select: { id: true, name: true } } },
     },
   };
 
@@ -37,12 +51,14 @@ export class SalesService {
     status?: string,
     page = 1,
     pageSize = 20,
+    backdatePending?: boolean,
   ) {
     assertStoreAccess(user, storeId);
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-    const where = {
+    const where: Prisma.SaleWhereInput = {
       storeId,
       ...(status ? { status: status as SaleStatus } : {}),
+      ...(backdatePending ? { backdateApproval: 'PENDING' as BackdateApprovalStatus } : {}),
     };
     const [data, total] = await Promise.all([
       this.prisma.sale.findMany({
@@ -112,9 +128,27 @@ export class SalesService {
       throw new BadRequestException('Vendas pelo canal portaria não permitem entrega.');
     }
 
+    let backdate;
+    try {
+      backdate = resolveSaleBackdateInput({
+        saleDate: data.saleDate,
+        userRole: user.role,
+        backdateRequestNotes: data.backdateRequestNotes,
+      });
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Data da venda inválida.');
+    }
+
     const isPickup = data.fulfillmentType === 'PICKUP' || data.channel === 'IN_STORE';
-    const initialStatus = isPickup ? SaleStatus.PORTARIA : SaleStatus.CONFIRMED;
+    const isPendingBackdate = backdate.backdateApproval === 'PENDING';
+    const initialStatus = isPendingBackdate
+      ? SaleStatus.CONFIRMED
+      : isPickup
+        ? SaleStatus.PORTARIA
+        : SaleStatus.CONFIRMED;
     const channel = isPickup ? 'IN_STORE' : (data.channel ?? 'PHONE');
+    const now = new Date();
+    const managerAutoApproved = backdate.backdateApproval === 'APPROVED';
 
     const created = await this.prisma.sale.create({
       data: {
@@ -128,6 +162,13 @@ export class SalesService {
         gasDoPovoBenefit,
         deliveryFee,
         notes: data.notes,
+        saleDate: backdate.saleDate,
+        backdateApproval: backdate.backdateApproval as BackdateApprovalStatus,
+        backdateApprovedAt: managerAutoApproved ? now : undefined,
+        backdateApprovedById: managerAutoApproved ? user.id : undefined,
+        backdateRequestNotes: backdate.requiresManagerApproval
+          ? data.backdateRequestNotes?.trim()
+          : undefined,
         deliveryStreet: isPickup ? undefined : data.deliveryStreet || undefined,
         deliveryNumber: isPickup ? undefined : data.deliveryNumber || undefined,
         deliveryComplement: isPickup ? undefined : data.deliveryComplement || undefined,
@@ -135,8 +176,8 @@ export class SalesService {
         deliveryCity: isPickup ? undefined : data.deliveryCity || undefined,
         deliveryState: isPickup ? undefined : data.deliveryState || undefined,
         deliveryLandmark: isPickup ? undefined : data.deliveryLandmark || undefined,
-        confirmedAt: new Date(),
-        deliveredAt: isPickup ? new Date() : undefined,
+        confirmedAt: isPendingBackdate ? undefined : now,
+        deliveredAt: isPendingBackdate ? undefined : isPickup ? now : undefined,
         items: {
           create: data.items.map((item) => ({
             productId: item.productId,
@@ -148,44 +189,40 @@ export class SalesService {
         },
         payments: { create: payments },
         statusLogs: {
-          create: isPickup
-            ? [{ status: SaleStatus.PORTARIA, userId: user.id }]
-            : [{ status: SaleStatus.CONFIRMED, userId: user.id }],
+          create: isPendingBackdate
+            ? [{ status: SaleStatus.CONFIRMED, userId: user.id, notes: 'Aguardando aprovação de data retroativa' }]
+            : isPickup
+              ? [{ status: SaleStatus.PORTARIA, userId: user.id }]
+              : [{ status: SaleStatus.CONFIRMED, userId: user.id }],
+        },
+        backdateLogs: {
+          create: backdate.backdateApproval !== 'NOT_REQUIRED'
+            ? [{
+                action: backdate.requiresManagerApproval ? 'REQUESTED' : 'APPROVED',
+                userId: user.id,
+                notes: data.backdateRequestNotes?.trim() || `Data da venda: ${backdate.saleDateKey}`,
+              }]
+            : undefined,
         },
       },
       select: { id: true },
     });
 
-    const deducted: { productId: string; quantity: number }[] = [];
     let newDelivery: { id: string; delivererId: string } | null = null;
 
-    try {
-      for (const item of data.items) {
-        await this.stockService.deductForSale(
+    if (!isPendingBackdate) {
+      try {
+        newDelivery = await this.finalizeSaleFulfillment(
           this.prisma,
-          data.storeId,
-          item.productId,
-          item.quantity,
-          user.id,
           created.id,
+          data,
+          user.id,
+          isPickup,
         );
-        deducted.push({ productId: item.productId, quantity: item.quantity });
+      } catch (error) {
+        await this.rollbackSaleCreate(created.id, data.storeId, [], user.id);
+        throw error;
       }
-
-      if (!isPickup && data.delivererId) {
-        const delivery = await this.prisma.delivery.create({
-          data: {
-            saleId: created.id,
-            delivererId: data.delivererId,
-            status: DeliveryStatus.PENDING,
-          },
-          select: { id: true, delivererId: true },
-        });
-        newDelivery = delivery;
-      }
-    } catch (error) {
-      await this.rollbackSaleCreate(created.id, data.storeId, deducted, user.id);
-      throw error;
     }
 
     const sale = await this.prisma.sale.findUnique({
@@ -206,6 +243,8 @@ export class SalesService {
         attendantId: user.id,
         attendantName: user.name,
         customerId: data.customerId ?? null,
+        saleDate: backdate.saleDateKey,
+        backdateApproval: backdate.backdateApproval,
       });
     } catch {
       // Venda já foi salva; falha de auditoria não deve bloquear o fluxo.
@@ -218,6 +257,177 @@ export class SalesService {
     }
 
     return sale;
+  }
+
+  private async finalizeSaleFulfillment(
+    tx: Prisma.TransactionClient | PrismaService,
+    saleId: string,
+    data: CreateSaleInput,
+    userId: string,
+    isPickup: boolean,
+  ): Promise<{ id: string; delivererId: string } | null> {
+    for (const item of data.items) {
+      await this.stockService.deductForSale(
+        tx,
+        data.storeId,
+        item.productId,
+        item.quantity,
+        userId,
+        saleId,
+      );
+    }
+
+    if (!isPickup && data.delivererId) {
+      return tx.delivery.create({
+        data: {
+          saleId,
+          delivererId: data.delivererId,
+          status: DeliveryStatus.PENDING,
+        },
+        select: { id: true, delivererId: true },
+      });
+    }
+
+    return null;
+  }
+
+  async approveBackdate(user: AuthUser, id: string) {
+    if (!canManageSales(user.role)) {
+      throw new ForbiddenException('Apenas gerente ou master pode aprovar vendas retroativas.');
+    }
+
+    const sale = await this.findOne(user, id);
+    if (sale.backdateApproval !== 'PENDING') {
+      throw new BadRequestException('Esta venda não está aguardando aprovação de data.');
+    }
+
+    const pickup = sale.channel === 'IN_STORE';
+
+    const saleInput: CreateSaleInput = {
+      storeId: sale.storeId,
+      customerId: sale.customerId ?? undefined,
+      channel: sale.channel as CreateSaleInput['channel'],
+      fulfillmentType: pickup ? 'PICKUP' : 'DELIVERY',
+      delivererId: sale.delivererId ?? undefined,
+      items: sale.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: toNumber(item.unitPrice),
+        discount: toNumber(item.discount),
+      })),
+    };
+
+    const now = new Date();
+
+    const { updated, pushDelivery } = await this.prisma.$transaction(async (tx) => {
+      const newDelivery = await this.finalizeSaleFulfillment(tx, sale.id, saleInput, user.id, pickup);
+
+      const nextStatus = pickup ? SaleStatus.PORTARIA : SaleStatus.CONFIRMED;
+      const result = await tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          backdateApproval: 'APPROVED',
+          backdateApprovedAt: now,
+          backdateApprovedById: user.id,
+          confirmedAt: now,
+          deliveredAt: pickup ? now : undefined,
+          status: nextStatus,
+        },
+        include: this.saleInclude,
+      });
+
+      await tx.saleBackdateLog.create({
+        data: {
+          saleId: sale.id,
+          userId: user.id,
+          action: 'APPROVED',
+          notes: 'Venda retroativa aprovada',
+        },
+      });
+
+      if (pickup && sale.status !== SaleStatus.PORTARIA) {
+        await tx.saleStatusLog.create({
+          data: {
+            saleId: sale.id,
+            status: SaleStatus.PORTARIA,
+            userId: user.id,
+            notes: 'Aprovada — retirada na portaria',
+          },
+        });
+      }
+
+      await this.audit.log(user, 'APPROVE_BACKDATE', 'Sale', sale.id, {
+        saleDate: sale.saleDate,
+        approvedBy: user.id,
+        approvedByName: user.name,
+      });
+
+      return { updated: result, pushDelivery: newDelivery };
+    });
+
+    if (pushDelivery) {
+      void this.push
+        .notifyNewDelivery(pushDelivery.delivererId, pushDelivery.id)
+        .catch(() => undefined);
+    }
+
+    return updated;
+  }
+
+  async rejectBackdate(user: AuthUser, id: string, input: unknown) {
+    if (!canManageSales(user.role)) {
+      throw new ForbiddenException('Apenas gerente ou master pode rejeitar vendas retroativas.');
+    }
+
+    const data = rejectSaleBackdateSchema.parse(input);
+    const sale = await this.findOne(user, id);
+    if (sale.backdateApproval !== 'PENDING') {
+      throw new BadRequestException('Esta venda não está aguardando aprovação de data.');
+    }
+
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          backdateApproval: 'REJECTED',
+          backdateRejectionReason: data.reason.trim(),
+          status: SaleStatus.CANCELLED,
+          canceledAt: now,
+          canceledReason: `Venda retroativa rejeitada: ${data.reason.trim()}`,
+        },
+        include: this.saleInclude,
+      });
+
+      await tx.saleBackdateLog.create({
+        data: {
+          saleId: sale.id,
+          userId: user.id,
+          action: 'REJECTED',
+          notes: data.reason.trim(),
+        },
+      });
+
+      await tx.saleStatusLog.create({
+        data: {
+          saleId: sale.id,
+          status: SaleStatus.CANCELLED,
+          userId: user.id,
+          notes: `Venda retroativa rejeitada: ${data.reason.trim()}`,
+        },
+      });
+
+      await this.audit.log(user, 'REJECT_BACKDATE', 'Sale', sale.id, {
+        saleDate: sale.saleDate,
+        rejectedBy: user.id,
+        rejectedByName: user.name,
+        reason: data.reason.trim(),
+      });
+
+      return result;
+    });
+
+    return updated;
   }
 
   private async rollbackSaleCreate(
@@ -385,6 +595,16 @@ export class SalesService {
     const data = updateSaleStatusSchema.parse(input);
     const sale = await this.findOne(user, id);
     const nextStatus = data.status as SaleStatus;
+
+    if (sale.backdateApproval === 'PENDING') {
+      throw new BadRequestException(
+        'Venda aguardando aprovação de data retroativa. Aguarde aprovação do gerente.',
+      );
+    }
+
+    if (sale.backdateApproval === 'REJECTED') {
+      throw new BadRequestException('Venda retroativa rejeitada não pode ser alterada.');
+    }
 
     this.assertCanUpdateSaleStatus(user, sale.status, nextStatus);
 

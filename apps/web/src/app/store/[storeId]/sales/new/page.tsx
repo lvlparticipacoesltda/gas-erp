@@ -8,7 +8,7 @@ import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { CustomerAddressFields, type CustomerAddressForm } from '@/components/customer-address-fields';
 import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-picker';
-import { api, getToken } from '@/lib/api';
+import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { parsePrice } from '@/lib/sale-utils';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,9 @@ import {
   PAYMENT_METHOD_LABELS,
   SALE_CHANNELS,
   SALE_CHANNEL_LABELS,
+  canManageSales,
+  isPastBusinessDay,
+  todayBusinessDateKey,
   type PaginatedResponse,
 } from '@gas-erp/shared';
 
@@ -47,6 +50,8 @@ export default function NewSalePage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [ready, setReady] = useState(false);
+  const currentUser = getStoredUser<{ role: string }>();
+  const isManager = currentUser ? canManageSales(currentUser.role) : false;
 
   const [draft, setDraft] = useState({
     customerId: '',
@@ -59,6 +64,8 @@ export default function NewSalePage() {
     fulfillmentType: 'DELIVERY' as 'PICKUP' | 'DELIVERY',
     delivererId: '',
     notes: '',
+    saleDate: todayBusinessDateKey(),
+    backdateRequestNotes: '',
     deliveryStreet: '',
     deliveryNumber: '',
     deliveryNeighborhood: '',
@@ -69,6 +76,8 @@ export default function NewSalePage() {
   });
 
   const isPortariaChannel = draft.channel === 'IN_STORE';
+  const isBackdated = isPastBusinessDay(draft.saleDate);
+  const needsBackdateApproval = isBackdated && !isManager;
 
   function selectChannel(channel: (typeof SALE_CHANNELS)[number]) {
     setDraft((d) => ({
@@ -222,6 +231,10 @@ export default function NewSalePage() {
       setError('Selecione um entregador.');
       return;
     }
+    if (needsBackdateApproval && !draft.backdateRequestNotes.trim()) {
+      setError('Informe o motivo para registrar a venda com data anterior.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -235,6 +248,8 @@ export default function NewSalePage() {
           delivererId:
             fulfillmentType === 'DELIVERY' ? draft.delivererId || undefined : undefined,
           notes: draft.notes || undefined,
+          saleDate: draft.saleDate,
+          backdateRequestNotes: needsBackdateApproval ? draft.backdateRequestNotes.trim() : undefined,
           deliveryStreet: draft.deliveryStreet,
           deliveryNumber: draft.deliveryNumber,
           deliveryNeighborhood: draft.deliveryNeighborhood,
@@ -334,6 +349,24 @@ export default function NewSalePage() {
                   </label>
                 ))}
               </div>
+            </div>
+
+            <div className="mt-6">
+              <Label>Data da venda</Label>
+              <Input
+                type="date"
+                className="mt-2 max-w-xs"
+                max={todayBusinessDateKey()}
+                value={draft.saleDate}
+                onChange={(e) => setDraft((d) => ({ ...d, saleDate: e.target.value }))}
+              />
+              {isBackdated && (
+                <p className="mt-2 text-sm text-amber-800">
+                  {needsBackdateApproval
+                    ? 'Data anterior — a venda ficará aguardando aprovação do gerente antes de baixar estoque e entrar no resumo do dia.'
+                    : 'Data anterior — como gerente/master, a venda será registrada e aprovada automaticamente.'}
+                </p>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end">
@@ -545,12 +578,24 @@ export default function NewSalePage() {
               />
             </div>
 
+            {needsBackdateApproval && (
+              <div className="mb-6">
+                <Label>Motivo da data anterior</Label>
+                <Input
+                  value={draft.backdateRequestNotes}
+                  onChange={(e) => setDraft({ ...draft, backdateRequestNotes: e.target.value })}
+                  placeholder="Ex.: esqueci de lançar antes da meia-noite"
+                  required
+                />
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
               <Button type="button" variant="secondary" onClick={() => setStep(2)}>← Voltar</Button>
               <div className="flex flex-wrap gap-2">
                 {isPortariaChannel || draft.fulfillmentType === 'PICKUP' ? (
                   <Button type="button" disabled={submitting} onClick={() => submitSale(false)}>
-                    {submitting ? 'Salvando...' : 'Concluir venda (portaria)'}
+                    {submitting ? 'Salvando...' : needsBackdateApproval ? 'Enviar para aprovação' : 'Concluir venda (portaria)'}
                   </Button>
                 ) : (
                   <>
@@ -560,14 +605,14 @@ export default function NewSalePage() {
                       disabled={submitting}
                       onClick={() => submitSale(false)}
                     >
-                      Finalizar sem entregador
+                      {needsBackdateApproval ? 'Enviar sem entregador' : 'Finalizar sem entregador'}
                     </Button>
                     <Button
                       type="button"
                       disabled={submitting}
                       onClick={() => submitSale(true)}
                     >
-                      {submitting ? 'Salvando...' : 'Confirmar com entregador'}
+                      {submitting ? 'Salvando...' : needsBackdateApproval ? 'Enviar para aprovação' : 'Confirmar com entregador'}
                     </Button>
                   </>
                 )}

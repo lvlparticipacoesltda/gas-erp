@@ -13,6 +13,7 @@ export * from './schemas/push';
 export * from './schemas/delivery';
 export * from './permissions';
 export * from './sale-display';
+export * from './sale-backdate';
 export * from './delivery-metrics';
 export * from './business-day';
 export * from './types';

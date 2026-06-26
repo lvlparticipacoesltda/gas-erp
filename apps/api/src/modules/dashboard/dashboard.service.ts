@@ -3,6 +3,7 @@ import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AuthUser,
+  COUNTED_BACKDATE_APPROVALS,
   DashboardDateQuery,
   PAYMENT_METHOD_LABELS,
   formatDashboardDateRangeLabel,
@@ -76,7 +77,8 @@ export class DashboardService {
             this.prisma.sale.aggregate({
               where: {
                 storeId: store.id,
-                createdAt: { gte: start, lt: end },
+                saleDate: { gte: start, lt: end },
+                backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
                 status: { not: SaleStatus.CANCELLED },
               },
               _sum: { total: true },
@@ -164,7 +166,8 @@ export class DashboardService {
 
     const saleWhere = {
       ...storeFilter,
-      createdAt: { gte: start, lt: end },
+      saleDate: { gte: start, lt: end },
+      backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
       status: { not: SaleStatus.CANCELLED },
     };
 
@@ -188,7 +191,13 @@ export class DashboardService {
         where: { ...storeFilter, createdAt: { gte: start, lt: end } },
       }),
       this.prisma.delivery.findMany({
-        where: { sale: { ...storeFilter, createdAt: { gte: start, lt: end } } },
+        where: {
+          sale: {
+            ...storeFilter,
+            saleDate: { gte: start, lt: end },
+            backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+          },
+        },
         include: {
           sale: {
             include: {

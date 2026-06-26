@@ -10,7 +10,9 @@ import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
 import {
+  BACKDATE_APPROVAL_LABELS,
   canManageSales,
+  formatSaleDateLabel,
   getSaleDisplayStatus,
   PAYMENT_METHOD_LABELS,
   SALE_CHANNEL_LABELS,
@@ -25,7 +27,13 @@ import {
 interface SaleDetail {
   id: string;
   createdAt: string;
+  saleDate?: string;
   status: string;
+  backdateApproval?: string;
+  backdateRequestNotes?: string | null;
+  backdateRejectionReason?: string | null;
+  backdateApprovedAt?: string | null;
+  backdateApprovedBy?: { id: string; name: string } | null;
   channel: string;
   total: number | string;
   gasDoPovoBenefit?: boolean;
@@ -50,6 +58,12 @@ interface SaleDetail {
     notes?: string | null;
     user?: { id: string; name: string; email?: string } | null;
   }[];
+  backdateLogs?: {
+    action: string;
+    createdAt: string;
+    notes?: string | null;
+    user?: { id: string; name: string } | null;
+  }[];
 }
 
 interface Deliverer { id: string; user: { name: string } }
@@ -61,8 +75,10 @@ export default function SaleDetailPage() {
   const [status, setStatus] = useState('');
   const [delivererId, setDelivererId] = useState('');
   const [cancelReason, setCancelReason] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [backdateAction, setBackdateAction] = useState<'approve' | 'reject' | null>(null);
 
   async function load() {
     const [s, d] = await Promise.all([
@@ -100,6 +116,41 @@ export default function SaleDetailPage() {
     }
   }
 
+  async function approveBackdate() {
+    if (!sale) return;
+    setError('');
+    setBackdateAction('approve');
+    try {
+      await api(`/sales/${saleId}/backdate/approve`, { method: 'POST' }, getToken());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao aprovar venda');
+    } finally {
+      setBackdateAction(null);
+    }
+  }
+
+  async function rejectBackdate() {
+    if (!sale) return;
+    if (!rejectReason.trim()) {
+      setError('Informe o motivo da rejeição.');
+      return;
+    }
+    setError('');
+    setBackdateAction('reject');
+    try {
+      await api(`/sales/${saleId}/backdate/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: rejectReason.trim() }),
+      }, getToken());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao rejeitar venda');
+    } finally {
+      setBackdateAction(null);
+    }
+  }
+
   if (!sale) {
     return <PageLoader />;
   }
@@ -114,9 +165,12 @@ export default function SaleDetailPage() {
   const display = getSaleDisplayStatus(sale);
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
+  const isPendingBackdate = sale.backdateApproval === 'PENDING';
   const isTerminal = sale.status === 'DELIVERED' || sale.status === 'PORTARIA';
   const canEdit =
-    sale.status !== 'CANCELLED' && (!isTerminal || isManager);
+    !isPendingBackdate &&
+    sale.status !== 'CANCELLED' &&
+    (!isTerminal || isManager);
   const cancelLog = sale.statusLogs.find((log) => log.status === 'CANCELLED');
   const editableStatuses: string[] =
     isTerminal && isManager
@@ -131,9 +185,48 @@ export default function SaleDetailPage() {
         </Link>
 
         <PageHeader
-          title={`Venda ${formatDate(sale.createdAt)}`}
+          title={`Venda ${formatSaleDateLabel(sale.saleDate ?? sale.createdAt)}`}
           subtitle={sale.customer?.name ?? 'Cliente não identificado'}
         />
+
+        {isPendingBackdate && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-medium">Aguardando aprovação de data retroativa</p>
+            {sale.backdateRequestNotes && (
+              <p className="mt-1">Motivo informado: {sale.backdateRequestNotes}</p>
+            )}
+            {isManager && (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={backdateAction !== null}
+                    onClick={approveBackdate}
+                  >
+                    {backdateAction === 'approve' ? 'Aprovando...' : 'Aprovar venda'}
+                  </Button>
+                </div>
+                <div>
+                  <Label>Motivo da rejeição</Label>
+                  <Input
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="Explique por que a venda não será aceita"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-2"
+                    disabled={backdateAction !== null}
+                    onClick={rejectBackdate}
+                  >
+                    {backdateAction === 'reject' ? 'Rejeitando...' : 'Rejeitar venda'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {error && (
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -144,9 +237,30 @@ export default function SaleDetailPage() {
             <h2 className="mb-4 font-semibold">Detalhes</h2>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><Badge tone={display.tone}>{display.label}</Badge></dd></div>
+              {sale.backdateApproval && sale.backdateApproval !== 'NOT_REQUIRED' && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Data retroativa</dt>
+                  <dd>
+                    {BACKDATE_APPROVAL_LABELS[sale.backdateApproval as keyof typeof BACKDATE_APPROVAL_LABELS] ?? sale.backdateApproval}
+                  </dd>
+                </div>
+              )}
+              <div className="flex justify-between"><dt className="text-slate-500">Data da venda</dt><dd>{formatSaleDateLabel(sale.saleDate ?? sale.createdAt)}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Canal</dt><dd>{SALE_CHANNEL_LABELS[sale.channel] ?? sale.channel}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Registrado por</dt><dd>{sale.attendant?.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Registrado em</dt><dd>{formatDate(sale.createdAt)}</dd></div>
+              {sale.backdateApprovedBy && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Aprovada por</dt>
+                  <dd>{sale.backdateApprovedBy.name}</dd>
+                </div>
+              )}
+              {sale.backdateRejectionReason && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Motivo rejeição</dt>
+                  <dd>{sale.backdateRejectionReason}</dd>
+                </div>
+              )}
               <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{sale.deliverer?.user.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Total</dt><dd className="font-semibold">{formatCurrency(sale.total)}</dd></div>
               <div className="flex justify-between">
@@ -264,6 +378,28 @@ export default function SaleDetailPage() {
                   {saving ? 'Salvando...' : 'Salvar alterações'}
                 </Button>
               </div>
+            )}
+
+            {(sale.backdateLogs?.length ?? 0) > 0 && (
+              <>
+                <h3 className="mb-2 mt-8 font-medium">Histórico de data retroativa</h3>
+                <ul className="space-y-3 text-sm">
+                  {sale.backdateLogs!.map((log) => (
+                    <li key={`${log.action}-${log.createdAt}`} className="rounded-lg border border-slate-100 px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-slate-800">{log.action}</span>
+                        <span className="text-slate-500">{formatDate(log.createdAt)}</span>
+                      </div>
+                      {log.user && (
+                        <p className="mt-1 text-slate-600">Por {log.user.name}</p>
+                      )}
+                      {log.notes && (
+                        <p className="mt-1 text-slate-600">{log.notes}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
 
             <h3 className="mb-2 mt-8 font-medium">Histórico de status</h3>

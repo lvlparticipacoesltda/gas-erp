@@ -31,6 +31,8 @@ export const createSaleSchema = z.object({
   payments: z.array(salePaymentSchema).optional(),
   fulfillmentType: z.enum(FULFILLMENT_TYPES).optional(),
   gasDoPovoBenefit: z.boolean().optional(),
+  saleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  backdateRequestNotes: z.string().optional(),
 }).superRefine((data, ctx) => {
   const benefit = data.gasDoPovoBenefit ?? false;
   const payments = data.payments ?? [];
@@ -48,6 +50,10 @@ export const createSaleSchema = z.object({
       path: ['payments'],
     });
   }
+});
+
+export const rejectSaleBackdateSchema = z.object({
+  reason: z.string().min(3, 'Informe o motivo da rejeição'),
 });
 
 export const updateSaleStatusSchema = z.object({

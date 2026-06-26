@@ -16,6 +16,7 @@ export class SalesController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('backdatePending') backdatePending?: string,
   ) {
     return this.salesService.findAll(
       user,
@@ -23,6 +24,7 @@ export class SalesController {
       status,
       Number(page) || 1,
       Number(pageSize) || 20,
+      backdatePending === 'true',
     );
   }
 
@@ -39,5 +41,15 @@ export class SalesController {
   @Patch(':id/status')
   updateStatus(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     return this.salesService.updateStatus(user, id, body);
+  }
+
+  @Post(':id/backdate/approve')
+  approveBackdate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.salesService.approveBackdate(user, id);
+  }
+
+  @Post(':id/backdate/reject')
+  rejectBackdate(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.salesService.rejectBackdate(user, id, body);
   }
 }

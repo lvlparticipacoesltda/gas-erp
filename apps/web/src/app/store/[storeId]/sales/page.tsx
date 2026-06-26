@@ -7,9 +7,12 @@ import { PageLoader } from '@/components/brand-loader';
 import { Pagination } from '@/components/pagination';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, PageHeader, Select, Table } from '@/components/ui';
-import { api, getToken } from '@/lib/api';
+import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
+  BACKDATE_APPROVAL_LABELS,
+  canManageSales,
+  formatSaleDateLabel,
   formatWaitTime,
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
@@ -22,7 +25,9 @@ import {
 interface Sale {
   id: string;
   createdAt: string;
+  saleDate?: string;
   status: string;
+  backdateApproval?: string;
   total: number | string;
   customer?: { name: string };
   deliverer?: { user: { name: string } };
@@ -38,19 +43,23 @@ export default function SalesListPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
+  const [backdateFilter, setBackdateFilter] = useState(false);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const currentUser = getStoredUser<{ role: string }>();
+  const isManager = currentUser ? canManageSales(currentUser.role) : false;
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, storeId]);
+  }, [statusFilter, backdateFilter, storeId]);
 
   useEffect(() => {
     if (!storeId) return;
     setLoading(true);
     const statusQuery = statusFilter ? `&status=${statusFilter}` : '';
+    const backdateQuery = backdateFilter ? '&backdatePending=true' : '';
     api<PaginatedResponse<Sale>>(
-      `/sales?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}${statusQuery}`,
+      `/sales?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}${statusQuery}${backdateQuery}`,
       {},
       getToken(),
     )
@@ -63,7 +72,7 @@ export default function SalesListPage() {
         setLoading(false);
         setReady(true);
       });
-  }, [storeId, statusFilter, page]);
+  }, [storeId, statusFilter, backdateFilter, page]);
 
   if (!ready) {
     return <PageLoader />;
@@ -76,13 +85,25 @@ export default function SalesListPage() {
           action={<Link href={`/store/${storeId}/sales/new`}><Button>Nova venda</Button></Link>}
         />
 
-        <div className="mb-4 max-w-xs">
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">Todos os status</option>
-            {Object.entries(SALE_STATUS_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </Select>
+        <div className="mb-4 flex flex-wrap items-end gap-4">
+          <div className="max-w-xs">
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">Todos os status</option>
+              {Object.entries(SALE_STATUS_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+          </div>
+          {isManager && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={backdateFilter}
+                onChange={(e) => setBackdateFilter(e.target.checked)}
+              />
+              Só aguardando aprovação de data
+            </label>
+          )}
         </div>
 
         {loading && <p className="mb-3 text-sm text-slate-500">Carregando...</p>}
@@ -105,7 +126,16 @@ export default function SalesListPage() {
               const display = getSaleDisplayStatus(s);
               return (
               <tr key={s.id} className="border-t border-slate-100">
-                <td className="p-3">{formatDate(s.createdAt)}</td>
+                <td className="p-3">
+                  <div>{formatSaleDateLabel(s.saleDate ?? s.createdAt)}</div>
+                  {s.backdateApproval && s.backdateApproval !== 'NOT_REQUIRED' && (
+                    <div className="mt-1">
+                      <Badge tone={s.backdateApproval === 'PENDING' ? 'warning' : s.backdateApproval === 'REJECTED' ? 'danger' : 'success'}>
+                        {BACKDATE_APPROVAL_LABELS[s.backdateApproval as keyof typeof BACKDATE_APPROVAL_LABELS] ?? s.backdateApproval}
+                      </Badge>
+                    </div>
+                  )}
+                </td>
                 <td className="p-3">{s.customer?.name ?? '-'}</td>
                 <td className="p-3">{s.deliverer?.user.name ?? '-'}</td>
                 <td className="p-3">

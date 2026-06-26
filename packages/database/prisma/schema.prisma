@@ -26,6 +26,13 @@ enum SaleStatus {
   CANCELLED
 }
 
+enum BackdateApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum SaleChannel {
   PHONE
   WHATSAPP
@@ -145,6 +152,8 @@ model User {
   statusLogs     SaleStatusLog[]
   stockMovements StockMovement[]
   passwordResetTokens PasswordResetToken[]
+  salesBackdateApproved Sale[] @relation("SaleBackdateApprover")
+  saleBackdateLogs SaleBackdateLog[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -375,6 +384,12 @@ model Sale {
   confirmedAt           DateTime?
   deliveredAt           DateTime?
   canceledAt            DateTime?
+  saleDate              DateTime    @default(now())
+  backdateApproval      BackdateApprovalStatus @default(NOT_REQUIRED)
+  backdateApprovedAt    DateTime?
+  backdateApprovedById  String?
+  backdateRequestNotes  String?
+  backdateRejectionReason String?
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
@@ -382,14 +397,32 @@ model Sale {
   customer    Customer?        @relation(fields: [customerId], references: [id])
   attendant   User?            @relation("SaleAttendant", fields: [attendantId], references: [id])
   deliverer   Deliverer?       @relation("SaleDeliverer", fields: [delivererId], references: [id])
+  backdateApprovedBy User?     @relation("SaleBackdateApprover", fields: [backdateApprovedById], references: [id])
   items       SaleItem[]
   payments    SalePayment[]
   statusLogs  SaleStatusLog[]
+  backdateLogs SaleBackdateLog[]
   delivery    Delivery?
   fiscalDocs  FiscalDocument[]
 
   @@index([storeId, createdAt])
+  @@index([storeId, saleDate])
   @@index([status])
+  @@index([backdateApproval])
+}
+
+model SaleBackdateLog {
+  id        String   @id @default(cuid())
+  saleId    String
+  userId    String?
+  action    String
+  notes     String?
+  createdAt DateTime @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([saleId, createdAt])
 }
 
 model SaleItem {
