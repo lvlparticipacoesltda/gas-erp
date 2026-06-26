@@ -37,6 +37,27 @@ export const DELIVERER_STATUSES = ['AVAILABLE', 'ON_DELIVERY', 'OFFLINE'] as con
 
 export const STOCK_TRANSFER_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED'] as const;
 
+export const SUPPLIER_TYPES = ['PJ', 'PF'] as const;
+
+export const PURCHASE_INVOICE_STATUSES = ['DRAFT', 'CONFIRMED', 'CANCELLED'] as const;
+
+/**
+ * Categorias de pagamento da nota de compra.
+ *
+ * MÓDULO FINANCEIRO ADIADO: por ora isto é uma lista simples/constante. O valor
+ * escolhido é gravado como string em `PurchaseInvoicePayment.category`. Quando o
+ * módulo Financeiro existir, esta constante deve dar lugar a uma FK
+ * (`categoryId`) para a tabela de categorias/subcategorias financeiras.
+ */
+export const PURCHASE_PAYMENT_CATEGORIES = [
+  'Despesas com Fornecedores',
+  'Despesas Operacionais',
+  'Impostos e Taxas',
+  'Outras Despesas',
+] as const;
+
+export const DEFAULT_PURCHASE_PAYMENT_CATEGORY = 'Despesas com Fornecedores';
+
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'Dinheiro',
   PIX: 'PIX',
@@ -80,6 +101,17 @@ export const DELIVERER_STATUS_LABELS: Record<string, string> = {
   AVAILABLE: 'Disponível',
   ON_DELIVERY: 'Em rota',
   OFFLINE: 'Offline',
+};
+
+export const SUPPLIER_TYPE_LABELS: Record<string, string> = {
+  PJ: 'Pessoa jurídica',
+  PF: 'Pessoa física',
+};
+
+export const PURCHASE_INVOICE_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Rascunho',
+  CONFIRMED: 'Confirmada',
+  CANCELLED: 'Cancelada',
 };
 
 export const ROLE_LABELS: Record<string, string> = {

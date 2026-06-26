@@ -133,4 +133,67 @@ export class StockService {
       },
     });
   }
+
+  /** Entrada de estoque por nota de compra (incrementa disponível). */
+  async addForPurchase(
+    db: DbClient,
+    storeId: string,
+    productId: string,
+    quantity: number,
+    userId: string,
+    invoiceId: string,
+  ) {
+    const balance = await db.stockBalance.upsert({
+      where: { productId_storeId: { productId, storeId } },
+      update: {},
+      create: { productId, storeId, available: 0 },
+    });
+    await db.stockBalance.update({
+      where: { id: balance.id },
+      data: { available: balance.available + quantity },
+    });
+    await db.stockMovement.create({
+      data: {
+        productId,
+        storeId,
+        userId,
+        type: StockMovementType.IN,
+        quantity,
+        reason: 'Ref. à entrada por nota de compra.',
+        referenceId: invoiceId,
+      },
+    });
+  }
+
+  /** Estorno da entrada quando a nota de compra é cancelada (movimento de saída). */
+  async reverseForCancelledPurchase(
+    db: DbClient,
+    storeId: string,
+    productId: string,
+    quantity: number,
+    userId: string,
+    invoiceId: string,
+  ) {
+    const balance = await db.stockBalance.upsert({
+      where: { productId_storeId: { productId, storeId } },
+      update: {},
+      create: { productId, storeId, available: 0 },
+    });
+    const nextAvailable = Math.max(0, balance.available - quantity);
+    await db.stockBalance.update({
+      where: { id: balance.id },
+      data: { available: nextAvailable },
+    });
+    await db.stockMovement.create({
+      data: {
+        productId,
+        storeId,
+        userId,
+        type: StockMovementType.OUT,
+        quantity,
+        reason: 'Ref. ao cancelamento de nota de compra.',
+        referenceId: invoiceId,
+      },
+    });
+  }
 }

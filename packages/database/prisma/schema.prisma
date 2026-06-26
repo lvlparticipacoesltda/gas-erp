@@ -89,6 +89,17 @@ enum FiscalDocumentStatus {
   ERROR
 }
 
+enum SupplierType {
+  PJ
+  PF
+}
+
+enum PurchaseInvoiceStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -102,6 +113,7 @@ model Organization {
   customers           Customer[]
   customerCategories  CustomerCategory[]
   products            Product[]
+  suppliers           Supplier[]
   auditLogs           AuditLog[]
 }
 
@@ -126,6 +138,7 @@ model Store {
   transfersTo         StockTransfer[]       @relation("TransferTo")
   sales               Sale[]
   delivererStores     DelivererStore[]
+  purchaseInvoices    PurchaseInvoice[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -230,6 +243,40 @@ model CustomerAddress {
   @@index([customerId])
 }
 
+model Supplier {
+  id                String       @id @default(cuid())
+  organizationId    String
+  type              SupplierType @default(PJ)
+  legalName         String
+  tradeName         String?
+  document          String?
+  stateRegistration String?
+  email             String?
+  phone             String?
+  rntrc             String?
+  zipCode           String?
+  street            String?
+  number            String?
+  complement        String?
+  neighborhood      String?
+  city              String?
+  state             String?
+  landmark          String?
+  notes             String?
+  finalConsumer     Boolean      @default(false)
+  publicAgency      Boolean      @default(false)
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseInvoices PurchaseInvoice[]
+
+  @@index([organizationId])
+  @@index([legalName])
+  @@index([document])
+}
+
 model Product {
   id             String   @id @default(cuid())
   organizationId String
@@ -248,6 +295,7 @@ model Product {
   stockMovements  StockMovement[]
   saleItems       SaleItem[]
   transferItems   StockTransferItem[]
+  purchaseItems   PurchaseInvoiceItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -540,4 +588,56 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([token])
+}
+
+model PurchaseInvoice {
+  id         String                @id @default(cuid())
+  storeId    String
+  supplierId String
+  number     String
+  issueDate  DateTime
+  total      Decimal               @default(0) @db.Decimal(12, 2)
+  notes      String?
+  status     PurchaseInvoiceStatus @default(CONFIRMED)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  store    Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  supplier Supplier                 @relation(fields: [supplierId], references: [id])
+  items    PurchaseInvoiceItem[]
+  payments PurchaseInvoicePayment[]
+
+  @@index([storeId, issueDate])
+  @@index([supplierId])
+}
+
+model PurchaseInvoiceItem {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  productId   String
+  quantity    Int
+  unitPrice   Decimal   @db.Decimal(12, 2)
+  discount    Decimal   @default(0) @db.Decimal(12, 2)
+  total       Decimal   @db.Decimal(12, 2)
+  paymentDate DateTime?
+  createdAt   DateTime  @default(now())
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+
+  @@index([invoiceId])
+}
+
+model PurchaseInvoicePayment {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  category    String
+  dueDate     DateTime
+  amount      Decimal  @db.Decimal(12, 2)
+  installment Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }

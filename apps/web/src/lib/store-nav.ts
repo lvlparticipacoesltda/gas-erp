@@ -12,9 +12,12 @@ export const STORE_NAV_ITEMS: {
   { screen: 'store.sales', segment: 'sales', label: 'Vendas' },
   { screen: 'store.customers', segment: 'customers', label: 'Clientes' },
   { screen: 'store.products', segment: 'products', label: 'Produtos' },
+  { screen: 'store.suppliers', segment: 'suppliers', label: 'Fornecedores' },
+  { screen: 'store.purchases', segment: 'purchases', label: 'Compras' },
   { screen: 'store.stock', segment: 'stock', label: 'Estoque' },
   { screen: 'store.stock.transfers', segment: 'stock/transfers', label: 'Transferências' },
   { screen: 'store.deliverers', segment: 'deliverers', label: 'Entregadores' },
+  { screen: 'store.reports', segment: 'reports', label: 'Relatórios' },
 ];
 
 export function pathnameToStoreScreen(pathname: string, storeId: string): StoreScreenKey | null {
