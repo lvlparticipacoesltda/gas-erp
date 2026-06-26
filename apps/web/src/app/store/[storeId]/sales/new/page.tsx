@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
-import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { CustomerAddressFields, type CustomerAddressForm } from '@/components/customer-address-fields';
 import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-picker';
@@ -279,7 +278,7 @@ export default function NewSalePage() {
   }
 
   return (
-    <SalesWithSidebar storeId={storeId}>
+    <>
         <div className="mb-4">
           <Link href={`/store/${storeId}/sales`} className="text-sm text-brand hover:underline">
             ← Voltar ao histórico
@@ -620,6 +619,6 @@ export default function NewSalePage() {
             </div>
           </Card>
         )}
-      </SalesWithSidebar>
+    </>
   );
 }

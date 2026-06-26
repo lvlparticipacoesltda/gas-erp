@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { Pagination } from '@/components/pagination';
-import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -89,7 +88,7 @@ export default function SalesListPage() {
   }
 
   return (
-    <SalesWithSidebar storeId={storeId}>
+    <>
       <PageHeader
         title="Histórico de vendas"
         subtitle="Consulte, filtre e acompanhe as vendas da unidade"
@@ -233,6 +232,6 @@ export default function SalesListPage() {
           total={total}
           onPageChange={setPage}
         />
-    </SalesWithSidebar>
+    </>
   );
 }

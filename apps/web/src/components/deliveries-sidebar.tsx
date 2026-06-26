@@ -43,30 +43,42 @@ interface DeliveriesSidebarProps {
   className?: string;
 }
 
+function sidebarStorageKey(storeId: string) {
+  return `gas-erp:deliveries-sidebar:${storeId}`;
+}
+
+function readSidebarCollapsed(storeId: string): boolean {
+  if (typeof window === 'undefined') return true;
+  const stored = sessionStorage.getItem(sidebarStorageKey(storeId));
+  if (stored === 'open') return false;
+  if (stored === 'closed') return true;
+  return true;
+}
+
+function persistSidebarCollapsed(storeId: string, collapsed: boolean) {
+  sessionStorage.setItem(sidebarStorageKey(storeId), collapsed ? 'closed' : 'open');
+}
+
 export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps) {
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [collapsed, setCollapsed] = useState(true);
-  const [userExpanded, setUserExpanded] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => readSidebarCollapsed(storeId));
   const [actionId, setActionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCollapsed(readSidebarCollapsed(storeId));
+  }, [storeId]);
 
   const load = useCallback(async () => {
     try {
       const data = await api<DeliveryRow[]>(`/deliveries?storeId=${storeId}`, {}, getToken());
       setDeliveries(data);
-      if (!userExpanded && data.length > 0) {
-        setCollapsed(false);
-      }
-      if (!userExpanded && data.length === 0) {
-        setCollapsed(true);
-      }
     } catch {
       setDeliveries([]);
-      if (!userExpanded) setCollapsed(true);
     } finally {
       setLoading(false);
     }
-  }, [storeId, userExpanded]);
+  }, [storeId]);
 
   useEffect(() => {
     load();
@@ -91,13 +103,13 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
   const inProgress = deliveries.filter((d) => d.status === 'IN_PROGRESS');
 
   function expand() {
-    setUserExpanded(true);
     setCollapsed(false);
+    persistSidebarCollapsed(storeId, false);
   }
 
   function collapse() {
-    setUserExpanded(false);
     setCollapsed(true);
+    persistSidebarCollapsed(storeId, true);
   }
 
   if (collapsed) {
