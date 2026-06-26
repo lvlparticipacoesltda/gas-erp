@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { Pagination } from '@/components/pagination';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
-import { Badge, Button, PageHeader, Select, Table } from '@/components/ui';
+import { Badge, Button, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -80,35 +80,44 @@ export default function SalesListPage() {
 
   return (
     <SalesWithSidebar storeId={storeId}>
-        <PageHeader
-          title="Histórico de vendas"
-          action={<Link href={`/store/${storeId}/sales/new`}><Button>Nova venda</Button></Link>}
-        />
+      <PageHeader
+        title="Histórico de vendas"
+        subtitle="Consulte, filtre e acompanhe as vendas da unidade"
+        action={
+          <Link href={`/store/${storeId}/sales/new`}>
+            <Button>Nova venda</Button>
+          </Link>
+        }
+      />
 
-        <div className="mb-4 flex flex-wrap items-end gap-4">
-          <div className="max-w-xs">
-            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">Todos os status</option>
-              {Object.entries(SALE_STATUS_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </Select>
-          </div>
-          {isManager && (
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={backdateFilter}
-                onChange={(e) => setBackdateFilter(e.target.checked)}
-              />
-              Só aguardando aprovação de data
-            </label>
-          )}
+      <div className="mb-6 flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="w-full max-w-xs">
+          <Label>Status</Label>
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos os status</option>
+            {Object.entries(SALE_STATUS_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </Select>
         </div>
+        {isManager && (
+          <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={backdateFilter}
+              onChange={(e) => setBackdateFilter(e.target.checked)}
+              className="rounded border-slate-300 text-brand focus:ring-brand"
+            />
+            Só aguardando aprovação de data
+          </label>
+        )}
+      </div>
 
-        {loading && <p className="mb-3 text-sm text-slate-500">Carregando...</p>}
+      {loading && <p className="mb-3 text-sm text-slate-500">Carregando...</p>}
 
-        <Table>
+      <Table>
           <thead className="bg-slate-50 text-left">
             <tr>
               <th className="p-3">Data</th>
@@ -183,6 +192,6 @@ export default function SalesListPage() {
           total={total}
           onPageChange={setPage}
         />
-      </SalesWithSidebar>
+    </SalesWithSidebar>
   );
 }

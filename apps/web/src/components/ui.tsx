@@ -53,14 +53,18 @@ export function Label({ children }: { children: ReactNode }) {
   return <label className="mb-1 block text-sm font-medium text-slate-700">{children}</label>;
 }
 
+export function PageContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('mx-auto w-full max-w-7xl', className)}>{children}</div>;
+}
+
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
-      <div>
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
         <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }

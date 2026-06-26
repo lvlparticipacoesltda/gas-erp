@@ -97,7 +97,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     return (
       <div className="min-h-screen">
         <aside className="hidden border-r border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col" />
-        <main className="min-h-screen p-6 lg:pl-64">
+        <main className="min-h-screen p-6 lg:ml-64">
           <PageLoader />
         </main>
       </div>
@@ -169,7 +169,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
           </button>
         </div>
       </aside>
-      <main className="min-h-screen p-6 lg:pl-64">{children}</main>
+      <main className="min-h-screen p-6 lg:ml-64">{children}</main>
     </div>
   );
 }
