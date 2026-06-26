@@ -6,6 +6,10 @@ import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { syncDelivererAvailabilityFromServer } from './deliverer-availability-context';
 import { api } from './api';
+import { getToken } from './storage';
+
+/** Fallback se Constants não expuser o projectId no build standalone. */
+const EAS_PROJECT_ID = '165eab5a-801a-45a3-ae81-e0a6ef28e7f3';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -21,11 +25,26 @@ let prePromptShownThisSession = false;
 let declinedPrePromptThisSession = false;
 let notificationPermissionFlow: Promise<boolean> | null = null;
 
+function resolveEasProjectId(): string | null {
+  return (
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId ??
+    EAS_PROJECT_ID
+  );
+}
+
 function startNotificationPermissionFlow(options?: {
   skipPrePrompt?: boolean;
 }): Promise<boolean> {
   if (!notificationPermissionFlow) {
-    notificationPermissionFlow = requestNotificationPermissionOnAppOpen(options);
+    notificationPermissionFlow = requestNotificationPermissionOnAppOpen(options).then(
+      async (granted) => {
+        if (granted) {
+          await syncPushTokenWithApi().catch(() => undefined);
+        }
+        return granted;
+      },
+    );
   }
   return notificationPermissionFlow;
 }
@@ -51,7 +70,6 @@ function confirmNotificationPermission(): Promise<boolean> {
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
-  // Android 13+ só exibe o prompt de POST_NOTIFICATIONS após existir um canal.
   await Notifications.setNotificationChannelAsync('deliveries', {
     name: 'Entregas',
     importance: Notifications.AndroidImportance.MAX,
@@ -111,24 +129,41 @@ async function getExpoPushTokenIfGranted(): Promise<string | null> {
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') return null;
 
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    Constants.easConfig?.projectId;
+  const projectId = resolveEasProjectId();
   if (!projectId) return null;
 
-  const token = await Notifications.getExpoPushTokenAsync({ projectId });
-  return token.data;
+  try {
+    const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
+    return pushToken.data;
+  } catch {
+    return null;
+  }
 }
 
-/** Envia o token Expo para a API (requer login; permissão já concedida na abertura). */
-export async function registerPushTokenWithApi(): Promise<boolean> {
-  const token = await getExpoPushTokenIfGranted();
-  if (!token) return false;
+/**
+ * Aguarda permissão de notificação (se ainda em andamento) e envia token à API.
+ * Passe accessToken no login para evitar race com o SecureStore.
+ */
+export async function syncPushTokenWithApi(accessToken?: string): Promise<boolean> {
+  await waitForNotificationPermissionFlow().catch(() => false);
+
+  const jwt = accessToken ?? (await getToken());
+  if (!jwt) return false;
+
+  const pushToken = await getExpoPushTokenIfGranted();
+  if (!pushToken) return false;
+
   await api('/deliverers/me/push-token', {
     method: 'PUT',
-    body: { token },
+    body: { token: pushToken },
+    token: jwt,
   });
   return true;
+}
+
+/** @deprecated Use syncPushTokenWithApi */
+export async function registerPushTokenWithApi(accessToken?: string): Promise<boolean> {
+  return syncPushTokenWithApi(accessToken);
 }
 
 export async function clearPushTokenOnServer(): Promise<void> {
@@ -153,7 +188,11 @@ export function useNotificationPermissionOnAppOpen() {
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
-      void requestNotificationPermissionOnAppOpen({ skipPrePrompt: true }).catch(() => undefined);
+      void requestNotificationPermissionOnAppOpen({ skipPrePrompt: true })
+        .then((granted) => {
+          if (granted) return syncPushTokenWithApi();
+        })
+        .catch(() => undefined);
     });
 
     return () => sub.remove();
@@ -200,11 +239,11 @@ export function usePushNotifications(onRefresh: () => void | Promise<void>) {
 /** Registra token na API após login e ao voltar ao app autenticado. */
 export function useRegisterPushTokenWhenAuthenticated() {
   useEffect(() => {
-    void registerPushTokenWithApi().catch(() => undefined);
+    void syncPushTokenWithApi().catch(() => undefined);
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void registerPushTokenWithApi().catch(() => undefined);
+        void syncPushTokenWithApi().catch(() => undefined);
       }
     });
 

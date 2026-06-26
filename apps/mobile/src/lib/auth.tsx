@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from './api';
 import { clearSession, getStoredOrganization, getStoredUser, getToken, saveSession } from './storage';
-import { clearPushTokenOnServer, registerPushTokenWithApi } from './notifications';
+import { clearPushTokenOnServer, syncPushTokenWithApi } from './notifications';
 import { stopAllTracking } from './location';
 import type { AuthUser, LoginResponse, Organization } from '../types';
 
@@ -36,6 +36,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         getStoredOrganization(),
       ]);
       setState({ token, user, organization, initializing: false });
+      if (token && user?.role === 'DELIVERER') {
+        void syncPushTokenWithApi(token).catch(() => undefined);
+      }
     })();
   }, []);
 
@@ -57,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization: res.organization ?? null,
       initializing: false,
     });
-    void registerPushTokenWithApi().catch(() => undefined);
+    void syncPushTokenWithApi(res.accessToken).catch(() => undefined);
   }, []);
 
   const logout = useCallback(async () => {
