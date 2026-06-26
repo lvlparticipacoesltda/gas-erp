@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "ProductStoreSetting" ADD COLUMN "deliveryFee" DECIMAL(12,2) NOT NULL DEFAULT 0;
+
+-- AlterTable
+ALTER TABLE "Sale" ADD COLUMN "gasDoPovoBenefit" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Sale" ADD COLUMN "deliveryFee" DECIMAL(12,2) NOT NULL DEFAULT 0;

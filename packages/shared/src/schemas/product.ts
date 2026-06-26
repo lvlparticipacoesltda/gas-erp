@@ -7,6 +7,7 @@ export const createProductSchema = z.object({
   unit: z.string().optional(),
   productType: z.string().optional(),
   price: z.number().nonnegative().optional(),
+  deliveryFee: z.number().nonnegative().optional(),
   active: z.boolean().optional(),
 });
 
@@ -15,6 +16,7 @@ export const updateProductSchema = createProductSchema.partial();
 export const updateProductPriceSchema = z.object({
   storeId: z.string(),
   price: z.number().nonnegative(),
+  deliveryFee: z.number().nonnegative().optional(),
   active: z.boolean().optional(),
 });
 

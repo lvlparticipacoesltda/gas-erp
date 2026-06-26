@@ -11,6 +11,7 @@ import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { parsePrice } from '@/lib/sale-utils';
+import { cn } from '@/lib/utils';
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
@@ -18,7 +19,11 @@ import {
   SALE_CHANNEL_LABELS,
 } from '@gas-erp/shared';
 
-interface Product { id: string; name: string; storeSettings?: { price: number | string }[] }
+interface Product {
+  id: string;
+  name: string;
+  storeSettings?: { price: number | string; deliveryFee?: number | string }[];
+}
 interface Deliverer { id: string; user: { name: string } }
 
 type Step = 1 | 2 | 3;
@@ -57,6 +62,7 @@ export default function NewSalePage() {
     deliveryCity: '',
     deliveryState: 'SP',
     deliveryZipCode: '',
+    gasDoPovoBenefit: false,
   });
 
   const isPortariaChannel = draft.channel === 'IN_STORE';
@@ -170,7 +176,13 @@ export default function NewSalePage() {
   }
 
   const selectedProduct = products.find((p) => p.id === draft.productId);
-  const total = draft.quantity * draft.unitPrice;
+  const itemsSubtotal = draft.quantity * draft.unitPrice;
+  const appliesDeliveryFee =
+    !isPortariaChannel && draft.fulfillmentType === 'DELIVERY';
+  const deliveryFee = appliesDeliveryFee
+    ? parsePrice(selectedProduct?.storeSettings?.[0]?.deliveryFee)
+    : 0;
+  const total = itemsSubtotal + deliveryFee;
 
   function goNext() {
     setError('');
@@ -225,6 +237,7 @@ export default function NewSalePage() {
           deliveryNeighborhood: draft.deliveryNeighborhood,
           deliveryCity: draft.deliveryCity,
           deliveryState: draft.deliveryState,
+          gasDoPovoBenefit: draft.gasDoPovoBenefit,
           items: [{
             productId: draft.productId,
             quantity: draft.quantity,
@@ -391,6 +404,25 @@ export default function NewSalePage() {
                   ))}
                 </Select>
               </div>
+
+              <div className="mt-6">
+                <Label>Benefício Gás do Povo</Label>
+                <button
+                  type="button"
+                  onClick={() => setDraft((d) => ({ ...d, gasDoPovoBenefit: !d.gasDoPovoBenefit }))}
+                  className={cn(
+                    'mt-2 w-full rounded-xl border px-4 py-3 text-left text-sm transition',
+                    draft.gasDoPovoBenefit
+                      ? 'border-brand bg-brand-muted text-brand-dark'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300',
+                  )}
+                >
+                  <span className="font-medium">Benefício Gás do Povo</span>
+                  <span className="mt-1 block text-xs opacity-80">
+                    {draft.gasDoPovoBenefit ? 'Sim — cliente utiliza o benefício' : 'Não — toque para marcar como sim'}
+                  </span>
+                </button>
+              </div>
             </Card>
 
             <Card>
@@ -401,6 +433,14 @@ export default function NewSalePage() {
                   {draft.quantity}x {selectedProduct.name}
                 </p>
               )}
+              {deliveryFee > 0 && (
+                <p className="mt-2 text-sm text-slate-600">
+                  Taxa entrega: {formatCurrency(deliveryFee)}
+                </p>
+              )}
+              <p className="mt-1 text-sm text-slate-600">
+                Benefício Gás do Povo: {draft.gasDoPovoBenefit ? 'Sim' : 'Não'}
+              </p>
               <p className="mt-4 text-xl font-bold text-slate-900">{formatCurrency(total)}</p>
               <div className="mt-6 flex gap-2">
                 <Button type="button" variant="secondary" onClick={() => setStep(1)}>← Voltar</Button>

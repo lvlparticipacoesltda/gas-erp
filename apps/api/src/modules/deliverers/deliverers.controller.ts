@@ -29,11 +29,15 @@ export class DeliverersController {
   }
 
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles('ORG_MASTER', 'PLATFORM_ADMIN', 'STORE_MANAGER')
   create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.service.create(user, body);
   }
 
   @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('ORG_MASTER', 'PLATFORM_ADMIN', 'STORE_MANAGER')
   update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     return this.service.update(user, id, body);
   }

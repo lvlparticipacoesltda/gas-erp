@@ -30,6 +30,7 @@ export const createSaleSchema = z.object({
   items: z.array(saleItemSchema).min(1),
   payments: z.array(salePaymentSchema).optional(),
   fulfillmentType: z.enum(FULFILLMENT_TYPES).optional(),
+  gasDoPovoBenefit: z.boolean().optional(),
 });
 
 export const updateSaleStatusSchema = z.object({

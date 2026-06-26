@@ -12,11 +12,11 @@ interface Product {
   sku: string;
   name: string;
   productType: string;
-  storeSettings?: { price: number | string }[];
+  storeSettings?: { price: number | string; deliveryFee?: number | string }[];
   stockBalances?: { available: number; inTransit: number; lent: number }[];
 }
 
-const emptyForm = { sku: '', name: '', productType: 'GLP', price: 0 };
+const emptyForm = { sku: '', name: '', productType: 'GLP', price: 0, deliveryFee: 0 };
 
 function parsePrice(value: number | string | undefined): number {
   const parsed = Number(value ?? 0);
@@ -48,6 +48,7 @@ export default function ProductsPage() {
       name: product.name,
       productType: product.productType,
       price: parsePrice(product.storeSettings?.[0]?.price),
+      deliveryFee: parsePrice(product.storeSettings?.[0]?.deliveryFee),
     });
   }
 
@@ -81,7 +82,7 @@ export default function ProductsPage() {
       }, getToken());
       await api(`/products/${editing.id}/price`, {
         method: 'PATCH',
-        body: JSON.stringify({ storeId, price: editForm.price }),
+        body: JSON.stringify({ storeId, price: editForm.price, deliveryFee: editForm.deliveryFee }),
       }, getToken());
       setEditing(null);
       load();
@@ -96,6 +97,7 @@ export default function ProductsPage() {
       <div><Label>Nome</Label><Input value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} required /></div>
       <div><Label>Tipo</Label><Input value={value.productType} onChange={(e) => onChange({ ...value, productType: e.target.value })} /></div>
       <div><Label>Preço nesta loja</Label><Input type="number" step="0.01" value={value.price} onChange={(e) => onChange({ ...value, price: Number(e.target.value) })} /></div>
+      <div><Label>Taxa entrega / Gás do Povo</Label><Input type="number" step="0.01" min="0" value={value.deliveryFee} onChange={(e) => onChange({ ...value, deliveryFee: Number(e.target.value) })} /></div>
     </>
   );
 
@@ -129,13 +131,14 @@ export default function ProductsPage() {
         </Card>
         <Table>
           <thead className="bg-slate-50 text-left">
-            <tr><th className="p-3">Produto</th><th className="p-3">Preço</th><th className="p-3">Disponível</th><th className="p-3" /></tr>
+            <tr><th className="p-3">Produto</th><th className="p-3">Preço</th><th className="p-3">Taxa entrega</th><th className="p-3">Disponível</th><th className="p-3" /></tr>
           </thead>
           <tbody>
             {products.map((p) => (
               <tr key={p.id} className="border-t border-slate-100">
                 <td className="p-3">{p.name}<div className="text-xs text-slate-500">{p.sku}</div></td>
                 <td className="p-3">{formatCurrency(p.storeSettings?.[0]?.price ?? 0)}</td>
+                <td className="p-3">{formatCurrency(p.storeSettings?.[0]?.deliveryFee ?? 0)}</td>
                 <td className="p-3">{p.stockBalances?.[0]?.available ?? 0}</td>
                 <td className="p-3 text-right">
                   <Button type="button" variant="secondary" onClick={() => startEdit(p)}>Editar</Button>

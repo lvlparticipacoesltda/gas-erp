@@ -28,6 +28,8 @@ interface SaleDetail {
   status: string;
   channel: string;
   total: number | string;
+  gasDoPovoBenefit?: boolean;
+  deliveryFee?: number | string;
   notes?: string | null;
   canceledReason?: string | null;
   canceledAt?: string | null;
@@ -147,6 +149,16 @@ export default function SaleDetailPage() {
               <div className="flex justify-between"><dt className="text-slate-500">Registrado em</dt><dd>{formatDate(sale.createdAt)}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{sale.deliverer?.user.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Total</dt><dd className="font-semibold">{formatCurrency(sale.total)}</dd></div>
+              <div className="flex justify-between">
+                <dt className="text-slate-500">Benefício Gás do Povo</dt>
+                <dd>{sale.gasDoPovoBenefit ? 'Sim' : 'Não'}</dd>
+              </div>
+              {Number(sale.deliveryFee ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Taxa entrega</dt>
+                  <dd>{formatCurrency(sale.deliveryFee ?? 0)}</dd>
+                </div>
+              )}
               {sale.delivery?.startedAt && (
                 <>
                   <div className="flex justify-between">

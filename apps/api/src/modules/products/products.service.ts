@@ -46,8 +46,13 @@ export class ProductsService {
       assertStoreAccess(user, storeId);
       await this.prisma.productStoreSetting.upsert({
         where: { productId_storeId: { productId: product.id, storeId } },
-        update: { price: data.price ?? 0 },
-        create: { productId: product.id, storeId, price: data.price ?? 0 },
+        update: { price: data.price ?? 0, deliveryFee: data.deliveryFee ?? 0 },
+        create: {
+          productId: product.id,
+          storeId,
+          price: data.price ?? 0,
+          deliveryFee: data.deliveryFee ?? 0,
+        },
       });
       await this.prisma.stockBalance.upsert({
         where: { productId_storeId: { productId: product.id, storeId } },
@@ -78,8 +83,18 @@ export class ProductsService {
 
     return this.prisma.productStoreSetting.upsert({
       where: { productId_storeId: { productId, storeId: data.storeId } },
-      update: { price: data.price, active: data.active ?? true },
-      create: { productId, storeId: data.storeId, price: data.price, active: data.active ?? true },
+      update: {
+        price: data.price,
+        deliveryFee: data.deliveryFee ?? 0,
+        active: data.active ?? true,
+      },
+      create: {
+        productId,
+        storeId: data.storeId,
+        price: data.price,
+        deliveryFee: data.deliveryFee ?? 0,
+        active: data.active ?? true,
+      },
     });
   }
 }

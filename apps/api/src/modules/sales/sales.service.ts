@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createSaleSchema, updateSaleStatusSchema, type CreateSaleInput, canManageSales } from '@gas-erp/shared';
+import { createSaleSchema, updateSaleStatusSchema, type CreateSaleInput, canManageSales, toNumber } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { StockService } from '../stock/stock.service';
@@ -73,17 +73,24 @@ export class SalesService {
     const data = createSaleSchema.parse(input);
     assertStoreAccess(user, data.storeId);
 
-    const total = data.items.reduce(
+    const isPickupEarly =
+      data.fulfillmentType === 'PICKUP' || data.channel === 'IN_STORE';
+    const deliveryFee = isPickupEarly
+      ? 0
+      : await this.resolveDeliveryFee(data.storeId, data.items);
+
+    const itemsTotal = data.items.reduce(
       (sum, item) => sum + item.quantity * item.unitPrice - (item.discount ?? 0),
       0,
     );
+    const total = itemsTotal + deliveryFee;
 
     const payments = data.payments?.length
       ? data.payments
       : [{ method: 'CASH' as const, amount: total }];
 
     const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
-    if (total > 0 && paidTotal <= 0) {
+    if (total > 0 && paidTotal < total - 0.009) {
       throw new BadRequestException(
         'Informe o valor do pagamento. Verifique o preço unitário do produto.',
       );
@@ -108,6 +115,8 @@ export class SalesService {
         channel,
         status: initialStatus,
         total,
+        gasDoPovoBenefit: data.gasDoPovoBenefit ?? false,
+        deliveryFee,
         notes: data.notes,
         deliveryStreet: isPickup ? undefined : data.deliveryStreet || undefined,
         deliveryNumber: isPickup ? undefined : data.deliveryNumber || undefined,
@@ -242,6 +251,20 @@ export class SalesService {
     } catch {
       // Venda parcial pode exigir revisão manual.
     }
+  }
+
+  private async resolveDeliveryFee(
+    storeId: string,
+    items: CreateSaleInput['items'],
+  ): Promise<number> {
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    if (productIds.length === 0) return 0;
+
+    const settings = await this.prisma.productStoreSetting.findMany({
+      where: { storeId, productId: { in: productIds } },
+    });
+
+    return settings.reduce((sum, setting) => sum + toNumber(setting.deliveryFee), 0);
   }
 
   private async validateSaleReferences(user: AuthUser, data: CreateSaleInput) {

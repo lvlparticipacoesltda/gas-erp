@@ -1,13 +1,18 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
+import { AuditService } from '../../common/audit/audit.service';
 
 @Injectable()
 export class DeliverersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+  ) {}
 
   private readonly include = {
     user: { select: { id: true, name: true, email: true, phone: true } },
@@ -35,16 +40,62 @@ export class DeliverersService {
     data.storeIds.forEach((storeId) => assertStoreAccess(user, storeId));
     await this.assertStoresInOrg(user, data.storeIds);
 
+    const userId = data.userId ?? (await this.createDelivererUser(user, data));
+
+    const existingDeliverer = await this.prisma.deliverer.findUnique({ where: { userId } });
+    if (existingDeliverer) {
+      throw new ConflictException('Este usuário já está cadastrado como entregador.');
+    }
+
     const created = await this.prisma.deliverer.create({
       data: {
-        userId: data.userId,
+        userId,
         status: data.status ?? 'AVAILABLE',
         stores: { create: data.storeIds.map((storeId) => ({ storeId })) },
       },
       include: this.include,
     });
-    await syncUserStoresForDeliverer(this.prisma, data.userId, data.storeIds);
+    await syncUserStoresForDeliverer(this.prisma, userId, data.storeIds);
+    await this.audit.log(user, 'CREATE', 'Deliverer', created.id, {
+      userId,
+      storeIds: data.storeIds,
+    });
     return created;
+  }
+
+  private async createDelivererUser(
+    user: AuthUser,
+    data: {
+      name?: string;
+      email?: string;
+      phone?: string;
+      password?: string;
+      storeIds: string[];
+    },
+  ): Promise<string> {
+    const email = data.email!;
+    const existing = await this.prisma.user.findFirst({
+      where: { organizationId: user.organizationId, email },
+    });
+    if (existing) {
+      throw new ConflictException('Este e-mail já está cadastrado nesta rede.');
+    }
+
+    const passwordHash = await bcrypt.hash(data.password!, 10);
+    const created = await this.prisma.user.create({
+      data: {
+        organizationId: user.organizationId,
+        email,
+        passwordHash,
+        name: data.name!,
+        phone: data.phone,
+        role: 'DELIVERER',
+        active: true,
+        userStores: { create: data.storeIds.map((storeId) => ({ storeId })) },
+      },
+    });
+    await this.audit.log(user, 'CREATE', 'User', created.id, { role: 'DELIVERER' });
+    return created.id;
   }
 
   async update(user: AuthUser, id: string, input: unknown) {
