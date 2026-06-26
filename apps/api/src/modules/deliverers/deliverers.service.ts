@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, ConflictException } 
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, DELIVERER_POSITION_STALE_MS } from '@gas-erp/shared';
+import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
@@ -136,7 +136,7 @@ export class DeliverersService {
     const now = Date.now();
 
     return deliverers.map((deliverer) => {
-      const point = pointByDeliverer.get(deliverer.id);
+      const trackingFallback = pointByDeliverer.get(deliverer.id);
       const activeAtStore = deliverer.deliveries.find((d) => d.sale.storeId === storeId);
       const hasActiveDelivery = !!activeAtStore;
 
@@ -163,7 +163,23 @@ export class DeliverersService {
         deliveryAddress,
       };
 
-      if (!point) {
+      const hasPresence =
+        deliverer.lastLatitude !== null &&
+        deliverer.lastLongitude !== null &&
+        deliverer.lastSeenAt !== null;
+
+      const latitude = hasPresence
+        ? deliverer.lastLatitude
+        : (trackingFallback?.latitude ?? null);
+      const longitude = hasPresence
+        ? deliverer.lastLongitude
+        : (trackingFallback?.longitude ?? null);
+
+      const seenAt = hasPresence
+        ? deliverer.lastSeenAt!
+        : (trackingFallback?.recordedAt ?? null);
+
+      if (latitude === null || longitude === null || !seenAt) {
         return {
           delivererId: deliverer.id,
           name: deliverer.user.name,
@@ -173,26 +189,57 @@ export class DeliverersService {
           updatedAt: null,
           lastSeenAt: null,
           stale: true,
+          isLive: false,
+          batteryLevel: deliverer.batteryLevel,
+          batteryCharging: deliverer.batteryCharging,
           ...deliveryFields,
           stores,
         };
       }
 
-      const lastSeenAt = point.recordedAt.toISOString();
-      const stale = now - point.recordedAt.getTime() > DELIVERER_POSITION_STALE_MS;
+      const seenMs = seenAt.getTime();
+      const stale = now - seenMs > DELIVERER_POSITION_STALE_MS;
+      const isLive = now - seenMs <= DELIVERER_POSITION_LIVE_MS;
+      const lastSeenAt = seenAt.toISOString();
 
       return {
         delivererId: deliverer.id,
         name: deliverer.user.name,
         delivererStatus,
-        latitude: point.latitude,
-        longitude: point.longitude,
+        latitude,
+        longitude,
         updatedAt: lastSeenAt,
         lastSeenAt,
         stale,
+        isLive,
+        batteryLevel: deliverer.batteryLevel,
+        batteryCharging: deliverer.batteryCharging,
         ...deliveryFields,
         stores,
       };
+    });
+  }
+
+  async updateMyPosition(user: AuthUser, input: unknown) {
+    if (user.role !== 'DELIVERER') {
+      throw new ForbiddenException('Apenas entregadores podem atualizar posição');
+    }
+
+    const data = updateDelivererPositionSchema.parse(input);
+    const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
+    if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+
+    return this.prisma.deliverer.update({
+      where: { id: deliverer.id },
+      data: {
+        lastLatitude: data.latitude,
+        lastLongitude: data.longitude,
+        lastAccuracy: data.accuracy,
+        lastSeenAt: new Date(),
+        ...(data.batteryLevel !== undefined ? { batteryLevel: data.batteryLevel } : {}),
+        ...(data.batteryCharging !== undefined ? { batteryCharging: data.batteryCharging } : {}),
+      },
+      select: { id: true, lastSeenAt: true },
     });
   }
 

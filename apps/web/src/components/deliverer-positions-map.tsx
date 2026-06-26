@@ -24,6 +24,42 @@ function formatTime(iso: string | null): string {
   });
 }
 
+function formatTimeShort(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function markerColor(p: DelivererPosition): string {
+  if (p.stale) return '#94a3b8';
+  if (p.isLive) return '#f97316';
+  return '#3b82f6';
+}
+
+function positionStatusLabel(p: DelivererPosition): string {
+  if (p.stale) return `Desatualizado: ${formatTime(p.lastSeenAt)}`;
+  if (p.isLive) return 'Ao vivo';
+  return `Última posição: ${formatTimeShort(p.lastSeenAt)}`;
+}
+
+function BatteryInfo({
+  level,
+  charging,
+}: {
+  level?: number | null;
+  charging?: boolean | null;
+}) {
+  if (level == null) return null;
+  return (
+    <p className="mt-1 text-xs text-slate-600">
+      🔋 {level}%
+      {charging ? ' (carregando)' : ''}
+    </p>
+  );
+}
+
 function FitBounds({ positions }: { positions: DelivererPosition[] }) {
   const map = useMap();
   const withCoords = positions.filter(
@@ -70,18 +106,19 @@ export function DelivererPositionsMap({
       <FitBounds positions={positions} />
       {withCoords.map((p) => {
         const isSelected = selectedId === p.delivererId;
-        const color = p.stale ? '#94a3b8' : '#f97316';
+        const color = markerColor(p);
         const badge = getDelivererPositionBadge(p);
         return (
           <CircleMarker
             key={p.delivererId}
             center={[p.latitude, p.longitude]}
-            radius={isSelected ? 14 : 10}
+            radius={isSelected ? 14 : p.isLive ? 12 : 10}
             pathOptions={{
               color: isSelected ? '#1d4ed8' : color,
               fillColor: color,
-              fillOpacity: 0.9,
-              weight: isSelected ? 3 : 2,
+              fillOpacity: p.isLive ? 1 : 0.85,
+              weight: isSelected ? 3 : p.isLive ? 3 : 2,
+              className: p.isLive ? 'deliverer-marker-live' : undefined,
             }}
             eventHandlers={{
               click: () => onSelect(p.delivererId),
@@ -91,7 +128,9 @@ export function DelivererPositionsMap({
               <div className="min-w-[180px] text-sm">
                 <p className="font-semibold text-slate-900">{p.name}</p>
                 <p className="mt-1 text-slate-600">{badge.label}</p>
-                <p className="text-slate-600">
+                <p className="text-slate-600">{positionStatusLabel(p)}</p>
+                <BatteryInfo level={p.batteryLevel} charging={p.batteryCharging} />
+                <p className="mt-1 text-slate-600">
                   {DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus}
                 </p>
                 {p.deliveryStatus && (
@@ -106,8 +145,7 @@ export function DelivererPositionsMap({
                   <p className="text-slate-500">{p.deliveryAddress}</p>
                 )}
                 <p className="mt-1 text-xs text-slate-500">
-                  {p.stale ? 'Última posição (desatualizada): ' : 'Atualizado: '}
-                  {formatTime(p.lastSeenAt)}
+                  Registrado: {formatTime(p.lastSeenAt)}
                 </p>
               </div>
             </Popup>

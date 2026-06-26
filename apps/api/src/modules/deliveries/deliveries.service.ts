@@ -110,15 +110,33 @@ export class DeliveriesService {
       throw new ForbiddenException('Sem permissão');
     }
 
-    return this.prisma.deliveryTrackingPoint.create({
-      data: {
-        deliveryId,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        accuracy: data.accuracy,
-        recordedAt: data.recordedAt ? new Date(data.recordedAt) : new Date(),
-      },
-    });
+    const recordedAt = data.recordedAt ? new Date(data.recordedAt) : new Date();
+    const presenceData = {
+      lastLatitude: data.latitude,
+      lastLongitude: data.longitude,
+      lastAccuracy: data.accuracy,
+      lastSeenAt: recordedAt,
+      ...(data.batteryLevel !== undefined ? { batteryLevel: data.batteryLevel } : {}),
+      ...(data.batteryCharging !== undefined ? { batteryCharging: data.batteryCharging } : {}),
+    };
+
+    const [point] = await this.prisma.$transaction([
+      this.prisma.deliveryTrackingPoint.create({
+        data: {
+          deliveryId,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          accuracy: data.accuracy,
+          recordedAt,
+        },
+      }),
+      this.prisma.deliverer.update({
+        where: { id: delivery.delivererId },
+        data: presenceData,
+      }),
+    ]);
+
+    return point;
   }
 
   async getTrackingHistory(user: AuthUser, deliveryId: string) {

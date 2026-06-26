@@ -9,6 +9,13 @@ import { AuthUser } from '@gas-erp/shared';
 export class DeliverersController {
   constructor(private service: DeliverersService) {}
 
+  @Post('me/position')
+  @UseGuards(RolesGuard)
+  @Roles('DELIVERER')
+  updateMyPosition(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.service.updateMyPosition(user, body);
+  }
+
   @Put('me/push-token')
   @UseGuards(RolesGuard)
   @Roles('DELIVERER')

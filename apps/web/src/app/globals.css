@@ -66,3 +66,22 @@ body {
     animation: none;
   }
 }
+
+@keyframes deliverer-pulse {
+  0% {
+    stroke-opacity: 1;
+    fill-opacity: 0.95;
+  }
+  50% {
+    stroke-opacity: 0.55;
+    fill-opacity: 0.65;
+  }
+  100% {
+    stroke-opacity: 1;
+    fill-opacity: 0.95;
+  }
+}
+
+.deliverer-marker-live {
+  animation: deliverer-pulse 1.6s ease-in-out infinite;
+}

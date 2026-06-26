@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "Deliverer" ADD COLUMN "lastLatitude" DOUBLE PRECISION,
+ADD COLUMN "lastLongitude" DOUBLE PRECISION,
+ADD COLUMN "lastAccuracy" DOUBLE PRECISION,
+ADD COLUMN "lastSeenAt" TIMESTAMP(3),
+ADD COLUMN "batteryLevel" INTEGER,
+ADD COLUMN "batteryCharging" BOOLEAN;

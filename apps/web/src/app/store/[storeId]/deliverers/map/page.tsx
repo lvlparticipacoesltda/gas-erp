@@ -31,6 +31,27 @@ const DelivererPositionsMap = dynamic(
   },
 );
 
+function BatteryInfo({
+  level,
+  charging,
+}: {
+  level?: number | null;
+  charging?: boolean | null;
+}) {
+  if (level == null) return null;
+  return (
+    <p className="mt-1 text-xs text-slate-500">
+      🔋 {level}%{charging ? ' · carregando' : ''}
+    </p>
+  );
+}
+
+function positionStatusLabel(p: DelivererPosition): string {
+  if (p.stale) return `Desatualizado · ${formatTime(p.lastSeenAt)}`;
+  if (p.isLive) return 'Ao vivo';
+  return `Última posição · ${formatTime(p.lastSeenAt)}`;
+}
+
 function formatTime(iso: string | null): string {
   if (!iso) return 'Sem registro';
   return new Date(iso).toLocaleString('pt-BR', {
@@ -82,7 +103,7 @@ export default function DelivererMapPage() {
   );
 
   const recentCount = useMemo(
-    () => withPosition.filter((p) => !p.stale).length,
+    () => withPosition.filter((p) => p.isLive).length,
     [withPosition],
   );
 
@@ -96,7 +117,7 @@ export default function DelivererMapPage() {
         title="Mapa de entregadores"
         subtitle={
           lastUpdated
-            ? `${recentCount} com posição recente · atualizado às ${lastUpdated.toLocaleTimeString('pt-BR')}`
+            ? `${recentCount} ao vivo · atualizado às ${lastUpdated.toLocaleTimeString('pt-BR')}`
             : 'Posições em tempo quase real'
         }
         action={
@@ -125,10 +146,10 @@ export default function DelivererMapPage() {
       {withPosition.length === 0 ? (
         <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <MapPin className="h-10 w-10 text-slate-300" />
-          <p className="text-lg font-medium text-slate-700">Nenhum entregador com posição recente</p>
+          <p className="text-lg font-medium text-slate-700">Nenhum entregador com posição no mapa</p>
           <p className="max-w-md text-sm text-slate-500">
-            As posições aparecem quando um entregador inicia a rota no app mobile e o GPS está
-            ativo. A atualização automática ocorre a cada 20 segundos.
+            As posições aparecem quando um entregador está logado no app mobile com GPS ativo.
+            A atualização automática ocorre a cada 20 segundos.
           </p>
         </Card>
       ) : (
@@ -180,10 +201,9 @@ export default function DelivererMapPage() {
                         <p className="mt-0.5 text-xs text-slate-500">{p.deliveryAddress}</p>
                       )}
                       {hasCoords && (
-                        <p className="mt-1 text-xs text-slate-500">
-                          {formatTime(p.lastSeenAt)}
-                        </p>
+                        <p className="mt-1 text-xs text-slate-500">{positionStatusLabel(p)}</p>
                       )}
+                      <BatteryInfo level={p.batteryLevel} charging={p.batteryCharging} />
                       {p.stores.length > 1 && (
                         <p className="mt-1 text-xs text-slate-400">
                           Unidades: {p.stores.map((s) => s.name).join(', ')}

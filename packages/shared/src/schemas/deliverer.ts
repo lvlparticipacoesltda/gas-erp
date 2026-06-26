@@ -37,6 +37,14 @@ export const delivererPositionStoreSchema = z.object({
   name: z.string(),
 });
 
+export const updateDelivererPositionSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().optional(),
+  batteryLevel: z.number().int().min(0).max(100).optional(),
+  batteryCharging: z.boolean().optional(),
+});
+
 export const delivererPositionSchema = z.object({
   delivererId: z.string(),
   name: z.string(),
@@ -46,6 +54,9 @@ export const delivererPositionSchema = z.object({
   updatedAt: z.string().nullable(),
   lastSeenAt: z.string().nullable(),
   stale: z.boolean(),
+  isLive: z.boolean(),
+  batteryLevel: z.number().int().min(0).max(100).nullable().optional(),
+  batteryCharging: z.boolean().nullable().optional(),
   deliveryId: z.string().nullable().optional(),
   deliveryStatus: z.string().nullable().optional(),
   customerName: z.string().nullable().optional(),
@@ -55,8 +66,12 @@ export const delivererPositionSchema = z.object({
 
 export const delivererPositionsResponseSchema = z.array(delivererPositionSchema);
 
+export type UpdateDelivererPositionInput = z.infer<typeof updateDelivererPositionSchema>;
 export type DelivererPosition = z.infer<typeof delivererPositionSchema>;
 export type DelivererPositionsResponse = z.infer<typeof delivererPositionsResponseSchema>;
+
+/** Posição ao vivo se vista nos últimos 60s. */
+export const DELIVERER_POSITION_LIVE_MS = 60_000;
 
 /** Posição considerada desatualizada após este intervalo (ms). */
 export const DELIVERER_POSITION_STALE_MS = 5 * 60 * 1000;

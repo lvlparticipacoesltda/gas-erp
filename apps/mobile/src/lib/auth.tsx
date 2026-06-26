@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { api, ApiError } from './api';
 import { clearSession, getStoredOrganization, getStoredUser, getToken, saveSession } from './storage';
 import { clearPushTokenOnServer } from './notifications';
-import { stopDeliveryTracking } from './location';
+import { stopAllTracking } from './location';
 import type { AuthUser, LoginResponse, Organization } from '../types';
 
 interface AuthState {
@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await stopDeliveryTracking().catch(() => undefined);
+    await stopAllTracking().catch(() => undefined);
     await clearPushTokenOnServer();
     await clearSession();
     setState({ token: null, user: null, organization: null, initializing: false });
