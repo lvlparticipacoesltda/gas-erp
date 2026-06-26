@@ -8,6 +8,7 @@ import { CustomerAddressFields, customerAddressPayload, type CustomerAddressForm
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatSaleAddress } from '@/lib/sale-utils';
 import { getSaleDisplayStatus } from '@gas-erp/shared';
 
 interface CustomerAddress {
@@ -34,6 +35,14 @@ interface CustomerSale {
   createdAt: string;
   status: string;
   total: number | string;
+  deliveryStreet?: string | null;
+  deliveryNumber?: string | null;
+  deliveryNeighborhood?: string | null;
+  deliveryCity?: string | null;
+  deliveryState?: string | null;
+  deliveryLandmark?: string | null;
+  attendant?: { name: string } | null;
+  deliverer?: { user: { name: string } } | null;
   items: { quantity: number; product: { name: string } }[];
 }
 
@@ -121,12 +130,27 @@ function CustomerHistoryModal({
               {sales.map((sale) => {
                 const display = getSaleDisplayStatus(sale);
                 const itemsSummary = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
+                const address = formatSaleAddress(sale);
                 return (
                   <li key={sale.id} className="rounded-lg border border-slate-200 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-slate-900">{formatDate(sale.createdAt)}</p>
                         <p className="mt-1 text-sm text-slate-600">{itemsSummary || 'Sem itens'}</p>
+                        <dl className="mt-3 space-y-1 text-sm text-slate-600">
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-slate-500">Atendente:</dt>
+                            <dd>{sale.attendant?.name ?? '—'}</dd>
+                          </div>
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-slate-500">Entregador:</dt>
+                            <dd>{sale.deliverer?.user.name ?? '—'}</dd>
+                          </div>
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-slate-500">Endereço:</dt>
+                            <dd>{address || '—'}</dd>
+                          </div>
+                        </dl>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-2">
                         <Badge tone={display.tone}>{display.label}</Badge>
@@ -255,36 +279,6 @@ export default function CustomersPage() {
     <>
       <PageHeader title="Clientes" subtitle="Cadastro e busca de clientes da rede" />
 
-      <div className="mb-6 max-w-md">
-        <Label>Buscar cliente</Label>
-        <div className="mt-1 flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <svg
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z" />
-            </svg>
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Nome, telefone ou documento"
-              className="pl-10"
-            />
-          </div>
-          {search ? (
-            <Button type="button" variant="secondary" className="shrink-0" onClick={() => setSearch('')}>
-              Limpar
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">{editing ? 'Editar cliente' : 'Novo cliente'}</h2>
@@ -316,6 +310,33 @@ export default function CustomersPage() {
         </Card>
 
         <Card className="overflow-hidden p-0">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <div className="relative w-full max-w-xs">
+              <svg
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z" />
+              </svg>
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar cliente"
+                className="pl-10"
+                aria-label="Buscar cliente"
+              />
+            </div>
+            {search ? (
+              <Button type="button" variant="secondary" className="shrink-0" onClick={() => setSearch('')}>
+                Limpar
+              </Button>
+            ) : null}
+          </div>
           <Table>
             <thead className="bg-slate-50 text-left">
               <tr><th className="p-3">Nome</th><th className="p-3">Telefone</th><th className="p-3">Endereço</th><th className="p-3" /></tr>

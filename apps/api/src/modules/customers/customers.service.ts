@@ -49,6 +49,8 @@ export class CustomersService {
           take: 50,
           orderBy: { createdAt: 'desc' },
           include: {
+            attendant: { select: { name: true } },
+            deliverer: { include: { user: { select: { name: true } } } },
             items: { include: { product: { select: { name: true } } } },
           },
         },
