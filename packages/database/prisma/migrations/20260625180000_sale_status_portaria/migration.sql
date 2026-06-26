@@ -1,0 +1,1 @@
+ALTER TYPE "SaleStatus" ADD VALUE 'PORTARIA';

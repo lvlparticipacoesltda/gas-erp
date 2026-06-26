@@ -46,6 +46,10 @@ function normalizeScreenKey(screen: string): StoreScreenKey | null {
     : null;
 }
 
+export function canManageSales(role: string): boolean {
+  return role === 'ORG_MASTER' || role === 'STORE_MANAGER' || role === 'PLATFORM_ADMIN';
+}
+
 export function resolveUserPermissions(role: string, custom?: string[] | null): string[] {
   if (custom && custom.length > 0) {
     const normalized = custom

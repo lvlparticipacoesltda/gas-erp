@@ -12,6 +12,7 @@ export const SALE_STATUSES = [
   'CONFIRMED',
   'IN_DELIVERY',
   'DELIVERED',
+  'PORTARIA',
   'CANCELLED',
 ] as const;
 
@@ -50,6 +51,7 @@ export const SALE_STATUS_LABELS: Record<string, string> = {
   CONFIRMED: 'Confirmada',
   IN_DELIVERY: 'Em entrega',
   DELIVERED: 'Entregue',
+  PORTARIA: 'Portaria',
   CANCELLED: 'Cancelada',
 };
 

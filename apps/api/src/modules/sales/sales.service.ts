@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createSaleSchema, updateSaleStatusSchema, type CreateSaleInput } from '@gas-erp/shared';
+import { createSaleSchema, updateSaleStatusSchema, type CreateSaleInput, canManageSales } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { StockService } from '../stock/stock.service';
@@ -25,7 +25,10 @@ export class SalesService {
     items: { include: { product: true } },
     payments: true,
     delivery: true,
-    statusLogs: { orderBy: { createdAt: 'asc' as const } },
+    statusLogs: {
+      orderBy: { createdAt: 'asc' as const },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    },
   };
 
   async findAll(
@@ -93,7 +96,7 @@ export class SalesService {
     }
 
     const isPickup = data.fulfillmentType === 'PICKUP' || data.channel === 'IN_STORE';
-    const initialStatus = isPickup ? SaleStatus.DELIVERED : SaleStatus.CONFIRMED;
+    const initialStatus = isPickup ? SaleStatus.PORTARIA : SaleStatus.CONFIRMED;
     const channel = isPickup ? 'IN_STORE' : (data.channel ?? 'PHONE');
 
     const created = await this.prisma.sale.create({
@@ -127,10 +130,7 @@ export class SalesService {
         payments: { create: payments },
         statusLogs: {
           create: isPickup
-            ? [
-                { status: SaleStatus.CONFIRMED, userId: user.id },
-                { status: SaleStatus.DELIVERED, userId: user.id },
-              ]
+            ? [{ status: SaleStatus.PORTARIA, userId: user.id }]
             : [{ status: SaleStatus.CONFIRMED, userId: user.id }],
         },
       },
@@ -179,7 +179,15 @@ export class SalesService {
     }
 
     try {
-      await this.audit.log(user, 'CREATE', 'Sale', sale.id);
+      await this.audit.log(user, 'CREATE', 'Sale', sale.id, {
+        storeId: data.storeId,
+        channel,
+        status: initialStatus,
+        total,
+        attendantId: user.id,
+        attendantName: user.name,
+        customerId: data.customerId ?? null,
+      });
     } catch {
       // Venda já foi salva; falha de auditoria não deve bloquear o fluxo.
     }
@@ -221,6 +229,14 @@ export class SalesService {
           status: SaleStatus.CANCELLED,
           canceledAt: new Date(),
           canceledReason: 'Falha ao concluir a venda',
+        },
+      });
+      await this.prisma.saleStatusLog.create({
+        data: {
+          saleId,
+          status: SaleStatus.CANCELLED,
+          userId,
+          notes: 'Falha ao concluir a venda',
         },
       });
     } catch {
@@ -310,12 +326,37 @@ export class SalesService {
     }
   }
 
+  private assertCanUpdateSaleStatus(
+    user: AuthUser,
+    currentStatus: SaleStatus,
+    nextStatus: SaleStatus,
+  ) {
+    if (currentStatus === SaleStatus.CANCELLED) {
+      throw new BadRequestException('Venda cancelada não pode ser alterada.');
+    }
+
+    const isTerminal =
+      currentStatus === SaleStatus.DELIVERED || currentStatus === SaleStatus.PORTARIA;
+
+    if (isTerminal) {
+      if (!canManageSales(user.role)) {
+        throw new BadRequestException('Apenas gerente ou master pode alterar esta venda.');
+      }
+      if (nextStatus !== SaleStatus.CANCELLED) {
+        throw new BadRequestException('Vendas finalizadas só podem ser canceladas.');
+      }
+    }
+  }
+
   async updateStatus(user: AuthUser, id: string, input: unknown) {
     const data = updateSaleStatusSchema.parse(input);
     const sale = await this.findOne(user, id);
+    const nextStatus = data.status as SaleStatus;
 
-    if (sale.status === SaleStatus.CANCELLED || sale.status === SaleStatus.DELIVERED) {
-      throw new BadRequestException('Venda não pode ser alterada');
+    this.assertCanUpdateSaleStatus(user, sale.status, nextStatus);
+
+    if (nextStatus === SaleStatus.CANCELLED && !data.canceledReason?.trim()) {
+      throw new BadRequestException('Informe o motivo do cancelamento.');
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -345,7 +386,15 @@ export class SalesService {
       });
 
       await tx.saleStatusLog.create({
-        data: { saleId: id, status: data.status as SaleStatus, userId: user.id },
+        data: {
+          saleId: id,
+          status: nextStatus,
+          userId: user.id,
+          notes:
+            nextStatus === SaleStatus.CANCELLED
+              ? data.canceledReason?.trim()
+              : undefined,
+        },
       });
 
       let pushNewDelivery: { delivererId: string; deliveryId: string } | null = null;
@@ -390,7 +439,13 @@ export class SalesService {
         });
       }
 
-      await this.audit.log(user, 'UPDATE_STATUS', 'Sale', id, { status: data.status });
+      await this.audit.log(user, 'UPDATE_STATUS', 'Sale', id, {
+        status: data.status,
+        previousStatus: sale.status,
+        canceledReason: data.canceledReason ?? null,
+        canceledBy: user.id,
+        canceledByName: user.name,
+      });
       return { updated, pushNewDelivery, pushCancelled };
     });
 

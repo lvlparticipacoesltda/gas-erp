@@ -17,6 +17,10 @@ export function getSaleDisplayStatus(sale: {
     return { key: 'CANCELLED', label: 'Cancelada', tone: 'danger' };
   }
 
+  if (sale.status === 'PORTARIA') {
+    return { key: 'PORTARIA', label: 'Portaria', tone: 'default' };
+  }
+
   if (sale.status === 'DELIVERED' || sale.delivery?.status === 'DELIVERED') {
     return { key: 'DELIVERED', label: 'Entregue', tone: 'success' };
   }

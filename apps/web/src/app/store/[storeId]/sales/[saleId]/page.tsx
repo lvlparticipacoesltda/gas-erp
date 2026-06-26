@@ -6,10 +6,11 @@ import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
-import { api, getToken } from '@/lib/api';
+import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
 import {
+  canManageSales,
   getSaleDisplayStatus,
   PAYMENT_METHOD_LABELS,
   SALE_CHANNEL_LABELS,
@@ -29,6 +30,7 @@ interface SaleDetail {
   total: number | string;
   notes?: string | null;
   canceledReason?: string | null;
+  canceledAt?: string | null;
   deliveryStreet?: string | null;
   deliveryNumber?: string | null;
   deliveryNeighborhood?: string | null;
@@ -36,11 +38,16 @@ interface SaleDetail {
   deliveryState?: string | null;
   customer?: { name: string; phone?: string | null } | null;
   deliverer?: { id: string; user: { name: string } } | null;
-  attendant?: { name: string } | null;
+  attendant?: { id: string; name: string; email?: string } | null;
   items: { quantity: number; unitPrice: number | string; product: { name: string } }[];
   payments: { method: string; amount: number | string }[];
   delivery?: { id: string; status: string; startedAt?: string | null; completedAt?: string | null } | null;
-  statusLogs: { status: string; createdAt: string }[];
+  statusLogs: {
+    status: string;
+    createdAt: string;
+    notes?: string | null;
+    user?: { id: string; name: string; email?: string } | null;
+  }[];
 }
 
 interface Deliverer { id: string; user: { name: string } }
@@ -103,7 +110,17 @@ export default function SaleDetailPage() {
     state: sale.deliveryState,
   });
   const display = getSaleDisplayStatus(sale);
-  const canEdit = sale.status !== 'CANCELLED';
+  const currentUser = getStoredUser<{ role: string }>();
+  const isManager = currentUser ? canManageSales(currentUser.role) : false;
+  const isTerminal = sale.status === 'DELIVERED' || sale.status === 'PORTARIA';
+  const canEdit =
+    sale.status !== 'CANCELLED' && (!isTerminal || isManager);
+  const cancelLog = sale.statusLogs.find((log) => log.status === 'CANCELLED');
+  const editableStatuses: string[] =
+    isTerminal && isManager
+      ? ['CANCELLED']
+      : SALE_STATUSES.filter((s) => s !== 'DRAFT' && s !== 'PORTARIA');
+  const statusSelectValue = editableStatuses.includes(status) ? status : '';
 
   return (
     <SalesWithSidebar storeId={storeId}>
@@ -126,7 +143,8 @@ export default function SaleDetailPage() {
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><Badge tone={display.tone}>{display.label}</Badge></dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Canal</dt><dd>{SALE_CHANNEL_LABELS[sale.channel] ?? sale.channel}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Atendente</dt><dd>{sale.attendant?.name ?? '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Registrado por</dt><dd>{sale.attendant?.name ?? '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Registrado em</dt><dd>{formatDate(sale.createdAt)}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{sale.deliverer?.user.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Total</dt><dd className="font-semibold">{formatCurrency(sale.total)}</dd></div>
               {sale.delivery?.startedAt && (
@@ -150,6 +168,22 @@ export default function SaleDetailPage() {
               )}
               {address && <div><dt className="text-slate-500">Endereço</dt><dd className="mt-1">{address}</dd></div>}
               {sale.notes && <div><dt className="text-slate-500">Obs.</dt><dd className="mt-1">{sale.notes}</dd></div>}
+              {sale.status === 'CANCELLED' && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
+                  <p className="font-medium text-red-800">Cancelamento</p>
+                  {sale.canceledAt && (
+                    <p className="mt-1 text-red-700">Em {formatDate(sale.canceledAt)}</p>
+                  )}
+                  {cancelLog?.user && (
+                    <p className="mt-1 text-red-700">Por {cancelLog.user.name}</p>
+                  )}
+                  {(sale.canceledReason || cancelLog?.notes) && (
+                    <p className="mt-1 text-red-700">
+                      Motivo: {sale.canceledReason || cancelLog?.notes}
+                    </p>
+                  )}
+                </div>
+              )}
             </dl>
 
             <h3 className="mb-2 mt-6 font-medium">Itens</h3>
@@ -170,13 +204,22 @@ export default function SaleDetailPage() {
           <Card>
             <h2 className="mb-4 font-semibold">Alterar status</h2>
             {!canEdit ? (
-              <p className="text-sm text-slate-500">Esta venda não pode mais ser alterada.</p>
+              <p className="text-sm text-slate-500">
+                {sale.status === 'CANCELLED'
+                  ? 'Venda cancelada — histórico preservado para auditoria.'
+                  : 'Esta venda não pode ser alterada pelo seu perfil.'}
+              </p>
             ) : (
               <div className="space-y-4">
+                {isTerminal && isManager && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Como gerente/master, você pode cancelar esta venda finalizada. O cancelamento ficará registrado com seu usuário e motivo.
+                  </p>
+                )}
                 <div>
                   <Label>Novo status</Label>
-                  <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-                    {SALE_STATUSES.filter((s) => s !== 'DRAFT').map((s) => (
+                  <Select value={statusSelectValue} onChange={(e) => setStatus(e.target.value)}>
+                    {editableStatuses.map((s) => (
                       <option key={s} value={s}>{SALE_STATUS_LABELS[s]}</option>
                     ))}
                   </Select>
@@ -197,22 +240,36 @@ export default function SaleDetailPage() {
                 {status === 'CANCELLED' && (
                   <div>
                     <Label>Motivo do cancelamento</Label>
-                    <Input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+                    <Input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} required />
                   </div>
                 )}
 
-                <Button type="button" disabled={saving || status === sale.status} onClick={saveStatus}>
+                <Button
+                  type="button"
+                  disabled={saving || !statusSelectValue || statusSelectValue === sale.status}
+                  onClick={saveStatus}
+                >
                   {saving ? 'Salvando...' : 'Salvar alterações'}
                 </Button>
               </div>
             )}
 
             <h3 className="mb-2 mt-8 font-medium">Histórico de status</h3>
-            <ul className="space-y-2 text-sm">
-              {sale.statusLogs.map((log, i) => (
-                <li key={i} className="flex justify-between text-slate-600">
-                  <span>{SALE_STATUS_LABELS[log.status] ?? log.status}</span>
-                  <span>{formatDate(log.createdAt)}</span>
+            <ul className="space-y-3 text-sm">
+              {sale.statusLogs.map((log) => (
+                <li key={`${log.status}-${log.createdAt}`} className="rounded-lg border border-slate-100 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-slate-800">
+                      {SALE_STATUS_LABELS[log.status] ?? log.status}
+                    </span>
+                    <span className="text-slate-500">{formatDate(log.createdAt)}</span>
+                  </div>
+                  {log.user && (
+                    <p className="mt-1 text-slate-600">Por {log.user.name}</p>
+                  )}
+                  {log.notes && (
+                    <p className="mt-1 text-slate-600">Obs.: {log.notes}</p>
+                  )}
                 </li>
               ))}
             </ul>

@@ -418,7 +418,7 @@ export default function NewSalePage() {
               <div className="mb-6 rounded-lg border border-brand bg-brand-muted px-4 py-3">
                 <div className="font-medium text-brand-dark">Portaria</div>
                 <p className="mt-1 text-sm text-slate-600">
-                  Canal portaria selecionado — o cliente retira na loja e a venda é concluída como entregue.
+                  Canal portaria selecionado — o cliente retira na loja e a venda fica com status Portaria.
                 </p>
               </div>
             ) : (
@@ -432,7 +432,7 @@ export default function NewSalePage() {
                   />
                   <div>
                     <div className="font-medium">Portaria</div>
-                    <div className="text-xs text-slate-500">Cliente retira na loja — status Entregue</div>
+                    <div className="text-xs text-slate-500">Cliente retira na loja — status Portaria</div>
                   </div>
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-muted">

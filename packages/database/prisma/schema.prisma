@@ -21,6 +21,7 @@ enum SaleStatus {
   CONFIRMED
   IN_DELIVERY
   DELIVERED
+  PORTARIA
   CANCELLED
 }
 
