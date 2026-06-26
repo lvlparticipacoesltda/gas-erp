@@ -1,20 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuthUser } from '@gas-erp/shared';
-import { assertStoreAccess } from '../../common/guards';
 import {
+  AuthUser,
+  DashboardDateQuery,
   PAYMENT_METHOD_LABELS,
-  getBusinessDayBounds,
+  formatDashboardDateRangeLabel,
   getRouteDurationSeconds,
   getWaitTimeSeconds,
+  resolveDashboardDateRange,
   toNumber,
 } from '@gas-erp/shared';
+import { assertStoreAccess } from '../../common/guards';
 
 const SLOW_DELIVERY_THRESHOLD_SECONDS = 900;
 
 type DashboardPayload = {
   date: string;
+  dateFrom: string;
+  dateTo: string;
   revenue: number;
   paymentsByMethod: Record<string, number>;
   productsSold: { name: string; qty: number; total: number }[];
@@ -55,8 +59,9 @@ type DashboardPayload = {
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
-  async masterOverview(user: AuthUser) {
-    const { start, end, dateKey } = getBusinessDayBounds();
+  async masterOverview(user: AuthUser, dateQuery: DashboardDateQuery = {}) {
+    const { start, end, dateFrom, dateTo } = this.resolveRange(dateQuery);
+    const dateLabel = formatDashboardDateRangeLabel(dateFrom, dateTo);
 
     const stores = await this.prisma.store.findMany({
       where: { organizationId: user.organizationId, active: true },
@@ -67,7 +72,7 @@ export class DashboardService {
     const [storeStats, summary] = await Promise.all([
       Promise.all(
         stores.map(async (store) => {
-          const [salesToday, activeDeliveries, lowStock] = await Promise.all([
+          const [salesInPeriod, activeDeliveries, lowStock] = await Promise.all([
             this.prisma.sale.aggregate({
               where: {
                 storeId: store.id,
@@ -89,28 +94,40 @@ export class DashboardService {
           ]);
           return {
             store,
-            salesCount: salesToday._count._all,
-            salesTotal: toNumber(salesToday._sum.total),
+            salesCount: salesInPeriod._count._all,
+            salesTotal: toNumber(salesInPeriod._sum.total),
             activeDeliveries,
             lowStockItems: lowStock,
           };
         }),
       ),
-      this.computeDashboardForStores(storeIds, start, end, dateKey, true),
+      this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true),
     ]);
 
-    return { stores: storeStats, date: dateKey, summary };
+    return { stores: storeStats, date: dateLabel, dateFrom, dateTo, summary };
   }
 
-  async storeDashboard(user: AuthUser, storeId: string, date?: string) {
+  async storeDashboard(user: AuthUser, storeId: string, dateQuery: DashboardDateQuery = {}) {
     assertStoreAccess(user, storeId);
-    const { start, end, dateKey } = getBusinessDayBounds(date);
-    return this.computeDashboardForStores([storeId], start, end, dateKey, false);
+    const { start, end, dateFrom, dateTo } = this.resolveRange(dateQuery);
+    return this.computeDashboardForStores([storeId], start, end, dateFrom, dateTo, false);
   }
 
-  private emptyDashboard(dateKey: string): DashboardPayload {
+  private resolveRange(dateQuery: DashboardDateQuery) {
+    try {
+      return resolveDashboardDateRange(dateQuery);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Período inválido',
+      );
+    }
+  }
+
+  private emptyDashboard(dateFrom: string, dateTo: string): DashboardPayload {
     return {
-      date: dateKey,
+      date: formatDashboardDateRangeLabel(dateFrom, dateTo),
+      dateFrom,
+      dateTo,
       revenue: 0,
       paymentsByMethod: {},
       productsSold: [],
@@ -135,11 +152,12 @@ export class DashboardService {
     storeIds: string[],
     start: Date,
     end: Date,
-    dateKey: string,
+    dateFrom: string,
+    dateTo: string,
     includeStoreNameInSlowDeliveries: boolean,
   ): Promise<DashboardPayload> {
     if (storeIds.length === 0) {
-      return this.emptyDashboard(dateKey);
+      return this.emptyDashboard(dateFrom, dateTo);
     }
 
     const storeFilter = { storeId: { in: storeIds } };
@@ -266,7 +284,9 @@ export class DashboardService {
       .sort((a, b) => a.delivererName.localeCompare(b.delivererName, 'pt-BR'));
 
     return {
-      date: dateKey,
+      date: formatDashboardDateRangeLabel(dateFrom, dateTo),
+      dateFrom,
+      dateTo,
       revenue,
       paymentsByMethod,
       productsSold: Object.values(productsSold).sort((a, b) => b.total - a.total),

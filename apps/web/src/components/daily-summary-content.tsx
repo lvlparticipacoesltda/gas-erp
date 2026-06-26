@@ -6,6 +6,8 @@ import { formatWaitTime } from '@gas-erp/shared';
 
 export interface DailySummaryData {
   date: string;
+  dateFrom?: string;
+  dateTo?: string;
   revenue: number;
   salesCount: number;
   paymentsByMethod: Record<string, number>;
@@ -41,6 +43,8 @@ interface DailySummaryContentProps {
 
 export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySummaryContentProps) {
   const metrics = data.deliveryMetrics;
+  const isRange = Boolean(data.dateFrom && data.dateTo && data.dateFrom !== data.dateTo);
+  const periodLabel = isRange ? 'no período' : 'hoje';
   const showStoreColumn =
     showStoreInSlowDeliveries ??
     (metrics?.slowDeliveries.some((d) => d.storeName) ?? false);
@@ -48,7 +52,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Card><div className="text-sm text-slate-500">Faturamento hoje</div><div className="text-2xl font-bold">{formatCurrency(data.revenue)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Faturamento {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.revenue)}</div></Card>
         <Card><div className="text-sm text-slate-500">Vendas</div><div className="text-2xl font-bold">{data.salesCount}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas pendentes</div><div className="text-2xl font-bold">{data.deliveries.pending}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas em rota</div><div className="text-2xl font-bold">{data.deliveries.inProgress}</div></Card>

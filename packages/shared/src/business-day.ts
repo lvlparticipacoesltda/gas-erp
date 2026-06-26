@@ -71,6 +71,63 @@ export function getBusinessDayBounds(
   return { start, end, dateKey: key };
 }
 
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isValidDateKey(value: string): boolean {
+  return DATE_KEY_RE.test(value);
+}
+
+/** Intervalo inclusivo de dias operacionais [início do from, início do dia após to) em UTC. */
+export function getBusinessDayRangeBounds(
+  fromDateKey: string,
+  toDateKey?: string,
+  timeZone: string = DEFAULT_STORE_TIMEZONE,
+): { start: Date; end: Date; dateFrom: string; dateTo: string } {
+  const dateFrom = fromDateKey;
+  const dateTo = toDateKey ?? fromDateKey;
+  if (!isValidDateKey(dateFrom) || !isValidDateKey(dateTo)) {
+    throw new Error('Data inválida. Use o formato AAAA-MM-DD.');
+  }
+  if (dateFrom > dateTo) {
+    throw new Error('A data inicial não pode ser posterior à data final.');
+  }
+  const start = zonedTimeToUtc(dateFrom, 0, 0, 0, timeZone);
+  const end = zonedTimeToUtc(addDaysToDateKey(dateTo, 1), 0, 0, 0, timeZone);
+  return { start, end, dateFrom, dateTo };
+}
+
+export type DashboardDateQuery = {
+  date?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export function resolveDashboardDateRange(
+  query: DashboardDateQuery,
+  timeZone: string = DEFAULT_STORE_TIMEZONE,
+): { start: Date; end: Date; dateFrom: string; dateTo: string } {
+  const { date, dateFrom, dateTo } = query;
+  if (dateFrom || dateTo) {
+    return getBusinessDayRangeBounds(dateFrom ?? dateTo!, dateTo ?? dateFrom, timeZone);
+  }
+  if (date) {
+    const single = getBusinessDayBounds(date, timeZone);
+    return { start: single.start, end: single.end, dateFrom: single.dateKey, dateTo: single.dateKey };
+  }
+  const today = getBusinessDayBounds(undefined, timeZone);
+  return { start: today.start, end: today.end, dateFrom: today.dateKey, dateTo: today.dateKey };
+}
+
+export function formatDashboardDateRangeLabel(dateFrom: string, dateTo: string): string {
+  const fmt = (key: string) => key.split('-').reverse().join('/');
+  if (dateFrom === dateTo) return fmt(dateFrom);
+  return `${fmt(dateFrom)} – ${fmt(dateTo)}`;
+}
+
+export function todayDateKey(timeZone: string = DEFAULT_STORE_TIMEZONE): string {
+  return formatDateKeyInTimezone(new Date(), timeZone);
+}
+
 export function toNumber(value: unknown): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;

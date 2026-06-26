@@ -12,8 +12,13 @@ export class DashboardController {
   @Get('master')
   @UseGuards(RolesGuard)
   @Roles('ORG_MASTER', 'PLATFORM_ADMIN')
-  master(@CurrentUser() user: AuthUser) {
-    return this.service.masterOverview(user);
+  master(
+    @CurrentUser() user: AuthUser,
+    @Query('date') date?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.service.masterOverview(user, { date, dateFrom, dateTo });
   }
 
   @Get('store')
@@ -21,10 +26,12 @@ export class DashboardController {
     @CurrentUser() user: AuthUser,
     @Query('storeId') storeId: string,
     @Query('date') date?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
     if (!storeId) {
       throw new BadRequestException('storeId é obrigatório');
     }
-    return this.service.storeDashboard(user, storeId, date);
+    return this.service.storeDashboard(user, storeId, { date, dateFrom, dateTo });
   }
 }
