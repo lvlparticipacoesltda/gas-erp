@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Alert, AppState, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
@@ -21,8 +21,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-let prePromptShownThisSession = false;
-let declinedPrePromptThisSession = false;
 let notificationPermissionFlow: Promise<boolean> | null = null;
 
 function resolveEasProjectId(): string | null {
@@ -33,18 +31,14 @@ function resolveEasProjectId(): string | null {
   );
 }
 
-function startNotificationPermissionFlow(options?: {
-  skipPrePrompt?: boolean;
-}): Promise<boolean> {
+function startNotificationPermissionFlow(): Promise<boolean> {
   if (!notificationPermissionFlow) {
-    notificationPermissionFlow = requestNotificationPermissionOnAppOpen(options).then(
-      async (granted) => {
-        if (granted) {
-          await syncPushTokenWithApi().catch(() => undefined);
-        }
-        return granted;
-      },
-    );
+    notificationPermissionFlow = requestNotificationPermissionOnAppOpen().then(async (granted) => {
+      if (granted) {
+        await syncPushTokenWithApi().catch(() => undefined);
+      }
+      return granted;
+    });
   }
   return notificationPermissionFlow;
 }
@@ -52,20 +46,6 @@ function startNotificationPermissionFlow(options?: {
 /** Aguarda o fluxo de notificação na abertura antes de pedir localização. */
 export function waitForNotificationPermissionFlow(): Promise<boolean> {
   return startNotificationPermissionFlow();
-}
-
-function confirmNotificationPermission(): Promise<boolean> {
-  return new Promise((resolve) => {
-    Alert.alert(
-      'Notificações de entrega',
-      'Ative para ser avisado quando a loja atribuir uma nova entrega ou cancelar uma rota. Você pode desativar depois nas configurações do celular.',
-      [
-        { text: 'Agora não', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Ativar', style: 'default', onPress: () => resolve(true) },
-      ],
-      { cancelable: false },
-    );
-  });
 }
 
 async function ensureAndroidChannel() {
@@ -81,34 +61,16 @@ async function ensureAndroidChannel() {
 
 /**
  * Solicita permissão de notificação na abertura do app (antes do login).
- * Localização é pedida somente após autenticação.
+ * Apenas o prompt nativo do sistema — sem alerta extra do app.
  */
-export async function requestNotificationPermissionOnAppOpen(options?: {
-  skipPrePrompt?: boolean;
-}): Promise<boolean> {
+export async function requestNotificationPermissionOnAppOpen(): Promise<boolean> {
   if (!Device.isDevice) return false;
 
   await ensureAndroidChannel();
 
   const existing = await Notifications.getPermissionsAsync();
   if (existing.status === 'granted') return true;
-
-  if (existing.status === 'denied' && existing.canAskAgain === false) {
-    return false;
-  }
-
-  if (declinedPrePromptThisSession && !options?.skipPrePrompt) {
-    return false;
-  }
-
-  if (!options?.skipPrePrompt && !prePromptShownThisSession) {
-    prePromptShownThisSession = true;
-    const accepted = await confirmNotificationPermission();
-    if (!accepted) {
-      declinedPrePromptThisSession = true;
-      return false;
-    }
-  }
+  if (existing.status === 'denied' && existing.canAskAgain === false) return false;
 
   const requested = await Notifications.requestPermissionsAsync({
     ios: {
@@ -145,8 +107,6 @@ async function getExpoPushTokenIfGranted(): Promise<string | null> {
  * Passe accessToken no login para evitar race com o SecureStore.
  */
 export async function syncPushTokenWithApi(accessToken?: string): Promise<boolean> {
-  await waitForNotificationPermissionFlow().catch(() => false);
-
   const jwt = accessToken ?? (await getToken());
   if (!jwt) return false;
 
@@ -181,18 +141,19 @@ function getDeliveryIdFromNotification(
   return typeof deliveryId === 'string' ? deliveryId : undefined;
 }
 
-/** Pede notificação ao abrir o app; ao voltar ao foreground tenta de novo se ainda não concedida. */
+/** Pede notificação uma vez ao abrir; ao voltar ao app só tenta registrar token. */
 export function useNotificationPermissionOnAppOpen() {
+  const started = useRef(false);
+
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     void startNotificationPermissionFlow().catch(() => undefined);
 
     const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
-      void requestNotificationPermissionOnAppOpen({ skipPrePrompt: true })
-        .then((granted) => {
-          if (granted) return syncPushTokenWithApi();
-        })
-        .catch(() => undefined);
+      if (state === 'active') {
+        void syncPushTokenWithApi().catch(() => undefined);
+      }
     });
 
     return () => sub.remove();

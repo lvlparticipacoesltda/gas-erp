@@ -4,16 +4,18 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { AppState } from 'react-native';
 import type { DelivererMe } from '@gas-erp/shared';
 import { api } from './api';
-import { syncPresenceSharingEnabled, recoverStaleLocationTracking } from './location';
-import { waitForNotificationPermissionFlow } from './notifications';
+import { syncPresenceSharingEnabled, recoverStaleLocationTracking, promptLocationPermissionsAfterLogin } from './location';
+import { syncPushTokenWithApi, waitForNotificationPermissionFlow } from './notifications';
 
-const SYNC_INTERVAL_MS = 30_000;
+/** Intervalo para consultar disponibilidade no painel (disponível / indisponível). */
+const AVAILABILITY_SYNC_INTERVAL_MS = 30_000;
 
 interface DelivererAvailabilityContextValue {
   me: DelivererMe | null;
@@ -27,10 +29,13 @@ const DelivererAvailabilityContext = createContext<DelivererAvailabilityContextV
   undefined,
 );
 
+/**
+ * Consulta status no servidor e liga/desliga envio de GPS conforme disponibilidade.
+ * Não exibe diálogo de permissão — isso ocorre uma vez após login.
+ */
 export async function syncDelivererAvailabilityFromServer(): Promise<DelivererMe> {
-  await waitForNotificationPermissionFlow().catch(() => undefined);
-
   const me = await api<DelivererMe>('/deliverers/me');
+
   if (!me.sharingLocation && !me.hasActiveRoute) {
     await syncPresenceSharingEnabled(false);
   } else {
@@ -39,12 +44,15 @@ export async function syncDelivererAvailabilityFromServer(): Promise<DelivererMe
       await syncPresenceSharingEnabled(true);
     }
   }
+
+  void syncPushTokenWithApi().catch(() => undefined);
   return me;
 }
 
 export function DelivererAvailabilityProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<DelivererMe | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const bootstrapDone = useRef(false);
 
   const refresh = useCallback(async () => {
     setSyncing(true);
@@ -59,10 +67,20 @@ export function DelivererAvailabilityProvider({ children }: { children: ReactNod
   }, []);
 
   useEffect(() => {
-    void refresh();
+    if (bootstrapDone.current) return;
+    bootstrapDone.current = true;
+
+    void (async () => {
+      await waitForNotificationPermissionFlow().catch(() => undefined);
+      await promptLocationPermissionsAfterLogin();
+      await refresh();
+    })();
+  }, [refresh]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       void refresh();
-    }, SYNC_INTERVAL_MS);
+    }, AVAILABILITY_SYNC_INTERVAL_MS);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refresh();
     });

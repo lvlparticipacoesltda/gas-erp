@@ -22,6 +22,8 @@ let presenceSharingPaused = false;
 /** Evita prompts de permissão sobrepostos quando vários fluxos iniciam GPS ao mesmo tempo. */
 let permissionsInFlight: Promise<PermissionResult> | null = null;
 let locationSetupInFlight: Promise<PermissionResult> | null = null;
+/** Evita reexibir o diálogo de permissão de localização a cada sync de 30s. Não afeta envio de GPS. */
+let locationPermissionPromptedThisSession = false;
 
 type LocationTaskData = { locations: Location.LocationObject[] };
 
@@ -243,10 +245,27 @@ export async function requestLocationPermissionsWithDisclosure(): Promise<Permis
   }
 }
 
+/**
+ * Exibe o diálogo de permissão de localização (uma vez por sessão, após login).
+ * Não envia posição — isso é feito por startPresenceTracking / syncPresenceSharingEnabled.
+ */
+export async function promptLocationPermissionsAfterLogin(): Promise<PermissionResult> {
+  if (locationPermissionPromptedThisSession) {
+    const fg = await Location.getForegroundPermissionsAsync();
+    const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+    return {
+      foreground: fg.status === 'granted',
+      background: bg?.status === 'granted',
+    };
+  }
+  locationPermissionPromptedThisSession = true;
+  return requestLocationPermissionsWithDisclosure();
+}
+
 async function requestLocationPermissionsWithDisclosureOnce(): Promise<PermissionResult> {
   const fg = await Location.getForegroundPermissionsAsync();
   if (fg.status !== 'granted') {
-    if (fg.status === 'denied') {
+    if (fg.status === 'denied' && fg.canAskAgain === false) {
       return { foreground: false, background: false };
     }
     const requested = await Location.requestForegroundPermissionsAsync();
@@ -257,7 +276,7 @@ async function requestLocationPermissionsWithDisclosureOnce(): Promise<Permissio
   if (existingBg?.status === 'granted') {
     return { foreground: true, background: true };
   }
-  if (existingBg?.status === 'denied') {
+  if (existingBg?.status === 'denied' && existingBg.canAskAgain === false) {
     return { foreground: true, background: false };
   }
 
@@ -427,6 +446,7 @@ export async function stopDeliveryTracking(): Promise<void> {
 /** Encerra presença e rota (logout). */
 export async function stopAllTracking(): Promise<void> {
   presenceSharingPaused = false;
+  locationPermissionPromptedThisSession = false;
   teardownForegroundPresence();
   await SecureStore.deleteItemAsync(ACTIVE_DELIVERY_KEY).catch(() => undefined);
   if (await isTrackingActive()) {
