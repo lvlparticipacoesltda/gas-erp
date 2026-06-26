@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -11,11 +11,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MOBILE_APPROVAL_LABELS, type PaginatedResponse } from '@gas-erp/shared';
+import {
+  MOBILE_APPROVAL_LABELS,
+  PAYMENT_METHOD_LABELS,
+  type PaginatedResponse,
+  getSaleDisplayStatus,
+} from '@gas-erp/shared';
 import { Badge, Button, Card, Loading, StateMessage } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
 import { getCurrentDeliveryAddress } from '@/lib/location';
+import { fetchAddressByCep, formatCep, normalizeCepDigits } from '@/lib/viacep';
 import { colors, radius, spacing } from '@/theme';
 
 interface Store {
@@ -26,7 +32,7 @@ interface Store {
 interface Product {
   id: string;
   name: string;
-  storeSettings?: { price: number | string }[];
+  storeSettings?: { price: number | string; deliveryFee?: number | string }[];
 }
 
 interface Customer {
@@ -39,12 +45,13 @@ interface Customer {
     neighborhood?: string | null;
     city?: string | null;
     state?: string | null;
+    zipCode?: string | null;
     complement?: string | null;
     landmark?: string | null;
   }[];
 }
 
-interface PendingSale {
+interface MobileSaleRow {
   id: string;
   createdAt: string;
   total: number | string;
@@ -55,10 +62,14 @@ interface PendingSale {
 }
 
 type Fulfillment = 'DELIVERY' | 'PICKUP';
+type PaymentMethod = 'CASH' | 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD';
+
+const MOBILE_PAYMENT_METHODS: PaymentMethod[] = ['CASH', 'PIX', 'CREDIT_CARD', 'DEBIT_CARD'];
 
 const emptyNewCustomer = {
   name: '',
   phone: '',
+  zipCode: '',
   street: '',
   number: '',
   neighborhood: '',
@@ -72,18 +83,22 @@ function toNumber(value: number | string | null | undefined): number {
 }
 
 function formatCurrency(value: number): string {
-  return `R$ ${value.toFixed(2)}`;
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function productPrice(product: Product): number {
   return toNumber(product.storeSettings?.[0]?.price);
 }
 
+function productDeliveryFee(product: Product | undefined): number {
+  return product ? toNumber(product.storeSettings?.[0]?.deliveryFee) : 0;
+}
+
 export default function NewSaleScreen() {
   const { user } = useAuth();
   const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [pending, setPending] = useState<PendingSale[]>([]);
+  const [mySales, setMySales] = useState<MobileSaleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -93,14 +108,17 @@ export default function NewSaleScreen() {
   const [storeId, setStoreId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [searchingCustomers, setSearchingCustomers] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState(emptyNewCustomer);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('1');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [fulfillment, setFulfillment] = useState<Fulfillment>('DELIVERY');
   const [notes, setNotes] = useState('');
+  const [deliveryZipCode, setDeliveryZipCode] = useState('');
   const [deliveryStreet, setDeliveryStreet] = useState('');
   const [deliveryNumber, setDeliveryNumber] = useState('');
   const [deliveryNeighborhood, setDeliveryNeighborhood] = useState('');
@@ -108,6 +126,9 @@ export default function NewSaleScreen() {
   const [deliveryState, setDeliveryState] = useState('SP');
   const [deliveryLandmark, setDeliveryLandmark] = useState('');
   const [loadingGps, setLoadingGps] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState('');
+  const lastFetchedCep = useRef('');
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === productId),
@@ -116,14 +137,17 @@ export default function NewSaleScreen() {
   const unitPrice = selectedProduct ? productPrice(selectedProduct) : 0;
   const qty = Math.max(1, parseInt(quantity, 10) || 1);
   const lineTotal = unitPrice * qty;
+  const deliveryFee =
+    fulfillment === 'DELIVERY' && selectedProduct ? productDeliveryFee(selectedProduct) : 0;
+  const saleTotal = lineTotal + deliveryFee;
 
   const loadData = useCallback(async () => {
-    const [storeList, pendingList] = await Promise.all([
+    const [storeList, salesList] = await Promise.all([
       api<Store[]>('/stores'),
-      api<PendingSale[]>('/sales/mobile/mine'),
+      api<MobileSaleRow[]>('/sales/mobile/mine'),
     ]);
     setStores(storeList);
-    setPending(pendingList);
+    setMySales(salesList);
 
     const nextStoreId =
       storeId && storeList.some((s) => s.id === storeId)
@@ -144,7 +168,6 @@ export default function NewSaleScreen() {
     loadData()
       .catch((err) => setError(err instanceof Error ? err.message : 'Erro ao carregar'))
       .finally(() => setLoading(false));
-    // Carregamento inicial apenas
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -158,7 +181,40 @@ export default function NewSaleScreen() {
       .catch(() => undefined);
   }, [storeId]);
 
+  const searchCustomers = useCallback(async (query: string) => {
+    const term = query.trim();
+    if (!term) {
+      setCustomers([]);
+      return;
+    }
+    setSearchingCustomers(true);
+    try {
+      const res = await api<PaginatedResponse<Customer>>(
+        `/customers?search=${encodeURIComponent(term)}&pageSize=10`,
+      );
+      setCustomers(res.data);
+    } catch {
+      setCustomers([]);
+    } finally {
+      setSearchingCustomers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedCustomer) return;
+    const term = customerSearch.trim();
+    if (term.length < 2) {
+      setCustomers([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void searchCustomers(term);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [customerSearch, selectedCustomer, searchCustomers]);
+
   function applyAddressFields(addr: {
+    zipCode?: string | null;
     street?: string | null;
     number?: string | null;
     neighborhood?: string | null;
@@ -166,6 +222,7 @@ export default function NewSaleScreen() {
     state?: string | null;
     landmark?: string | null;
   }) {
+    if (addr.zipCode) setDeliveryZipCode(formatCep(addr.zipCode));
     setDeliveryStreet(addr.street ?? '');
     setDeliveryNumber(addr.number ?? '');
     setDeliveryNeighborhood(addr.neighborhood ?? '');
@@ -174,15 +231,67 @@ export default function NewSaleScreen() {
     setDeliveryLandmark(addr.landmark ?? '');
   }
 
-  async function searchCustomers() {
-    if (!customerSearch.trim()) {
-      setCustomers([]);
+  async function lookupCep(rawCep: string, target: 'delivery' | 'newCustomer') {
+    const digits = normalizeCepDigits(rawCep);
+    if (digits.length !== 8 || digits === lastFetchedCep.current) return;
+
+    setCepLoading(true);
+    setCepError('');
+    try {
+      const result = await fetchAddressByCep(digits);
+      if (!result) {
+        setCepError('CEP não encontrado.');
+        lastFetchedCep.current = '';
+        return;
+      }
+      lastFetchedCep.current = digits;
+      const formatted = formatCep(digits);
+      if (target === 'delivery') {
+        setDeliveryZipCode(formatted);
+        setDeliveryStreet(result.logradouro || deliveryStreet);
+        setDeliveryNeighborhood(result.bairro || deliveryNeighborhood);
+        setDeliveryCity(result.localidade || deliveryCity);
+        setDeliveryState(result.uf || deliveryState);
+      } else {
+        setNewCustomer((f) => ({
+          ...f,
+          zipCode: formatted,
+          street: result.logradouro || f.street,
+          neighborhood: result.bairro || f.neighborhood,
+          city: result.localidade || f.city,
+          state: result.uf || f.state,
+        }));
+      }
+    } catch {
+      setCepError('Não foi possível consultar o CEP.');
+      lastFetchedCep.current = '';
+    } finally {
+      setCepLoading(false);
+    }
+  }
+
+  function handleDeliveryCepChange(text: string) {
+    const formatted = formatCep(text);
+    setDeliveryZipCode(formatted);
+    setCepError('');
+    const digits = normalizeCepDigits(formatted);
+    if (digits.length !== 8) {
+      lastFetchedCep.current = '';
       return;
     }
-    const res = await api<PaginatedResponse<Customer>>(
-      `/customers?search=${encodeURIComponent(customerSearch.trim())}&pageSize=10`,
-    );
-    setCustomers(res.data);
+    void lookupCep(formatted, 'delivery');
+  }
+
+  function handleNewCustomerCepChange(text: string) {
+    const formatted = formatCep(text);
+    setNewCustomer((f) => ({ ...f, zipCode: formatted }));
+    setCepError('');
+    const digits = normalizeCepDigits(formatted);
+    if (digits.length !== 8) {
+      lastFetchedCep.current = '';
+      return;
+    }
+    void lookupCep(formatted, 'newCustomer');
   }
 
   function selectCustomer(customer: Customer) {
@@ -227,6 +336,7 @@ export default function NewSaleScreen() {
               neighborhood: newCustomer.neighborhood.trim() || undefined,
               city: newCustomer.city.trim(),
               state: newCustomer.state.trim().slice(0, 2).toUpperCase() || 'SP',
+              zipCode: normalizeCepDigits(newCustomer.zipCode) || undefined,
               isDefault: true,
             },
           ],
@@ -301,6 +411,7 @@ export default function NewSaleScreen() {
           fulfillmentType: fulfillment,
           notes: notes.trim() || undefined,
           items: [{ productId, quantity: qty, unitPrice }],
+          payments: [{ method: paymentMethod, amount: saleTotal }],
           deliveryStreet: fulfillment === 'DELIVERY' ? deliveryStreet : undefined,
           deliveryNumber: fulfillment === 'DELIVERY' ? deliveryNumber : undefined,
           deliveryNeighborhood: fulfillment === 'DELIVERY' ? deliveryNeighborhood : undefined,
@@ -311,6 +422,7 @@ export default function NewSaleScreen() {
       });
       setSuccess('Venda enviada — aguardando aprovação da loja.');
       setNotes('');
+      setPaymentMethod('CASH');
       clearCustomerSelection();
       await loadData();
     } catch (err) {
@@ -366,20 +478,21 @@ export default function NewSaleScreen() {
             <TextInput
               style={styles.input}
               value={customerSearch}
-              onChangeText={(text) => {
-                setCustomerSearch(text);
-                if (customers.length > 0) setCustomers([]);
-              }}
+              onChangeText={setCustomerSearch}
               placeholder="Buscar por nome ou telefone"
               placeholderTextColor={colors.textFaint}
-              onSubmitEditing={searchCustomers}
-              blurOnSubmit={false}
               autoCorrect={false}
+              returnKeyType="search"
+              onSubmitEditing={() => void searchCustomers(customerSearch)}
             />
+            {searchingCustomers ? (
+              <Text style={styles.hint}>Buscando clientes...</Text>
+            ) : customerSearch.trim().length >= 2 && customers.length === 0 ? (
+              <Text style={styles.hint}>Nenhum cliente encontrado. Cadastre um novo abaixo.</Text>
+            ) : null}
             <View style={styles.rowButtons}>
-              <Button label="Buscar cliente" variant="secondary" onPress={searchCustomers} />
               <Button
-                label={showNewCustomer ? 'Cancelar cadastro' : 'Novo cliente'}
+                label="Novo cliente"
                 variant="secondary"
                 onPress={() => {
                   setShowNewCustomer((v) => !v);
@@ -414,6 +527,15 @@ export default function NewSaleScreen() {
                   placeholder="Telefone"
                   placeholderTextColor={colors.textFaint}
                   keyboardType="phone-pad"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={newCustomer.zipCode}
+                  onChangeText={handleNewCustomerCepChange}
+                  placeholder="CEP"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="number-pad"
+                  maxLength={9}
                 />
                 <TextInput
                   style={styles.input}
@@ -457,19 +579,20 @@ export default function NewSaleScreen() {
 
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Produto</Text>
-        <View style={styles.chips}>
+        <View style={styles.productList}>
           {products.map((p) => {
             const price = productPrice(p);
+            const selected = productId === p.id;
             return (
               <Pressable
                 key={p.id}
                 onPress={() => setProductId(p.id)}
-                style={[styles.chip, productId === p.id && styles.chipActive]}
+                style={[styles.productCard, selected && styles.productCardActive]}
               >
-                <Text style={[styles.chipText, productId === p.id && styles.chipTextActive]}>
+                <Text style={[styles.productName, selected && styles.productNameActive]}>
                   {p.name}
                 </Text>
-                <Text style={[styles.chipPrice, productId === p.id && styles.chipTextActive]}>
+                <Text style={[styles.productPrice, selected && styles.productPriceActive]}>
                   {price > 0 ? formatCurrency(price) : 'Sem preço'}
                 </Text>
               </Pressable>
@@ -486,10 +609,33 @@ export default function NewSaleScreen() {
           placeholderTextColor={colors.textFaint}
         />
         {unitPrice > 0 ? (
-          <Text style={styles.priceSummary}>
-            {qty}x {formatCurrency(unitPrice)} = {formatCurrency(lineTotal)}
-          </Text>
+          <View style={styles.priceBox}>
+            <Text style={styles.priceLine}>
+              Produto: {qty}x {formatCurrency(unitPrice)} = {formatCurrency(lineTotal)}
+            </Text>
+            {deliveryFee > 0 ? (
+              <Text style={styles.priceLine}>Taxa entrega: {formatCurrency(deliveryFee)}</Text>
+            ) : null}
+            <Text style={styles.priceTotal}>Total: {formatCurrency(saleTotal)}</Text>
+          </View>
         ) : null}
+      </Card>
+
+      <Card style={styles.section}>
+        <Text style={styles.sectionTitle}>Forma de pagamento</Text>
+        <View style={styles.chips}>
+          {MOBILE_PAYMENT_METHODS.map((method) => (
+            <Pressable
+              key={method}
+              onPress={() => setPaymentMethod(method)}
+              style={[styles.chip, paymentMethod === method && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, paymentMethod === method && styles.chipTextActive]}>
+                {PAYMENT_METHOD_LABELS[method]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </Card>
 
       <Card style={styles.section}>
@@ -522,6 +668,18 @@ export default function NewSaleScreen() {
               loading={loadingGps}
               disabled={loadingGps}
             />
+            <Text style={styles.label}>CEP</Text>
+            <TextInput
+              style={styles.input}
+              value={deliveryZipCode}
+              onChangeText={handleDeliveryCepChange}
+              placeholder="00000-000"
+              placeholderTextColor={colors.textFaint}
+              keyboardType="number-pad"
+              maxLength={9}
+            />
+            {cepLoading ? <Text style={styles.hint}>Buscando CEP...</Text> : null}
+            {cepError ? <Text style={styles.cepError}>{cepError}</Text> : null}
             <TextInput
               style={styles.input}
               value={deliveryStreet}
@@ -550,6 +708,15 @@ export default function NewSaleScreen() {
               placeholder="Cidade"
               placeholderTextColor={colors.textFaint}
             />
+            <TextInput
+              style={styles.input}
+              value={deliveryState}
+              onChangeText={(text) => setDeliveryState(text.slice(0, 2).toUpperCase())}
+              placeholder="UF"
+              placeholderTextColor={colors.textFaint}
+              maxLength={2}
+              autoCapitalize="characters"
+            />
             {deliveryLandmark ? (
               <Text style={styles.gpsHint}>Referência: {deliveryLandmark}</Text>
             ) : null}
@@ -570,15 +737,19 @@ export default function NewSaleScreen() {
       </Card>
 
       <Button
-        label={submitting ? 'Enviando...' : 'Enviar venda'}
+        label={submitting ? 'Enviando...' : `Enviar venda — ${formatCurrency(saleTotal)}`}
         onPress={submitSale}
         loading={submitting}
-        disabled={submitting}
+        disabled={submitting || saleTotal <= 0}
       />
 
-      <Text style={styles.pendingTitle}>Minhas vendas pendentes</Text>
-      {pending.length === 0 ? (
-        <StateMessage emoji="📋" title="Nenhuma pendente" subtitle="Suas vendas aguardando aprovação aparecem aqui." />
+      <Text style={styles.pendingTitle}>Minhas vendas no app</Text>
+      {mySales.length === 0 ? (
+        <StateMessage
+          emoji="📋"
+          title="Nenhuma venda ainda"
+          subtitle="As vendas que você registrar pelo app aparecem aqui."
+        />
       ) : null}
     </View>
   );
@@ -599,32 +770,41 @@ export default function NewSaleScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <FlatList
-          data={pending}
+          data={mySales}
           keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.scroll}
           ListHeaderComponent={formHeader}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
           }
-          renderItem={({ item }) => (
-            <Card style={styles.pendingCard}>
-              <View style={styles.pendingHeader}>
-                <Badge label={MOBILE_APPROVAL_LABELS.PENDING} tone="warning" />
-                <Text style={styles.pendingDate}>
-                  {new Date(item.createdAt).toLocaleString('pt-BR')}
+          renderItem={({ item }) => {
+            const display = getSaleDisplayStatus({
+              status: item.status,
+              mobileApproval: item.mobileApproval,
+            });
+            return (
+              <Card style={styles.pendingCard}>
+                <View style={styles.pendingHeader}>
+                  <Badge label={display.label} tone={display.tone} />
+                  <Text style={styles.pendingDate}>
+                    {new Date(item.createdAt).toLocaleString('pt-BR')}
+                  </Text>
+                </View>
+                <Text style={styles.pendingCustomer}>
+                  {item.customer?.name ?? 'Cliente não identificado'}
                 </Text>
-              </View>
-              <Text style={styles.pendingCustomer}>
-                {item.customer?.name ?? 'Cliente não identificado'}
-              </Text>
-              <Text style={styles.pendingItems}>
-                {item.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ')}
-              </Text>
-              <Text style={styles.pendingTotal}>Total: {formatCurrency(toNumber(item.total))}</Text>
-            </Card>
-          )}
+                <Text style={styles.pendingItems}>
+                  {item.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ')}
+                </Text>
+                <Text style={styles.pendingTotal}>Total: {formatCurrency(toNumber(item.total))}</Text>
+                {item.mobileApproval === 'PENDING' ? (
+                  <Text style={styles.hint}>{MOBILE_APPROVAL_LABELS.PENDING}</Text>
+                ) : null}
+              </Card>
+            );
+          }}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       </KeyboardAvoidingView>
@@ -657,6 +837,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   label: { fontSize: 13, color: colors.textMuted, marginTop: spacing.sm },
   value: { fontSize: 15, color: colors.text },
+  hint: { fontSize: 12, color: colors.textMuted },
+  cepError: { fontSize: 12, color: colors.dangerText },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -676,12 +858,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    gap: 2,
   },
   chipActive: { backgroundColor: colors.navy, borderColor: colors.navy },
   chipText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
-  chipPrice: { fontSize: 11, fontWeight: '500', color: colors.textFaint },
   chipTextActive: { color: '#FFFFFF' },
+  productList: { gap: spacing.sm },
+  productCard: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  productCardActive: { backgroundColor: colors.navy, borderColor: colors.navy },
+  productName: { fontSize: 15, fontWeight: '600', color: colors.text, flex: 1 },
+  productNameActive: { color: '#FFFFFF' },
+  productPrice: { fontSize: 15, fontWeight: '700', color: colors.primary },
+  productPriceActive: { color: '#FFFFFF' },
   rowButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   customerList: { gap: spacing.xs },
   customerRow: {
@@ -703,7 +899,15 @@ const styles = StyleSheet.create({
   customerPhone: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   addressFields: { gap: spacing.sm, marginTop: spacing.sm },
   gpsHint: { fontSize: 11, color: colors.textFaint },
-  priceSummary: { fontSize: 14, fontWeight: '700', color: colors.text, marginTop: spacing.xs },
+  priceBox: {
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    gap: 4,
+  },
+  priceLine: { fontSize: 13, color: colors.textMuted },
+  priceTotal: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: 4 },
   pendingTitle: {
     fontSize: 16,
     fontWeight: '700',

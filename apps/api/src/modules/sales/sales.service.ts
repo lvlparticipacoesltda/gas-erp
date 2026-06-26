@@ -384,10 +384,11 @@ export class SalesService {
     return this.prisma.sale.findMany({
       where: {
         createdByDelivererId: deliverer.id,
-        mobileApproval: 'PENDING' as MobileApprovalStatus,
+        mobileApproval: { not: 'NOT_REQUIRED' as MobileApprovalStatus },
       },
       include: this.saleInclude,
       orderBy: { createdAt: 'desc' },
+      take: 50,
     });
   }
 

@@ -28,8 +28,14 @@ export function isMobileOriginatedSale(sale: {
 export function getSaleAttendantName(sale: {
   attendant?: { name: string } | null;
   createdByDeliverer?: { user: { name: string } } | null;
+  channel?: string;
+  mobileApproval?: string;
+  createdByDelivererId?: string | null;
 }): string | null {
-  return sale.attendant?.name ?? sale.createdByDeliverer?.user.name ?? null;
+  if (isMobileOriginatedSale(sale)) {
+    return sale.createdByDeliverer?.user.name ?? null;
+  }
+  return sale.attendant?.name ?? null;
 }
 
 /** Status unificado para venda + entrega (histórico e sidebar). */

@@ -32,6 +32,7 @@ interface Sale {
   channel?: string;
   backdateApproval?: string;
   mobileApproval?: string;
+  createdByDelivererId?: string | null;
   total: number | string;
   customer?: { name: string };
   attendant?: { name: string } | null;
@@ -102,8 +103,21 @@ export default function SalesListPage() {
       <div className="mb-6 flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="w-full max-w-xs">
           <Label>Status</Label>
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <Select
+            value={mobileFilter ? '__mobile_pending__' : statusFilter}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === '__mobile_pending__') {
+                setMobileFilter(true);
+                setStatusFilter('');
+              } else {
+                setMobileFilter(false);
+                setStatusFilter(v);
+              }
+            }}
+          >
             <option value="">Todos os status</option>
+            <option value="__mobile_pending__">Aguardando aprovação (app)</option>
             {Object.entries(SALE_STATUS_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
                 {v}
