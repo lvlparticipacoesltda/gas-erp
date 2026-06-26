@@ -88,7 +88,11 @@ export class SalesService {
 
     await this.validateSaleReferences(user, data);
 
-    const isPickup = data.fulfillmentType === 'PICKUP';
+    if (data.channel === 'IN_STORE' && data.fulfillmentType === 'DELIVERY') {
+      throw new BadRequestException('Vendas pelo canal portaria não permitem entrega.');
+    }
+
+    const isPickup = data.fulfillmentType === 'PICKUP' || data.channel === 'IN_STORE';
     const initialStatus = isPickup ? SaleStatus.DELIVERED : SaleStatus.CONFIRMED;
     const channel = isPickup ? 'IN_STORE' : (data.channel ?? 'PHONE');
 

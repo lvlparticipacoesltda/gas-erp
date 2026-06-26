@@ -59,6 +59,27 @@ export default function NewSalePage() {
     deliveryZipCode: '',
   });
 
+  const isPortariaChannel = draft.channel === 'IN_STORE';
+
+  function selectChannel(channel: (typeof SALE_CHANNELS)[number]) {
+    setDraft((d) => ({
+      ...d,
+      channel,
+      ...(channel === 'IN_STORE'
+        ? {
+            fulfillmentType: 'PICKUP' as const,
+            delivererId: '',
+            deliveryStreet: '',
+            deliveryNumber: '',
+            deliveryNeighborhood: '',
+            deliveryCity: '',
+            deliveryState: 'SP',
+            deliveryZipCode: '',
+          }
+        : {}),
+    }));
+  }
+
   useEffect(() => {
     Promise.all([
       api<Product[]>(`/products?storeId=${storeId}`, {}, getToken()),
@@ -177,7 +198,8 @@ export default function NewSalePage() {
 
   async function submitSale(requireDeliverer: boolean) {
     setError('');
-    if (draft.fulfillmentType === 'DELIVERY' && !draft.deliveryStreet.trim()) {
+    const fulfillmentType = isPortariaChannel ? 'PICKUP' : draft.fulfillmentType;
+    if (fulfillmentType === 'DELIVERY' && !draft.deliveryStreet.trim()) {
       setError('Informe o endereço de entrega.');
       return;
     }
@@ -193,10 +215,10 @@ export default function NewSalePage() {
         body: JSON.stringify({
           storeId,
           customerId: draft.customerId || undefined,
-          channel: draft.fulfillmentType === 'PICKUP' ? 'IN_STORE' : draft.channel,
-          fulfillmentType: draft.fulfillmentType,
+          channel: fulfillmentType === 'PICKUP' ? 'IN_STORE' : draft.channel,
+          fulfillmentType,
           delivererId:
-            draft.fulfillmentType === 'DELIVERY' ? draft.delivererId || undefined : undefined,
+            fulfillmentType === 'DELIVERY' ? draft.delivererId || undefined : undefined,
           notes: draft.notes || undefined,
           deliveryStreet: draft.deliveryStreet,
           deliveryNumber: draft.deliveryNumber,
@@ -282,13 +304,13 @@ export default function NewSalePage() {
             <div className="mt-6">
               <Label>Canal de venda</Label>
               <div className="mt-2 flex flex-wrap gap-4">
-                {SALE_CHANNELS.filter((c) => c !== 'IN_STORE').map((c) => (
+                {SALE_CHANNELS.map((c) => (
                   <label key={c} className="flex cursor-pointer items-center gap-2 text-sm">
                     <input
                       type="radio"
                       name="channel"
                       checked={draft.channel === c}
-                      onChange={() => setDraft({ ...draft, channel: c })}
+                      onChange={() => selectChannel(c)}
                     />
                     {SALE_CHANNEL_LABELS[c] ?? c}
                   </label>
@@ -392,34 +414,43 @@ export default function NewSalePage() {
         {step === 3 && (
           <Card>
             <h2 className="mb-4 font-semibold">Tipo de venda</h2>
-            <div className="mb-6 flex flex-wrap gap-4">
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-muted">
-                <input
-                  type="radio"
-                  name="fulfillment"
-                  checked={draft.fulfillmentType === 'PICKUP'}
-                  onChange={() => setDraft({ ...draft, fulfillmentType: 'PICKUP', delivererId: '' })}
-                />
-                <div>
-                  <div className="font-medium">Portaria</div>
-                  <div className="text-xs text-slate-500">Cliente retira na loja — status Entregue</div>
-                </div>
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-muted">
-                <input
-                  type="radio"
-                  name="fulfillment"
-                  checked={draft.fulfillmentType === 'DELIVERY'}
-                  onChange={() => setDraft({ ...draft, fulfillmentType: 'DELIVERY' })}
-                />
-                <div>
-                  <div className="font-medium">Entrega</div>
-                  <div className="text-xs text-slate-500">Endereço + entregador — aparece na barra lateral</div>
-                </div>
-              </label>
-            </div>
+            {isPortariaChannel ? (
+              <div className="mb-6 rounded-lg border border-brand bg-brand-muted px-4 py-3">
+                <div className="font-medium text-brand-dark">Portaria</div>
+                <p className="mt-1 text-sm text-slate-600">
+                  Canal portaria selecionado — o cliente retira na loja e a venda é concluída como entregue.
+                </p>
+              </div>
+            ) : (
+              <div className="mb-6 flex flex-wrap gap-4">
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-muted">
+                  <input
+                    type="radio"
+                    name="fulfillment"
+                    checked={draft.fulfillmentType === 'PICKUP'}
+                    onChange={() => setDraft({ ...draft, fulfillmentType: 'PICKUP', delivererId: '' })}
+                  />
+                  <div>
+                    <div className="font-medium">Portaria</div>
+                    <div className="text-xs text-slate-500">Cliente retira na loja — status Entregue</div>
+                  </div>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-muted">
+                  <input
+                    type="radio"
+                    name="fulfillment"
+                    checked={draft.fulfillmentType === 'DELIVERY'}
+                    onChange={() => setDraft({ ...draft, fulfillmentType: 'DELIVERY' })}
+                  />
+                  <div>
+                    <div className="font-medium">Entrega</div>
+                    <div className="text-xs text-slate-500">Endereço + entregador — aparece na barra lateral</div>
+                  </div>
+                </label>
+              </div>
+            )}
 
-            {draft.fulfillmentType === 'DELIVERY' && (
+            {!isPortariaChannel && draft.fulfillmentType === 'DELIVERY' && (
               <>
                 <h3 className="mb-3 font-medium">Endereço de entrega</h3>
                 <div className="mb-6">
@@ -450,13 +481,17 @@ export default function NewSalePage() {
 
             <div className="mb-6">
               <Label>Observação (opcional)</Label>
-              <Input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Recado para o entregador" />
+              <Input
+                value={draft.notes}
+                onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+                placeholder={isPortariaChannel || draft.fulfillmentType === 'PICKUP' ? 'Observação da venda' : 'Recado para o entregador'}
+              />
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
               <Button type="button" variant="secondary" onClick={() => setStep(2)}>← Voltar</Button>
               <div className="flex flex-wrap gap-2">
-                {draft.fulfillmentType === 'PICKUP' ? (
+                {isPortariaChannel || draft.fulfillmentType === 'PICKUP' ? (
                   <Button type="button" disabled={submitting} onClick={() => submitSale(false)}>
                     {submitting ? 'Salvando...' : 'Concluir venda (portaria)'}
                   </Button>
