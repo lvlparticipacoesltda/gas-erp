@@ -12,7 +12,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   canManageSales,
   canApproveMobileSales,
-  formatSaleDateLabel,
+  formatSaleDateTimeLabel,
   formatWaitTime,
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
@@ -173,7 +173,7 @@ export default function SalesListPage() {
               return (
               <tr key={s.id} className="border-t border-slate-100">
                 <td className="p-3">
-                  <div>{formatSaleDateLabel(s.saleDate ?? s.createdAt)}</div>
+                  <div>{formatSaleDateTimeLabel(s)}</div>
                   {fromMobile && (
                     <div className="mt-1">
                       <Badge tone="default">App entregador</Badge>

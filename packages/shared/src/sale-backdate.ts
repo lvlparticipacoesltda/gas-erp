@@ -54,6 +54,21 @@ export function formatSaleDateLabel(value: string | Date): string {
   return key.split('-').reverse().join('/');
 }
 
+/** Data da venda + hora do registro (listagens). */
+export function formatSaleDateTimeLabel(sale: {
+  saleDate?: string | Date | null;
+  createdAt: string | Date;
+}): string {
+  const dateLabel = formatSaleDateLabel(sale.saleDate ?? sale.createdAt);
+  const created =
+    sale.createdAt instanceof Date ? sale.createdAt : new Date(sale.createdAt);
+  const timeLabel = new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(created);
+  return `${dateLabel} ${timeLabel}`;
+}
+
 export function resolveSaleBackdateInput(input: {
   saleDate?: string;
   userRole: string;
