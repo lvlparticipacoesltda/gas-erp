@@ -25,6 +25,10 @@ export const createDelivererSchema = z
   });
 
 export const updateDelivererSchema = z.object({
+  name: z.string().min(2).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+  password: z.string().min(6).optional(),
   storeIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos uma unidade').optional(),
   status: z.enum(DELIVERER_STATUSES).optional(),
   /** Desativa o login no app (User.active) e marca entregador como offline. */

@@ -311,6 +311,10 @@ function EditDelivererModal({
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(deliverer.stores.map((s) => s.storeId)),
   );
+  const [name, setName] = useState(deliverer.user.name);
+  const [email, setEmail] = useState(deliverer.user.email);
+  const [phone, setPhone] = useState(deliverer.user.phone ?? '');
+  const [password, setPassword] = useState('');
   const [status, setStatus] = useState(deliverer.status);
   const [active, setActive] = useState(deliverer.user.active);
   const [saving, setSaving] = useState(false);
@@ -329,6 +333,18 @@ function EditDelivererModal({
       setError('Selecione ao menos uma unidade.');
       return;
     }
+    if (name.trim().length < 2) {
+      setError('Informe o nome do entregador.');
+      return;
+    }
+    if (!email.trim()) {
+      setError('Informe o e-mail do entregador.');
+      return;
+    }
+    if (password && password.length < 6) {
+      setError('A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
     if (deliverer.user.active && !active) {
       const ok = confirm(
         `Desativar o entregador "${deliverer.user.name}"?\n\nEle não poderá mais fazer login no aplicativo.`,
@@ -340,7 +356,18 @@ function EditDelivererModal({
     try {
       await api(
         `/deliverers/${deliverer.id}`,
-        { method: 'PATCH', body: JSON.stringify({ storeIds: [...selected], status, active }) },
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone.trim() || undefined,
+            ...(password ? { password } : {}),
+            storeIds: [...selected],
+            status,
+            active,
+          }),
+        },
         getToken(),
       );
       onSaved();
@@ -353,9 +380,43 @@ function EditDelivererModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
         <h2 className="text-lg font-bold text-slate-900">Editar entregador</h2>
-        <p className="mt-1 text-sm text-slate-500">{deliverer.user.name}</p>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <Label>Nome</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+          <div>
+            <Label>E-mail</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <Label>Telefone</Label>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Opcional"
+            />
+          </div>
+          <div>
+            <Label>Nova senha</Label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={6}
+              placeholder="Deixe em branco para manter a atual"
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
 
         <div className="mt-4">
           <Label>Unidades atendidas</Label>

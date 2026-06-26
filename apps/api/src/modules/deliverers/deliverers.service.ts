@@ -396,6 +396,36 @@ export class DeliverersService {
       await this.assertStoresInOrg(user, data.storeIds);
     }
 
+    const currentUser = await this.prisma.user.findUnique({ where: { id: deliverer.userId } });
+    if (!currentUser) {
+      throw new NotFoundException('Usuário do entregador não encontrado');
+    }
+
+    let normalizedEmail: string | undefined;
+    if (data.email !== undefined) {
+      normalizedEmail = data.email.trim().toLowerCase();
+      if (normalizedEmail !== currentUser.email) {
+        const existing = await this.prisma.user.findFirst({
+          where: {
+            organizationId: user.organizationId,
+            email: normalizedEmail,
+            NOT: { id: deliverer.userId },
+          },
+        });
+        if (existing) {
+          throw new ConflictException('Este e-mail já está cadastrado nesta rede.');
+        }
+      }
+    }
+
+    const passwordHash = data.password ? await bcrypt.hash(data.password, 10) : undefined;
+    const hasUserUpdate =
+      data.name !== undefined
+      || normalizedEmail !== undefined
+      || data.phone !== undefined
+      || data.active !== undefined
+      || passwordHash !== undefined;
+
     const nextStatus =
       data.active === false
         ? 'OFFLINE'
@@ -417,10 +447,16 @@ export class DeliverersService {
     const previousStatus = deliverer.status;
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (data.active !== undefined) {
+      if (hasUserUpdate) {
         await tx.user.update({
           where: { id: deliverer.userId },
-          data: { active: data.active },
+          data: {
+            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(normalizedEmail !== undefined ? { email: normalizedEmail } : {}),
+            ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
+            ...(data.active !== undefined ? { active: data.active } : {}),
+            ...(passwordHash ? { passwordHash } : {}),
+          },
         });
       }
 
@@ -459,6 +495,10 @@ export class DeliverersService {
     await this.audit.log(user, 'UPDATE', 'Deliverer', id, {
       active: data.active,
       status: nextStatus,
+      name: data.name,
+      email: normalizedEmail,
+      phone: data.phone,
+      passwordChanged: !!passwordHash,
     });
 
     if (nextStatus && nextStatus !== previousStatus) {
