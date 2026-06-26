@@ -20,8 +20,12 @@ export class CustomersController {
   }
 
   @Get(':id')
-  findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.customersService.findOne(user, id);
+  findOne(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('storeId') storeId?: string,
+  ) {
+    return this.customersService.findOne(user, id, storeId);
   }
 
   @Post()

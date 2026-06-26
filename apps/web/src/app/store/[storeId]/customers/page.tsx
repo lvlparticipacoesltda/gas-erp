@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { CustomerAddressFields, customerAddressPayload, type CustomerAddressForm } from '@/components/customer-address-fields';
-import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
+import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { getSaleDisplayStatus } from '@gas-erp/shared';
 
 interface CustomerAddress {
   id?: string;
@@ -23,6 +27,14 @@ interface Customer {
   phone?: string;
   document?: string;
   addresses: CustomerAddress[];
+}
+
+interface CustomerSale {
+  id: string;
+  createdAt: string;
+  status: string;
+  total: number | string;
+  items: { quantity: number; product: { name: string } }[];
 }
 
 interface CustomerForm extends CustomerAddressForm {
@@ -58,11 +70,96 @@ function buildAddressPayload(form: CustomerForm) {
   return customerAddressPayload(form);
 }
 
+function CustomerHistoryModal({
+  customer,
+  storeId,
+  onClose,
+}: {
+  customer: Customer;
+  storeId: string;
+  onClose: () => void;
+}) {
+  const [sales, setSales] = useState<CustomerSale[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    api<{ sales: CustomerSale[] }>(`/customers/${customer.id}?storeId=${storeId}`, {}, getToken())
+      .then((res) => {
+        if (!cancelled) setSales(res.sales);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Erro ao carregar histórico');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customer.id, storeId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl">
+        <div className="border-b border-slate-100 px-6 py-4">
+          <h2 className="text-lg font-bold text-slate-900">Histórico de pedidos</h2>
+          <p className="mt-1 text-sm text-slate-500">{customer.name}</p>
+        </div>
+
+        <div className="overflow-y-auto px-6 py-4">
+          {loading && <p className="text-sm text-slate-500">Carregando pedidos…</p>}
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {!loading && !error && sales.length === 0 && (
+            <p className="text-sm text-slate-500">Nenhum pedido encontrado para este cliente nesta unidade.</p>
+          )}
+          {!loading && !error && sales.length > 0 && (
+            <ul className="space-y-3">
+              {sales.map((sale) => {
+                const display = getSaleDisplayStatus(sale);
+                const itemsSummary = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
+                return (
+                  <li key={sale.id} className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900">{formatDate(sale.createdAt)}</p>
+                        <p className="mt-1 text-sm text-slate-600">{itemsSummary || 'Sem itens'}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <Badge tone={display.tone}>{display.label}</Badge>
+                        <span className="font-semibold text-slate-900">{formatCurrency(sale.total)}</span>
+                        <Link href={`/store/${storeId}/sales/${sale.id}`}>
+                          <Button type="button" variant="secondary">Ver pedido</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="border-t border-slate-100 px-6 py-4">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomersPage() {
+  const { storeId } = useParams<{ storeId: string }>();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<Customer | null>(null);
+  const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
@@ -158,10 +255,10 @@ export default function CustomersPage() {
     <>
       <PageHeader title="Clientes" subtitle="Cadastro e busca de clientes da rede" />
 
-      <Card className="mb-6">
+      <div className="mb-6 max-w-md">
         <Label>Buscar cliente</Label>
-        <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
+        <div className="mt-1 flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
             <svg
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
               xmlns="http://www.w3.org/2000/svg"
@@ -181,12 +278,12 @@ export default function CustomersPage() {
             />
           </div>
           {search ? (
-            <Button type="button" variant="secondary" onClick={() => setSearch('')}>
+            <Button type="button" variant="secondary" className="shrink-0" onClick={() => setSearch('')}>
               Limpar
             </Button>
           ) : null}
         </div>
-      </Card>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -230,7 +327,12 @@ export default function CustomersPage() {
                   <td className="p-3">{c.phone ?? '-'}</td>
                   <td className="p-3">{c.addresses[0] ? `${c.addresses[0].street}, ${c.addresses[0].city}` : '-'}</td>
                   <td className="p-3 text-right">
-                    <Button type="button" variant="secondary" onClick={() => startEdit(c)}>Editar</Button>
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="secondary" onClick={() => setHistoryCustomer(c)}>
+                        Histórico
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={() => startEdit(c)}>Editar</Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -245,6 +347,14 @@ export default function CustomersPage() {
           </Table>
         </Card>
       </div>
+
+      {historyCustomer && (
+        <CustomerHistoryModal
+          customer={historyCustomer}
+          storeId={storeId}
+          onClose={() => setHistoryCustomer(null)}
+        />
+      )}
     </>
   );
 }

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { customerAddressSchema, createCustomerSchema, updateCustomerSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
+import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 
 @Injectable()
@@ -35,10 +36,23 @@ export class CustomersService {
     return paginatedResult(data, total, p, ps);
   }
 
-  async findOne(user: AuthUser, id: string) {
+  async findOne(user: AuthUser, id: string, storeId?: string) {
+    if (storeId) assertStoreAccess(user, storeId);
+
     const customer = await this.prisma.customer.findFirst({
       where: { id, organizationId: user.organizationId },
-      include: { category: true, addresses: true, sales: { take: 10, orderBy: { createdAt: 'desc' } } },
+      include: {
+        category: true,
+        addresses: true,
+        sales: {
+          where: storeId ? { storeId } : undefined,
+          take: 50,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            items: { include: { product: { select: { name: true } } } },
+          },
+        },
+      },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
     return customer;
