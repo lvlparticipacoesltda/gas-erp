@@ -24,8 +24,12 @@ export default function LoginPage() {
         user: { role: string; storeIds?: string[]; permissions?: string[] };
       }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, client: 'web' }),
       });
+      if (res.user.role === 'DELIVERER') {
+        setError('Entregadores devem acessar pelo aplicativo móvel.');
+        return;
+      }
       setAuth(res.accessToken, res.user);
       if (res.user.role === 'ORG_MASTER' || res.user.role === 'PLATFORM_ADMIN') {
         router.push('/master/dashboard');

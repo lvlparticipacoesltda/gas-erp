@@ -12,6 +12,13 @@ export class ApiError extends Error {
   }
 }
 
+let onUnauthorized: (() => void) | null = null;
+
+/** Registra callback para sessão inválida (ex.: usuário inativado). */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
 function extractMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== 'object') return fallback;
   const raw = (payload as Record<string, unknown>).message;
@@ -46,6 +53,9 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 
   if (!res.ok) {
     const payload = await res.json().catch(() => ({ message: res.statusText }));
+    if (res.status === 401 && auth && bearer) {
+      onUnauthorized?.();
+    }
     throw new ApiError(extractMessage(payload, res.statusText || 'Erro na requisição'), res.status);
   }
 

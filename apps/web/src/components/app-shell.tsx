@@ -60,6 +60,12 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
       router.replace('/login');
       return;
     }
+    if (stored.role === 'DELIVERER') {
+      clearAuth();
+      clearAppShellCache();
+      router.replace('/login');
+      return;
+    }
     cachedUser = stored;
     setUser(stored);
 

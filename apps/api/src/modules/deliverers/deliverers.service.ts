@@ -36,7 +36,7 @@ export class DeliverersService {
   ) {}
 
   private readonly include = {
-    user: { select: { id: true, name: true, email: true, phone: true } },
+    user: { select: { id: true, name: true, email: true, phone: true, active: true } },
     stores: { include: { store: true } },
   } as const;
 
@@ -67,6 +67,7 @@ export class DeliverersService {
 
     const deliverers = await this.prisma.deliverer.findMany({
       where: {
+        user: { active: true },
         OR: [
           { stores: { some: { storeId, store: { organizationId: user.organizationId } } } },
           {
@@ -325,25 +326,49 @@ export class DeliverersService {
       await this.assertStoresInOrg(user, data.storeIds);
     }
 
-    const updated = await this.prisma.deliverer.update({
-      where: { id },
-      data: {
-        status: data.status,
-        ...(data.storeIds
-          ? {
-              stores: {
-                deleteMany: {},
-                create: data.storeIds.map((storeId) => ({ storeId })),
-              },
-            }
-          : {}),
-      },
-      include: this.include,
+    const nextStatus =
+      data.active === false
+        ? 'OFFLINE'
+        : data.active === true && !data.status
+          ? 'AVAILABLE'
+          : data.status;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (data.active !== undefined) {
+        await tx.user.update({
+          where: { id: deliverer.userId },
+          data: { active: data.active },
+        });
+      }
+
+      return tx.deliverer.update({
+        where: { id },
+        data: {
+          ...(nextStatus ? { status: nextStatus } : {}),
+          ...(data.active === false
+            ? { expoPushToken: null, pushTokenUpdatedAt: null }
+            : {}),
+          ...(data.storeIds
+            ? {
+                stores: {
+                  deleteMany: {},
+                  create: data.storeIds.map((storeId) => ({ storeId })),
+                },
+              }
+            : {}),
+        },
+        include: this.include,
+      });
     });
 
     if (data.storeIds) {
       await syncUserStoresForDeliverer(this.prisma, deliverer.userId, data.storeIds);
     }
+
+    await this.audit.log(user, 'UPDATE', 'Deliverer', id, {
+      active: data.active,
+      status: nextStatus,
+    });
 
     return updated;
   }

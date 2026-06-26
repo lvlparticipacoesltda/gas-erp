@@ -220,7 +220,7 @@ export default function MasterUsersPage() {
                   value={editForm.role}
                   onChange={(e) => onRoleChange(e.target.value, true)}
                 >
-                  {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN').map((r) => (
+                  {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER').map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r]}
                     </option>
@@ -250,7 +250,7 @@ export default function MasterUsersPage() {
                   checked={editForm.active}
                   onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })}
                 />
-                Usuário ativo
+                Usuário ativo (desmarque para inativar o acesso ao sistema)
               </label>
               <div className="flex gap-2">
                 <Button type="submit">Salvar</Button>
@@ -287,7 +287,7 @@ export default function MasterUsersPage() {
               <div>
                 <Label>Papel</Label>
                 <Select value={form.role} onChange={(e) => onRoleChange(e.target.value, false)}>
-                  {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN').map((r) => (
+                  {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER').map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r]}
                     </option>

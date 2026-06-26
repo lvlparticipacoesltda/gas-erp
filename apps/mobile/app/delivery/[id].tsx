@@ -210,7 +210,7 @@ export default function DeliveryDetailScreen() {
           </Card>
         ) : null}
 
-        {delivery.status !== 'DELIVERED' && address ? (
+        {delivery.status === 'IN_PROGRESS' && address ? (
           <View style={styles.navButtons}>
             <Button
               label="Google Maps"

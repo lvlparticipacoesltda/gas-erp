@@ -27,6 +27,8 @@ export const createDelivererSchema = z
 export const updateDelivererSchema = z.object({
   storeIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos uma unidade').optional(),
   status: z.enum(DELIVERER_STATUSES).optional(),
+  /** Desativa o login no app (User.active) e marca entregador como offline. */
+  active: z.boolean().optional(),
 });
 
 export type CreateDelivererInput = z.infer<typeof createDelivererSchema>;

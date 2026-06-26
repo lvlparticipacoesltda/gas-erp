@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
@@ -26,7 +32,7 @@ export class AuthService {
   ) {}
 
   async login(input: unknown) {
-    const { email, password } = loginSchema.parse(input);
+    const { email, password, client } = loginSchema.parse(input);
     const user = await this.prisma.user.findFirst({
       where: { email, active: true },
       include: { userStores: true, organization: true },
@@ -35,6 +41,12 @@ export class AuthService {
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Credenciais inválidas');
+
+    if (user.role === 'DELIVERER' && client !== 'mobile') {
+      throw new ForbiddenException(
+        'Entregadores devem acessar pelo aplicativo móvel. O painel web é exclusivo para a equipe da loja.',
+      );
+    }
 
     const authUser: AuthUser = {
       id: user.id,

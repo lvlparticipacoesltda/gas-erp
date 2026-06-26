@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { api, ApiError } from './api';
+import { api, ApiError, setUnauthorizedHandler } from './api';
 import { clearSession, getStoredOrganization, getStoredUser, getToken, saveSession } from './storage';
 import { clearPushTokenOnServer } from './notifications';
 import { startPresenceTracking, stopAllTracking } from './location';
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api<LoginResponse>('/auth/login', {
       method: 'POST',
       auth: false,
-      body: { email: email.trim().toLowerCase(), password },
+      body: { email: email.trim().toLowerCase(), password, client: 'mobile' },
     });
 
     if (res.user.role !== 'DELIVERER') {
@@ -66,6 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearSession();
     setState({ token: null, user: null, organization: null, initializing: false });
   }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      void logout();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
 
   const value = useMemo<AuthContextValue>(
     () => ({ ...state, login, logout }),

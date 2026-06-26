@@ -21,6 +21,11 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
       return;
     }
 
+    if (user.role === 'DELIVERER') {
+      router.replace('/login');
+      return;
+    }
+
     const screen = pathnameToStoreScreen(pathname, storeId);
     if (!screen) return;
 

@@ -19,7 +19,7 @@ interface DelivererStoreLink {
 interface Deliverer {
   id: string;
   status: string;
-  user: { id: string; name: string; email: string; phone?: string };
+  user: { id: string; name: string; email: string; phone?: string; active: boolean };
   stores: DelivererStoreLink[];
 }
 
@@ -228,6 +228,7 @@ export default function DeliverersPage() {
             <tr>
               <th className="p-3">Nome</th>
               <th className="p-3">Telefone</th>
+              <th className="p-3">Acesso</th>
               <th className="p-3">Status</th>
               <th className="p-3">Unidades atendidas</th>
               {canManage && <th className="p-3 text-right">Ações</th>}
@@ -238,6 +239,11 @@ export default function DeliverersPage() {
               <tr key={d.id} className="border-t border-slate-100 align-top">
                 <td className="p-3 font-medium text-slate-800">{d.user.name}</td>
                 <td className="p-3">{d.user.phone ?? '-'}</td>
+                <td className="p-3">
+                  <Badge tone={d.user.active ? 'success' : 'danger'}>
+                    {d.user.active ? 'Ativo' : 'Inativo'}
+                  </Badge>
+                </td>
                 <td className="p-3">
                   <Badge tone={STATUS_TONE[d.status] ?? 'default'}>
                     {DELIVERER_STATUS_LABELS[d.status] ?? d.status}
@@ -267,7 +273,7 @@ export default function DeliverersPage() {
             ))}
             {deliverers.length === 0 && (
               <tr>
-                <td colSpan={canManage ? 5 : 4} className="p-6 text-center text-slate-400">
+                <td colSpan={canManage ? 6 : 5} className="p-6 text-center text-slate-400">
                   Nenhum entregador vinculado a esta unidade.
                 </td>
               </tr>
@@ -306,6 +312,7 @@ function EditDelivererModal({
     () => new Set(deliverer.stores.map((s) => s.storeId)),
   );
   const [status, setStatus] = useState(deliverer.status);
+  const [active, setActive] = useState(deliverer.user.active);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -322,12 +329,18 @@ function EditDelivererModal({
       setError('Selecione ao menos uma unidade.');
       return;
     }
+    if (deliverer.user.active && !active) {
+      const ok = confirm(
+        `Desativar o entregador "${deliverer.user.name}"?\n\nEle não poderá mais fazer login no aplicativo.`,
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     setError(null);
     try {
       await api(
         `/deliverers/${deliverer.id}`,
-        { method: 'PATCH', body: JSON.stringify({ storeIds: [...selected], status }) },
+        { method: 'PATCH', body: JSON.stringify({ storeIds: [...selected], status, active }) },
         getToken(),
       );
       onSaved();
@@ -368,8 +381,12 @@ function EditDelivererModal({
         </div>
 
         <div className="mt-4">
-          <Label>Status</Label>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <Label>Status operacional</Label>
+          <Select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            disabled={!active}
+          >
             {Object.entries(DELIVERER_STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -377,6 +394,16 @@ function EditDelivererModal({
             ))}
           </Select>
         </div>
+
+        <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-brand"
+          />
+          Entregador ativo (pode usar o aplicativo)
+        </label>
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
