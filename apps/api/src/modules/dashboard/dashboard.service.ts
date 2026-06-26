@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '@gas-erp/shared';
@@ -13,59 +13,140 @@ import {
 
 const SLOW_DELIVERY_THRESHOLD_SECONDS = 900;
 
+type DashboardPayload = {
+  date: string;
+  revenue: number;
+  paymentsByMethod: Record<string, number>;
+  productsSold: { name: string; qty: number; total: number }[];
+  stockMovements: number;
+  salesCount: number;
+  deliveries: {
+    pending: number;
+    inProgress: number;
+    completed: number;
+  };
+  deliveryMetrics: {
+    avgWaitTimeSeconds: number | null;
+    maxWaitTimeSeconds: number | null;
+    avgRouteDurationSeconds: number | null;
+    maxRouteDurationSeconds: number | null;
+    pendingCount: number;
+    inProgressCount: number;
+    completedCount: number;
+    slowDeliveries: {
+      saleId: string;
+      storeName?: string;
+      customerName: string;
+      delivererName: string;
+      waitTimeSeconds: number | null;
+      routeDurationSeconds: number | null;
+    }[];
+    byDeliverer: {
+      delivererId: string;
+      delivererName: string;
+      deliveryCount: number;
+      avgWaitTimeSeconds: number | null;
+      avgRouteDurationSeconds: number | null;
+    }[];
+  };
+};
+
 @Injectable()
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
   async masterOverview(user: AuthUser) {
-    const { start, end } = getBusinessDayBounds();
+    const { start, end, dateKey } = getBusinessDayBounds();
 
     const stores = await this.prisma.store.findMany({
       where: { organizationId: user.organizationId, active: true },
     });
 
-    const storeStats = await Promise.all(
-      stores.map(async (store) => {
-        const [salesToday, activeDeliveries, lowStock] = await Promise.all([
-          this.prisma.sale.aggregate({
-            where: {
-              storeId: store.id,
-              createdAt: { gte: start, lt: end },
-              status: { not: SaleStatus.CANCELLED },
-            },
-            _sum: { total: true },
-            _count: { _all: true },
-          }),
-          this.prisma.delivery.count({
-            where: {
-              sale: { storeId: store.id },
-              status: { in: ['PENDING', 'IN_PROGRESS'] },
-            },
-          }),
-          this.prisma.stockBalance.count({
-            where: { storeId: store.id, available: { lte: 10 } },
-          }),
-        ]);
-        return {
-          store,
-          salesCount: salesToday._count._all,
-          salesTotal: toNumber(salesToday._sum.total),
-          activeDeliveries,
-          lowStockItems: lowStock,
-        };
-      }),
-    );
+    const storeIds = stores.map((store) => store.id);
 
-    return { stores: storeStats, date: getBusinessDayBounds().dateKey };
+    const [storeStats, summary] = await Promise.all([
+      Promise.all(
+        stores.map(async (store) => {
+          const [salesToday, activeDeliveries, lowStock] = await Promise.all([
+            this.prisma.sale.aggregate({
+              where: {
+                storeId: store.id,
+                createdAt: { gte: start, lt: end },
+                status: { not: SaleStatus.CANCELLED },
+              },
+              _sum: { total: true },
+              _count: { _all: true },
+            }),
+            this.prisma.delivery.count({
+              where: {
+                sale: { storeId: store.id },
+                status: { in: ['PENDING', 'IN_PROGRESS'] },
+              },
+            }),
+            this.prisma.stockBalance.count({
+              where: { storeId: store.id, available: { lte: 10 } },
+            }),
+          ]);
+          return {
+            store,
+            salesCount: salesToday._count._all,
+            salesTotal: toNumber(salesToday._sum.total),
+            activeDeliveries,
+            lowStockItems: lowStock,
+          };
+        }),
+      ),
+      this.computeDashboardForStores(storeIds, start, end, dateKey, true),
+    ]);
+
+    return { stores: storeStats, date: dateKey, summary };
   }
 
   async storeDashboard(user: AuthUser, storeId: string, date?: string) {
     assertStoreAccess(user, storeId);
     const { start, end, dateKey } = getBusinessDayBounds(date);
+    return this.computeDashboardForStores([storeId], start, end, dateKey, false);
+  }
+
+  private emptyDashboard(dateKey: string): DashboardPayload {
+    return {
+      date: dateKey,
+      revenue: 0,
+      paymentsByMethod: {},
+      productsSold: [],
+      stockMovements: 0,
+      salesCount: 0,
+      deliveries: { pending: 0, inProgress: 0, completed: 0 },
+      deliveryMetrics: {
+        avgWaitTimeSeconds: null,
+        maxWaitTimeSeconds: null,
+        avgRouteDurationSeconds: null,
+        maxRouteDurationSeconds: null,
+        pendingCount: 0,
+        inProgressCount: 0,
+        completedCount: 0,
+        slowDeliveries: [],
+        byDeliverer: [],
+      },
+    };
+  }
+
+  private async computeDashboardForStores(
+    storeIds: string[],
+    start: Date,
+    end: Date,
+    dateKey: string,
+    includeStoreNameInSlowDeliveries: boolean,
+  ): Promise<DashboardPayload> {
+    if (storeIds.length === 0) {
+      return this.emptyDashboard(dateKey);
+    }
+
+    const storeFilter = { storeId: { in: storeIds } };
 
     const sales = await this.prisma.sale.findMany({
       where: {
-        storeId,
+        ...storeFilter,
         createdAt: { gte: start, lt: end },
         status: { not: SaleStatus.CANCELLED },
       },
@@ -83,7 +164,7 @@ export class DashboardService {
         paymentsByMethod[label] = (paymentsByMethod[label] ?? 0) + toNumber(payment.amount);
       }
       for (const item of sale.items) {
-        const key = item.productId;
+        const key = item.product.name;
         if (!productsSold[key]) {
           productsSold[key] = { name: item.product.name, qty: 0, total: 0 };
         }
@@ -92,15 +173,19 @@ export class DashboardService {
       }
     }
 
-    const movements = await this.prisma.stockMovement.findMany({
-      where: { storeId, createdAt: { gte: start, lt: end } },
-      include: { product: true },
+    const movements = await this.prisma.stockMovement.count({
+      where: { ...storeFilter, createdAt: { gte: start, lt: end } },
     });
 
     const deliveries = await this.prisma.delivery.findMany({
-      where: { sale: { storeId, createdAt: { gte: start, lt: end } } },
+      where: { sale: { ...storeFilter, createdAt: { gte: start, lt: end } } },
       include: {
-        sale: { include: { customer: true } },
+        sale: {
+          include: {
+            customer: true,
+            store: { select: { id: true, name: true } },
+          },
+        },
         deliverer: { include: { user: true } },
       },
     });
@@ -111,13 +196,7 @@ export class DashboardService {
 
     const waitTimes: number[] = [];
     const routeTimes: number[] = [];
-    const slowDeliveries: {
-      saleId: string;
-      customerName: string;
-      delivererName: string;
-      waitTimeSeconds: number | null;
-      routeDurationSeconds: number | null;
-    }[] = [];
+    const slowDeliveries: DashboardPayload['deliveryMetrics']['slowDeliveries'] = [];
     const delivererStats = new Map<
       string,
       { delivererName: string; waitTimes: number[]; routeTimes: number[]; deliveryCount: number }
@@ -147,6 +226,9 @@ export class DashboardService {
       if (isSlowWait || isSlowRoute) {
         slowDeliveries.push({
           saleId: delivery.saleId,
+          ...(includeStoreNameInSlowDeliveries
+            ? { storeName: delivery.sale.store.name }
+            : {}),
           customerName: delivery.sale.customer?.name ?? 'Cliente avulso',
           delivererName,
           waitTimeSeconds,
@@ -187,8 +269,8 @@ export class DashboardService {
       date: dateKey,
       revenue,
       paymentsByMethod,
-      productsSold: Object.values(productsSold),
-      stockMovements: movements.length,
+      productsSold: Object.values(productsSold).sort((a, b) => b.total - a.total),
+      stockMovements: movements,
       salesCount: sales.length,
       deliveries: {
         pending: pendingDeliveries,

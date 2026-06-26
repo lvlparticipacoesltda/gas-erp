@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
+import { DailySummaryContent, type DailySummaryData } from '@/components/daily-summary-content';
 import { Card, PageHeader } from '@/components/ui';
 import { api, getToken, setCurrentStoreId } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -17,12 +18,20 @@ interface StoreStat {
 
 export default function MasterDashboardPage() {
   const router = useRouter();
-  const [data, setData] = useState<{ stores: StoreStat[]; date?: string } | null>(null);
+  const [data, setData] = useState<{
+    stores: StoreStat[];
+    date?: string;
+    summary?: DailySummaryData;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api<{ stores: StoreStat[]; date?: string }>('/dashboard/master', {}, getToken())
+    api<{ stores: StoreStat[]; date?: string; summary?: DailySummaryData }>(
+      '/dashboard/master',
+      {},
+      getToken(),
+    )
       .then(setData)
       .catch((err) => {
         setData(null);
@@ -55,6 +64,8 @@ export default function MasterDashboardPage() {
         title="Painel Master"
         subtitle={dateLabel ? `Visão consolidada · ${dateLabel}` : 'Visão consolidada de todas as unidades'}
       />
+
+      <h2 className="mb-3 font-semibold">Unidades</h2>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.stores.map((s) => (
           <button
@@ -89,6 +100,16 @@ export default function MasterDashboardPage() {
           </button>
         ))}
       </div>
+
+      {data?.summary && (
+        <section className="mt-10 border-t border-slate-200 pt-8">
+          <h2 className="mb-1 text-xl font-semibold">Resumo diário consolidado</h2>
+          <p className="mb-6 text-sm text-slate-500">
+            Todas as unidades · {dateLabel ?? 'hoje'}
+          </p>
+          <DailySummaryContent data={data.summary} showStoreInSlowDeliveries />
+        </section>
+      )}
     </>
   );
 }
