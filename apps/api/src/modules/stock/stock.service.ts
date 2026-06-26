@@ -35,7 +35,36 @@ export class StockService {
       }),
       this.prisma.stockMovement.count({ where }),
     ]);
-    return paginatedResult(data, total, p, ps);
+
+    const referenceIds = [
+      ...new Set(data.map((movement) => movement.referenceId).filter((id): id is string => !!id)),
+    ];
+    const transfers = referenceIds.length
+      ? await this.prisma.stockTransfer.findMany({
+          where: { id: { in: referenceIds } },
+          include: { fromStore: { select: { id: true, name: true } }, toStore: { select: { id: true, name: true } } },
+        })
+      : [];
+    const transferById = new Map(transfers.map((transfer) => [transfer.id, transfer]));
+
+    const enriched = data.map((movement) => {
+      const transfer = movement.referenceId ? transferById.get(movement.referenceId) : undefined;
+      return {
+        ...movement,
+        transfer: transfer
+          ? {
+              id: transfer.id,
+              fromStoreId: transfer.fromStoreId,
+              toStoreId: transfer.toStoreId,
+              fromStoreName: transfer.fromStore.name,
+              toStoreName: transfer.toStore.name,
+              completedAt: transfer.completedAt,
+            }
+          : null,
+      };
+    });
+
+    return paginatedResult(enriched, total, p, ps);
   }
 
   async adjust(user: AuthUser, input: unknown) {
@@ -70,6 +99,69 @@ export class StockService {
     return this.prisma.stockBalance.findUnique({
       where: { id: balance.id },
       include: { product: true },
+    });
+  }
+
+  async deductForTransfer(
+    db: DbClient,
+    storeId: string,
+    productId: string,
+    quantity: number,
+    userId: string,
+    transferId: string,
+    toStoreName: string,
+  ) {
+    const balance = await db.stockBalance.findUnique({
+      where: { productId_storeId: { productId, storeId } },
+    });
+    if (!balance || balance.available < quantity) {
+      throw new BadRequestException('Estoque insuficiente para o produto');
+    }
+    await db.stockBalance.update({
+      where: { id: balance.id },
+      data: { available: balance.available - quantity },
+    });
+    await db.stockMovement.create({
+      data: {
+        productId,
+        storeId,
+        userId,
+        type: StockMovementType.OUT,
+        quantity,
+        reason: `Transferência de estoque para ${toStoreName}.`,
+        referenceId: transferId,
+      },
+    });
+  }
+
+  async addForTransfer(
+    db: DbClient,
+    storeId: string,
+    productId: string,
+    quantity: number,
+    userId: string,
+    transferId: string,
+    fromStoreName: string,
+  ) {
+    const balance = await db.stockBalance.upsert({
+      where: { productId_storeId: { productId, storeId } },
+      update: {},
+      create: { productId, storeId, available: 0 },
+    });
+    await db.stockBalance.update({
+      where: { id: balance.id },
+      data: { available: balance.available + quantity },
+    });
+    await db.stockMovement.create({
+      data: {
+        productId,
+        storeId,
+        userId,
+        type: StockMovementType.IN,
+        quantity,
+        reason: `Transferência de estoque recebida de ${fromStoreName}.`,
+        referenceId: transferId,
+      },
     });
   }
 

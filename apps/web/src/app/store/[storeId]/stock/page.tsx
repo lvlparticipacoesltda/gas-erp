@@ -6,8 +6,17 @@ import { PageLoader } from '@/components/brand-loader';
 import { Pagination } from '@/components/pagination';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { formatDateTime } from '@/lib/utils';
 import type { PaginatedResponse } from '@gas-erp/shared';
+
+interface MovementTransfer {
+  id: string;
+  fromStoreId: string;
+  toStoreId: string;
+  fromStoreName: string;
+  toStoreName: string;
+  completedAt?: string | null;
+}
 
 interface Movement {
   id: string;
@@ -17,6 +26,27 @@ interface Movement {
   reason: string;
   product: { name: string };
   user?: { name: string };
+  transfer?: MovementTransfer | null;
+}
+
+function movementTypeLabel(type: string) {
+  return type === 'IN' ? 'Entrada' : type === 'OUT' ? 'Saída' : type;
+}
+
+function movementReasonLabel(movement: Movement, storeId: string) {
+  if (movement.transfer) {
+    if (movement.type === 'OUT' && movement.transfer.fromStoreId === storeId) {
+      return `Transferência para ${movement.transfer.toStoreName}`;
+    }
+    if (movement.type === 'IN' && movement.transfer.toStoreId === storeId) {
+      return `Transferência recebida de ${movement.transfer.fromStoreName}`;
+    }
+    if (movement.type === 'OUT') {
+      return `Transferência para ${movement.transfer.toStoreName}`;
+    }
+    return `Transferência recebida de ${movement.transfer.fromStoreName}`;
+  }
+  return movement.reason;
 }
 
 interface Balance {
@@ -163,16 +193,29 @@ export default function StockPage() {
       <h2 className="mb-3 mt-8 font-semibold">Movimentações recentes</h2>
       <Table>
         <thead className="bg-slate-50 text-left">
-          <tr><th className="p-3">Data</th><th className="p-3">Produto</th><th className="p-3">Tipo</th><th className="p-3">Qtd</th><th className="p-3">Motivo</th></tr>
+          <tr>
+            <th className="p-3">Data e hora</th>
+            <th className="p-3">Produto</th>
+            <th className="p-3">Tipo</th>
+            <th className="p-3">Qtd</th>
+            <th className="p-3">Motivo</th>
+          </tr>
         </thead>
         <tbody>
           {movements.map((m) => (
             <tr key={m.id} className="border-t border-slate-100">
-              <td className="p-3">{formatDate(m.createdAt)}</td>
+              <td className="p-3 whitespace-nowrap">{formatDateTime(m.createdAt)}</td>
               <td className="p-3">{m.product.name}</td>
-              <td className="p-3">{m.type}</td>
+              <td className="p-3">{movementTypeLabel(m.type)}</td>
               <td className="p-3">{m.quantity}</td>
-              <td className="p-3">{m.reason}</td>
+              <td className="p-3">
+                <div>{movementReasonLabel(m, storeId)}</div>
+                {m.transfer && (
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {m.transfer.fromStoreName} → {m.transfer.toStoreName}
+                  </div>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 import type { PaginatedResponse } from '@gas-erp/shared';
 
 interface Store { id: string; name: string }
@@ -12,10 +13,19 @@ interface Product { id: string; name: string }
 interface Transfer {
   id: string;
   status: string;
+  requestedAt: string;
+  completedAt?: string | null;
   fromStore: { name: string };
   toStore: { name: string };
   items: { quantity: number; product: { name: string } }[];
 }
+
+const TRANSFER_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Pendente',
+  APPROVED: 'Aprovada',
+  REJECTED: 'Rejeitada',
+  COMPLETED: 'Concluída',
+};
 
 export default function StockTransfersPage() {
   const { storeId } = useParams<{ storeId: string }>();
@@ -76,8 +86,8 @@ export default function StockTransfersPage() {
   return (
     <>
     <PageHeader title="Transferências de estoque" subtitle="Movimentação entre unidades" />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-6">
+        <Card className="max-w-xl">
           <h2 className="mb-4 font-semibold">Nova transferência</h2>
           <form onSubmit={handleCreate} className="space-y-3">
             <div>
@@ -98,14 +108,25 @@ export default function StockTransfersPage() {
         </Card>
         <Table>
           <thead className="bg-slate-50 text-left">
-            <tr><th className="p-3">Origem → Destino</th><th className="p-3">Itens</th><th className="p-3">Status</th><th className="p-3">Ações</th></tr>
+            <tr>
+              <th className="p-3">Origem → Destino</th>
+              <th className="p-3">Itens</th>
+              <th className="p-3">Solicitada em</th>
+              <th className="p-3">Concluída em</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Ações</th>
+            </tr>
           </thead>
           <tbody>
             {transfers.map((t) => (
               <tr key={t.id} className="border-t border-slate-100">
                 <td className="p-3">{t.fromStore.name} → {t.toStore.name}</td>
                 <td className="p-3">{t.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ')}</td>
-                <td className="p-3">{t.status}</td>
+                <td className="p-3 whitespace-nowrap">{formatDateTime(t.requestedAt)}</td>
+                <td className="p-3 whitespace-nowrap">
+                  {t.completedAt ? formatDateTime(t.completedAt) : '—'}
+                </td>
+                <td className="p-3">{TRANSFER_STATUS_LABELS[t.status] ?? t.status}</td>
                 <td className="p-3 space-x-2">
                   {t.status === 'PENDING' && <Button variant="secondary" onClick={() => approve(t.id)}>Aprovar</Button>}
                   {t.status === 'APPROVED' && <Button onClick={() => complete(t.id)}>Concluir</Button>}

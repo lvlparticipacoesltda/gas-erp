@@ -72,25 +72,24 @@ export class StockTransfersService {
     if (status === 'COMPLETED') {
       return this.prisma.$transaction(async (tx) => {
         for (const item of transfer.items) {
-          await this.stockService.deductForSale(
+          await this.stockService.deductForTransfer(
             tx,
             transfer.fromStoreId,
             item.productId,
             item.quantity,
             user.id,
             transfer.id,
+            transfer.toStore.name,
           );
-          const destBalance = await tx.stockBalance.upsert({
-            where: {
-              productId_storeId: { productId: item.productId, storeId: transfer.toStoreId },
-            },
-            update: {},
-            create: { productId: item.productId, storeId: transfer.toStoreId, available: 0 },
-          });
-          await tx.stockBalance.update({
-            where: { id: destBalance.id },
-            data: { available: destBalance.available + item.quantity },
-          });
+          await this.stockService.addForTransfer(
+            tx,
+            transfer.toStoreId,
+            item.productId,
+            item.quantity,
+            user.id,
+            transfer.id,
+            transfer.fromStore.name,
+          );
         }
         return tx.stockTransfer.update({
           where: { id },

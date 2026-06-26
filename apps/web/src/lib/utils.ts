@@ -12,3 +12,13 @@ export function formatCurrency(value: number | string) {
 export function formatDate(value: string | Date) {
   return new Intl.DateTimeFormat('pt-BR').format(new Date(value));
 }
+
+export function formatDateTime(value: string | Date) {
+  const date = new Date(value);
+  const dateLabel = new Intl.DateTimeFormat('pt-BR').format(date);
+  const timeLabel = new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+  return `${dateLabel} ${timeLabel}`;
+}
