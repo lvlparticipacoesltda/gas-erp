@@ -76,8 +76,8 @@ export type UpdateDelivererPositionInput = z.infer<typeof updateDelivererPositio
 export type DelivererPosition = z.infer<typeof delivererPositionSchema>;
 export type DelivererPositionsResponse = z.infer<typeof delivererPositionsResponseSchema>;
 
-/** Posição ao vivo se vista nos últimos 60s. */
-export const DELIVERER_POSITION_LIVE_MS = 60_000;
+/** Posição ao vivo se vista nos últimos 90s (margem para intervalo em background). */
+export const DELIVERER_POSITION_LIVE_MS = 90_000;
 
 /** Posição considerada desatualizada após este intervalo (ms). */
 export const DELIVERER_POSITION_STALE_MS = 5 * 60 * 1000;

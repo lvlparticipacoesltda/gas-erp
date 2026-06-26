@@ -21,9 +21,9 @@
       "bundleIdentifier": "com.gaserp.entregador",
       "infoPlist": {
         "UIBackgroundModes": ["location", "fetch"],
-        "NSLocationWhenInUseUsageDescription": "Usamos sua localização para registrar o trajeto das entregas em andamento.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Usamos sua localização em segundo plano para acompanhar a entrega até a conclusão da rota.",
-        "NSLocationAlwaysUsageDescription": "Usamos sua localização em segundo plano para acompanhar a entrega até a conclusão da rota."
+        "NSLocationWhenInUseUsageDescription": "Usamos sua localização para exibir sua posição no mapa da loja e registrar o trajeto das entregas.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Usamos sua localização em segundo plano para manter sua posição atualizada no mapa da loja e acompanhar entregas em rota.",
+        "NSLocationAlwaysUsageDescription": "Usamos sua localização em segundo plano para manter sua posição atualizada no mapa da loja e acompanhar entregas em rota."
       }
     },
     "android": {
@@ -63,8 +63,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Usamos sua localização em segundo plano para acompanhar a entrega até a conclusão da rota.",
-          "locationWhenInUsePermission": "Usamos sua localização para registrar o trajeto das entregas em andamento.",
+          "locationAlwaysAndWhenInUsePermission": "Usamos sua localização em segundo plano para manter sua posição no mapa da loja e acompanhar entregas em rota.",
+          "locationWhenInUsePermission": "Usamos sua localização para exibir sua posição no mapa da loja e registrar entregas em andamento.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }

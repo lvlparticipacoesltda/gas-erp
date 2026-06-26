@@ -14,28 +14,10 @@ import {
 import { Badge, Button, Card, Loading, StateMessage } from '@/components/ui';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
 import { deliveryAddress, updateDeliveryStatus } from '@/lib/deliveries';
-import { hasBackgroundPermission, startDeliveryTracking, stopDeliveryTracking } from '@/lib/location';
+import { confirmBackgroundLocationDisclosure, hasBackgroundPermission, startDeliveryTracking, stopDeliveryTracking } from '@/lib/location';
 import { callPhone, openGoogleMaps, openWaze } from '@/lib/navigation';
 import { colors, radius, spacing } from '@/theme';
 import type { Delivery } from '@/types';
-
-/**
- * Divulgação destacada (prominent disclosure) exigida pela política da Google Play
- * para uso de localização em segundo plano. Deve aparecer ANTES do prompt do sistema.
- */
-function confirmLocationDisclosure(): Promise<boolean> {
-  return new Promise((resolve) => {
-    Alert.alert(
-      'Uso da sua localização',
-      'Durante uma rota ativa, o app coleta sua localização — inclusive com o app fechado ou em segundo plano — para compartilhar o trajeto da entrega com a loja em tempo real. A coleta para automaticamente quando você conclui a entrega.',
-      [
-        { text: 'Agora não', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Permitir', style: 'default', onPress: () => resolve(true) },
-      ],
-      { cancelable: false },
-    );
-  });
-}
 
 function formatElapsed(totalSeconds: number): string {
   const s = Math.max(0, totalSeconds);
@@ -92,7 +74,7 @@ export default function DeliveryDetailScreen() {
     // Divulgação destacada exigida pela Google Play antes de coletar localização
     // em segundo plano. Só é mostrada enquanto a permissão não foi concedida.
     if (!(await hasBackgroundPermission())) {
-      const consent = await confirmLocationDisclosure();
+      const consent = await confirmBackgroundLocationDisclosure();
       if (!consent) return;
     }
 

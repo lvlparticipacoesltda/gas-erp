@@ -1,4 +1,4 @@
-import { AppState, type AppStateStatus, Platform } from 'react-native';
+import { Alert, AppState, type AppStateStatus, Platform } from 'react-native';
 import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 import type { LocationTaskOptions } from 'expo-location';
@@ -10,10 +10,10 @@ import { getToken } from './storage';
 export const LOCATION_TASK = 'gas-delivery-location-tracking';
 const ACTIVE_DELIVERY_KEY = 'gas_active_delivery';
 
-/** Intervalo de envio em background (ms). */
-const UPDATE_INTERVAL_MS = 45_000;
+/** Intervalo de envio em background (ms) — abaixo do limite "ao vivo" na API. */
+const UPDATE_INTERVAL_MS = 20_000;
 /** Intervalo de envio com app em primeiro plano (ms). */
-const FOREGROUND_PRESENCE_INTERVAL_MS = 30_000;
+const FOREGROUND_PRESENCE_INTERVAL_MS = 15_000;
 
 let foregroundIntervalId: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: { remove: () => void } | null = null;
@@ -24,6 +24,24 @@ type BatteryPayload = {
   batteryLevel?: number;
   batteryCharging?: boolean;
 };
+
+/**
+ * Divulgação destacada (Google Play) antes do prompt de localização em segundo plano.
+ * Deve aparecer ANTES de requestBackgroundPermissionsAsync.
+ */
+export function confirmBackgroundLocationDisclosure(): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Uso da sua localização',
+      'Enquanto você estiver logado e disponível, o app compartilha sua posição com a loja — inclusive com o app em segundo plano — para aparecer no mapa de entregadores em tempo real. Durante uma rota, o trajeto também é registrado até a conclusão da entrega. Você pode parar o rastreamento ficando indisponível no app.',
+      [
+        { text: 'Agora não', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Permitir', style: 'default', onPress: () => resolve(true) },
+      ],
+      { cancelable: false },
+    );
+  });
+}
 
 async function readBattery(): Promise<BatteryPayload> {
   try {
@@ -114,13 +132,34 @@ function stopForegroundPresenceLoop(): void {
   foregroundIntervalId = null;
 }
 
+async function getActiveDeliveryMode(): Promise<boolean> {
+  const deliveryId = await SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY);
+  return !!deliveryId;
+}
+
+/** Garante que o task de background está ativo; reinicia se o SO interrompeu. */
+async function ensureBackgroundTaskRunning(): Promise<void> {
+  const token = await getToken();
+  if (!token) return;
+
+  const onDelivery = await getActiveDeliveryMode();
+  if (!(await isTrackingActive())) {
+    await ensureLocationUpdates(onDelivery).catch(() => undefined);
+  }
+}
+
 function handleAppStateChange(state: AppStateStatus): void {
   if (state === 'active') {
     startForegroundPresenceLoop();
     void ensurePresenceTrackingFresh();
-  } else {
-    stopForegroundPresenceLoop();
+    return;
   }
+
+  stopForegroundPresenceLoop();
+  void (async () => {
+    await sendPresenceNow();
+    await ensureBackgroundTaskRunning();
+  })();
 }
 
 /** Listener de AppState: envio rápido em foreground e imediato ao voltar ao app. */
@@ -155,7 +194,11 @@ TaskManager.defineTask<LocationTaskData>(LOCATION_TASK, async ({ data, error }) 
   try {
     await sendLocationUpdate(token, location, battery, deliveryId);
   } catch {
-    // Erros de rede em background são ignorados; o próximo ponto tentará de novo.
+    try {
+      await sendLocationUpdate(token, location, battery, deliveryId);
+    } catch {
+      // Próximo ponto do task tentará novamente.
+    }
   }
 });
 
@@ -168,6 +211,31 @@ export interface PermissionResult {
 export async function requestLocationPermissions(): Promise<PermissionResult> {
   const fg = await Location.requestForegroundPermissionsAsync();
   if (fg.status !== 'granted') return { foreground: false, background: false };
+
+  const bg = await Location.requestBackgroundPermissionsAsync().catch(() => null);
+  return { foreground: true, background: bg?.status === 'granted' };
+}
+
+/** Solicita background com divulgação destacada quando ainda não concedida. */
+export async function requestLocationPermissionsWithDisclosure(): Promise<PermissionResult> {
+  const fg = await Location.getForegroundPermissionsAsync();
+  if (fg.status !== 'granted') {
+    const requested = await Location.requestForegroundPermissionsAsync();
+    if (requested.status !== 'granted') return { foreground: false, background: false };
+  }
+
+  const existingBg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+  if (existingBg?.status === 'granted') {
+    return { foreground: true, background: true };
+  }
+  if (existingBg?.status === 'denied') {
+    return { foreground: true, background: false };
+  }
+
+  const consent = await confirmBackgroundLocationDisclosure();
+  if (!consent) {
+    return { foreground: true, background: false };
+  }
 
   const bg = await Location.requestBackgroundPermissionsAsync().catch(() => null);
   return { foreground: true, background: bg?.status === 'granted' };
@@ -194,15 +262,18 @@ function buildTrackingOptions(
   onDelivery: boolean,
 ): LocationTaskOptions {
   const base: LocationTaskOptions = {
-    accuracy: Location.Accuracy.Balanced,
+    accuracy: onDelivery ? Location.Accuracy.High : Location.Accuracy.Balanced,
     timeInterval: UPDATE_INTERVAL_MS,
     // Presença parada: distanceInterval bloqueia updates no Android; rota usa distância.
     distanceInterval: onDelivery ? 25 : 0,
     pausesUpdatesAutomatically: false,
+    activityType: onDelivery
+      ? Location.ActivityType.OtherNavigation
+      : Location.ActivityType.Other,
+    showsBackgroundLocationIndicator: true,
   };
 
-  if (backgroundGranted) {
-    base.showsBackgroundLocationIndicator = true;
+  if (Platform.OS === 'android') {
     base.foregroundService = onDelivery
       ? {
           notificationTitle: 'Entrega em andamento',
@@ -211,16 +282,18 @@ function buildTrackingOptions(
         }
       : {
           notificationTitle: 'Rastreamento ativo',
-          notificationBody: 'Compartilhando sua posição com a loja enquanto você está online.',
+          notificationBody: 'Sua posição aparece no mapa da loja enquanto você está online.',
           notificationColor: '#F97316',
         };
+  } else if (backgroundGranted) {
+    base.showsBackgroundLocationIndicator = true;
   }
 
   return base;
 }
 
 async function ensureLocationUpdates(onDelivery: boolean): Promise<PermissionResult> {
-  const permissions = await requestLocationPermissions();
+  const permissions = await requestLocationPermissionsWithDisclosure();
   if (!permissions.foreground) return permissions;
 
   const options = buildTrackingOptions(permissions.background, onDelivery);
@@ -278,9 +351,9 @@ export async function stopAllTracking(): Promise<void> {
 
 /** Reinicia o task de background de presença (sem rota ativa). */
 async function ensurePresenceTrackingFresh(): Promise<void> {
-  const deliveryId = await SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY);
-  if (deliveryId) return;
-  await startPresenceTracking().catch(() => undefined);
+  const onDelivery = await getActiveDeliveryMode();
+  if (await isTrackingActive()) return;
+  await ensureLocationUpdates(onDelivery).catch(() => undefined);
 }
 
 /**

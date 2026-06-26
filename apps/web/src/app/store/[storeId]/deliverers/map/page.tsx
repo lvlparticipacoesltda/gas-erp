@@ -18,7 +18,7 @@ import {
   getDelivererPositionBadge,
 } from '@gas-erp/shared';
 
-const REFRESH_INTERVAL_MS = 20_000;
+const REFRESH_INTERVAL_MS = 15_000;
 
 interface DelivererListItem {
   id: string;
@@ -232,7 +232,7 @@ export default function DelivererMapPage() {
           <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4">
             <div className="rounded-lg border border-slate-200 bg-white/95 px-4 py-2 text-center text-sm text-slate-600 shadow-md backdrop-blur-sm">
               {positions.length === 0
-                ? 'Nenhum entregador disponível no mapa. Posições aparecem com o app aberto e GPS ativo.'
+                ? 'Nenhum entregador disponível no mapa. Peça ao entregador para permitir localização "o tempo todo" no app.'
                 : 'Nenhuma posição GPS no momento — entregadores sem sinal ou indisponíveis.'}
             </div>
           </div>
