@@ -15,6 +15,10 @@ import {
   SALE_CHANNEL_LABELS,
   SALE_STATUS_LABELS,
   SALE_STATUSES,
+  formatWaitTime,
+  getElapsedWaitingSeconds,
+  getRouteDurationSeconds,
+  getWaitTimeSeconds,
 } from '@gas-erp/shared';
 
 interface SaleDetail {
@@ -35,7 +39,7 @@ interface SaleDetail {
   attendant?: { name: string } | null;
   items: { quantity: number; unitPrice: number | string; product: { name: string } }[];
   payments: { method: string; amount: number | string }[];
-  delivery?: { id: string; status: string } | null;
+  delivery?: { id: string; status: string; startedAt?: string | null; completedAt?: string | null } | null;
   statusLogs: { status: string; createdAt: string }[];
 }
 
@@ -125,6 +129,25 @@ export default function SaleDetailPage() {
               <div className="flex justify-between"><dt className="text-slate-500">Atendente</dt><dd>{sale.attendant?.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{sale.deliverer?.user.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Total</dt><dd className="font-semibold">{formatCurrency(sale.total)}</dd></div>
+              {sale.delivery?.startedAt && (
+                <>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">Espera até a rota</dt>
+                    <dd>{formatWaitTime(getWaitTimeSeconds(sale.createdAt, sale.delivery.startedAt))}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">Tempo em rota</dt>
+                    <dd>
+                      {formatWaitTime(
+                        getRouteDurationSeconds(sale.delivery.startedAt, sale.delivery.completedAt)
+                          ?? (sale.delivery.status === 'IN_PROGRESS'
+                            ? getElapsedWaitingSeconds(sale.delivery.startedAt)
+                            : null),
+                      )}
+                    </dd>
+                  </div>
+                </>
+              )}
               {address && <div><dt className="text-slate-500">Endereço</dt><dd className="mt-1">{address}</dd></div>}
               {sale.notes && <div><dt className="text-slate-500">Obs.</dt><dd className="mt-1">{sale.notes}</dd></div>}
             </dl>

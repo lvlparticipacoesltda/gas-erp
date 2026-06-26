@@ -3,6 +3,8 @@ import {
   formatWaitTime,
   getDeliveryDisplayStatus,
   getElapsedWaitingSeconds,
+  getRouteDurationSeconds,
+  getWaitTimeSeconds,
 } from '@gas-erp/shared';
 import { Badge, Card } from './ui';
 import { deliveryAddress } from '../lib/deliveries';
@@ -19,10 +21,26 @@ function waitLabel(delivery: Delivery): string {
     return `Aguardando há ${formatWaitTime(seconds)}`;
   }
   if (delivery.status === 'IN_PROGRESS') {
-    return 'Em rota agora';
+    const waitPart =
+      delivery.waitTimeSeconds != null
+        ? `Esperou ${formatWaitTime(delivery.waitTimeSeconds)} · `
+        : '';
+    const routeSeconds =
+      delivery.elapsedRouteSeconds
+      ?? (delivery.startedAt ? getElapsedWaitingSeconds(delivery.startedAt) : null);
+    return routeSeconds != null ? `${waitPart}Em rota há ${formatWaitTime(routeSeconds)}` : 'Em rota agora';
   }
-  if (delivery.status === 'DELIVERED' && delivery.waitTimeSeconds != null) {
-    return `Espera até a rota: ${formatWaitTime(delivery.waitTimeSeconds)}`;
+  if (delivery.status === 'DELIVERED') {
+    const parts: string[] = [];
+    const wait =
+      delivery.waitTimeSeconds
+      ?? getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
+    const route =
+      delivery.routeDurationSeconds
+      ?? getRouteDurationSeconds(delivery.startedAt, delivery.completedAt);
+    if (wait != null) parts.push(`Espera: ${formatWaitTime(wait)}`);
+    if (route != null) parts.push(`Rota: ${formatWaitTime(route)}`);
+    return parts.join(' · ');
   }
   return '';
 }

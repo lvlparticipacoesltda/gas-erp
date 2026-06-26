@@ -7,6 +7,8 @@ import {
   formatWaitTime,
   getDeliveryDisplayStatus,
   getElapsedWaitingSeconds,
+  getRouteDurationSeconds,
+  getWaitTimeSeconds,
   PAYMENT_METHOD_LABELS,
 } from '@gas-erp/shared';
 import { Badge, Button, Card, Loading, StateMessage } from '@/components/ui';
@@ -251,8 +253,24 @@ function waitText(delivery: Delivery): string {
     const seconds = delivery.elapsedWaitingSeconds ?? getElapsedWaitingSeconds(delivery.sale.createdAt);
     return `Aguardando há ${formatWaitTime(seconds)}`;
   }
-  if (delivery.waitTimeSeconds != null) {
-    return `Espera até a rota: ${formatWaitTime(delivery.waitTimeSeconds)}`;
+  if (delivery.status === 'IN_PROGRESS') {
+    const wait =
+      delivery.waitTimeSeconds
+      ?? getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
+    if (wait != null) return `Esperou ${formatWaitTime(wait)} até iniciar a rota`;
+    return '';
+  }
+  if (delivery.status === 'DELIVERED') {
+    const wait =
+      delivery.waitTimeSeconds
+      ?? getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
+    const route =
+      delivery.routeDurationSeconds
+      ?? getRouteDurationSeconds(delivery.startedAt, delivery.completedAt);
+    const parts: string[] = [];
+    if (wait != null) parts.push(`Espera até a rota: ${formatWaitTime(wait)}`);
+    if (route != null) parts.push(`Tempo em rota: ${formatWaitTime(route)}`);
+    return parts.join(' · ');
   }
   return '';
 }

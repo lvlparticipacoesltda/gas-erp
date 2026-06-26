@@ -6,6 +6,7 @@ import { assertStoreAccess } from '../../common/guards';
 import {
   PAYMENT_METHOD_LABELS,
   getBusinessDayBounds,
+  getRouteDurationSeconds,
   getWaitTimeSeconds,
   toNumber,
 } from '@gas-erp/shared';
@@ -106,16 +107,28 @@ export class DashboardService {
     const completedDeliveries = deliveries.filter((d) => d.status === 'DELIVERED').length;
 
     const waitTimes: number[] = [];
-    const slowDeliveries: { saleId: string; customerName: string; waitTimeSeconds: number }[] = [];
+    const routeTimes: number[] = [];
+    const slowDeliveries: {
+      saleId: string;
+      customerName: string;
+      waitTimeSeconds: number | null;
+      routeDurationSeconds: number | null;
+    }[] = [];
     for (const delivery of deliveries) {
       const waitTimeSeconds = getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
-      if (waitTimeSeconds == null) continue;
-      waitTimes.push(waitTimeSeconds);
-      if (waitTimeSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS) {
+      const routeDurationSeconds = getRouteDurationSeconds(delivery.startedAt, delivery.completedAt);
+
+      if (waitTimeSeconds != null) waitTimes.push(waitTimeSeconds);
+      if (routeDurationSeconds != null) routeTimes.push(routeDurationSeconds);
+
+      const isSlowWait = waitTimeSeconds != null && waitTimeSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS;
+      const isSlowRoute = routeDurationSeconds != null && routeDurationSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS;
+      if (isSlowWait || isSlowRoute) {
         slowDeliveries.push({
           saleId: delivery.saleId,
           customerName: delivery.sale.customer?.name ?? 'Cliente avulso',
           waitTimeSeconds,
+          routeDurationSeconds,
         });
       }
     }
@@ -124,7 +137,15 @@ export class DashboardService {
       ? Math.round(waitTimes.reduce((sum, value) => sum + value, 0) / waitTimes.length)
       : null;
     const maxWaitTimeSeconds = waitTimes.length ? Math.max(...waitTimes) : null;
-    slowDeliveries.sort((a, b) => b.waitTimeSeconds - a.waitTimeSeconds);
+    const avgRouteDurationSeconds = routeTimes.length
+      ? Math.round(routeTimes.reduce((sum, value) => sum + value, 0) / routeTimes.length)
+      : null;
+    const maxRouteDurationSeconds = routeTimes.length ? Math.max(...routeTimes) : null;
+    slowDeliveries.sort((a, b) => {
+      const aMax = Math.max(a.waitTimeSeconds ?? 0, a.routeDurationSeconds ?? 0);
+      const bMax = Math.max(b.waitTimeSeconds ?? 0, b.routeDurationSeconds ?? 0);
+      return bMax - aMax;
+    });
 
     return {
       date: dateKey,
@@ -141,6 +162,8 @@ export class DashboardService {
       deliveryMetrics: {
         avgWaitTimeSeconds,
         maxWaitTimeSeconds,
+        avgRouteDurationSeconds,
+        maxRouteDurationSeconds,
         pendingCount: pendingDeliveries,
         inProgressCount: inProgressDeliveries,
         completedCount: completedDeliveries,

@@ -16,9 +16,12 @@ interface DeliveryRow {
   status: string;
   createdAt: string;
   startedAt?: string | null;
+  completedAt?: string | null;
   deliveryAddress?: string | null;
   waitTimeSeconds?: number | null;
+  routeDurationSeconds?: number | null;
   elapsedWaitingSeconds?: number;
+  elapsedRouteSeconds?: number | null;
   sale: {
     id: string;
     status: string;
@@ -227,7 +230,13 @@ function getWaitLabel(delivery: DeliveryRow): string | null {
     return `Aguardando há ${formatWaitTime(seconds)}`;
   }
   if (delivery.status === 'IN_PROGRESS' && delivery.startedAt) {
-    return `Em rota há ${formatWaitTime(getElapsedWaitingSeconds(delivery.startedAt))}`;
+    const routeSeconds =
+      delivery.elapsedRouteSeconds ?? getElapsedWaitingSeconds(delivery.startedAt);
+    const waitPart =
+      delivery.waitTimeSeconds != null
+        ? `Esperou ${formatWaitTime(delivery.waitTimeSeconds)} · `
+        : '';
+    return `${waitPart}Em rota há ${formatWaitTime(routeSeconds)}`;
   }
   return null;
 }

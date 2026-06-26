@@ -4,8 +4,15 @@ function toDate(value: string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+function diffSeconds(from: string | Date, to: string | Date): number | null {
+  const start = toDate(from).getTime();
+  const end = toDate(to).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  return Math.max(0, Math.round((end - start) / 1000));
+}
+
 /**
- * Diferença em segundos entre o início da rota e a criação da venda.
+ * Tempo entre o cadastro da venda e o início da rota pelo entregador.
  * Retorna null se a entrega ainda não foi iniciada.
  */
 export function getWaitTimeSeconds(
@@ -13,19 +20,51 @@ export function getWaitTimeSeconds(
   deliveryStartedAt: string | Date | null | undefined,
 ): number | null {
   if (!deliveryStartedAt) return null;
-  const created = toDate(saleCreatedAt).getTime();
-  const started = toDate(deliveryStartedAt).getTime();
-  if (Number.isNaN(created) || Number.isNaN(started)) return null;
-  return Math.max(0, Math.round((started - created) / 1000));
+  return diffSeconds(saleCreatedAt, deliveryStartedAt);
 }
 
 /**
- * Segundos decorridos desde a criação da venda (para entregas PENDING).
+ * Tempo entre o início da rota e a conclusão da entrega.
+ * Retorna null se a rota ainda não foi iniciada ou não foi finalizada.
+ */
+export function getRouteDurationSeconds(
+  deliveryStartedAt: string | Date | null | undefined,
+  deliveryCompletedAt: string | Date | null | undefined,
+): number | null {
+  if (!deliveryStartedAt || !deliveryCompletedAt) return null;
+  return diffSeconds(deliveryStartedAt, deliveryCompletedAt);
+}
+
+/**
+ * Segundos decorridos desde um instante de referência (ex.: criação da venda ou início da rota).
  */
 export function getElapsedWaitingSeconds(saleCreatedAt: string | Date, now: Date = new Date()): number {
   const created = toDate(saleCreatedAt).getTime();
   if (Number.isNaN(created)) return 0;
   return Math.max(0, Math.round((now.getTime() - created) / 1000));
+}
+
+export function getDeliveryPhaseMetrics(input: {
+  saleCreatedAt: string | Date;
+  deliveryStartedAt?: string | Date | null;
+  deliveryCompletedAt?: string | Date | null;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const waitTimeSeconds = getWaitTimeSeconds(input.saleCreatedAt, input.deliveryStartedAt);
+  const routeDurationSeconds = getRouteDurationSeconds(input.deliveryStartedAt, input.deliveryCompletedAt);
+  const elapsedWaitingSeconds = getElapsedWaitingSeconds(input.saleCreatedAt, now);
+  const elapsedRouteSeconds =
+    input.deliveryStartedAt && !input.deliveryCompletedAt
+      ? getElapsedWaitingSeconds(input.deliveryStartedAt, now)
+      : null;
+
+  return {
+    waitTimeSeconds,
+    routeDurationSeconds,
+    elapsedWaitingSeconds,
+    elapsedRouteSeconds,
+  };
 }
 
 /**

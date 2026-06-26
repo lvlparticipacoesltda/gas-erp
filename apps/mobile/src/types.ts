@@ -70,7 +70,9 @@ export interface Delivery {
   completedAt?: string | null;
   deliveryAddress?: string | null;
   waitTimeSeconds?: number | null;
+  routeDurationSeconds?: number | null;
   elapsedWaitingSeconds?: number;
+  elapsedRouteSeconds?: number | null;
   sale: Sale;
   trackingPoints?: TrackingPoint[];
 }

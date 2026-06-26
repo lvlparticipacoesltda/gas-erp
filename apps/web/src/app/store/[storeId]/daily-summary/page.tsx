@@ -18,7 +18,14 @@ interface StoreDashboardData {
   deliveryMetrics?: {
     avgWaitTimeSeconds: number | null;
     maxWaitTimeSeconds: number | null;
-    slowDeliveries: { saleId: string; customerName: string; waitTimeSeconds: number }[];
+    avgRouteDurationSeconds: number | null;
+    maxRouteDurationSeconds: number | null;
+    slowDeliveries: {
+      saleId: string;
+      customerName: string;
+      waitTimeSeconds: number | null;
+      routeDurationSeconds: number | null;
+    }[];
   };
 }
 
@@ -66,18 +73,30 @@ export default function DailySummaryPage() {
         <Card><div className="text-sm text-slate-500">Entregas pendentes</div><div className="text-2xl font-bold">{data?.deliveries.pending ?? 0}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas em rota</div><div className="text-2xl font-bold">{data?.deliveries.inProgress ?? 0}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas concluídas</div><div className="text-2xl font-bold">{data?.deliveries.completed ?? 0}</div></Card>
-        <Card><div className="text-sm text-slate-500">Tempo médio de espera</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Maior espera do dia</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Tempo médio até a rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior espera até a rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Tempo médio em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgRouteDurationSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior tempo em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxRouteDurationSeconds)}</div></Card>
       </div>
 
       {metrics?.slowDeliveries && metrics.slowDeliveries.length > 0 && (
         <>
-          <h2 className="mb-3 mt-8 font-semibold">Entregas com espera alta</h2>
+          <h2 className="mb-3 mt-8 font-semibold">Entregas com tempo elevado</h2>
           <Table>
-            <thead className="bg-slate-50 text-left"><tr><th className="p-3">Cliente</th><th className="p-3">Tempo de espera</th></tr></thead>
+            <thead className="bg-slate-50 text-left">
+              <tr>
+                <th className="p-3">Cliente</th>
+                <th className="p-3">Espera até a rota</th>
+                <th className="p-3">Tempo em rota</th>
+              </tr>
+            </thead>
             <tbody>
               {metrics.slowDeliveries.map((d) => (
-                <tr key={d.saleId} className="border-t border-slate-100"><td className="p-3">{d.customerName}</td><td className="p-3">{formatWaitTime(d.waitTimeSeconds)}</td></tr>
+                <tr key={d.saleId} className="border-t border-slate-100">
+                  <td className="p-3">{d.customerName}</td>
+                  <td className="p-3">{formatWaitTime(d.waitTimeSeconds)}</td>
+                  <td className="p-3">{formatWaitTime(d.routeDurationSeconds)}</td>
+                </tr>
               ))}
             </tbody>
           </Table>

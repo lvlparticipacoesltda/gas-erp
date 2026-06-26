@@ -8,7 +8,7 @@ import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { formatWaitTime, getSaleDisplayStatus, getWaitTimeSeconds, SALE_STATUS_LABELS } from '@gas-erp/shared';
+import { formatWaitTime, getElapsedWaitingSeconds, getRouteDurationSeconds, getSaleDisplayStatus, getWaitTimeSeconds, SALE_STATUS_LABELS } from '@gas-erp/shared';
 
 interface Sale {
   id: string;
@@ -17,7 +17,7 @@ interface Sale {
   total: number | string;
   customer?: { name: string };
   deliverer?: { user: { name: string } };
-  delivery?: { status: string; startedAt?: string | null } | null;
+  delivery?: { status: string; startedAt?: string | null; completedAt?: string | null } | null;
 }
 
 export default function SalesListPage() {
@@ -62,7 +62,8 @@ export default function SalesListPage() {
               <th className="p-3">Data</th>
               <th className="p-3">Cliente</th>
               <th className="p-3">Entregador</th>
-              <th className="p-3">Tempo até rota</th>
+              <th className="p-3">Espera p/ rota</th>
+              <th className="p-3">Tempo em rota</th>
               <th className="p-3">Status</th>
               <th className="p-3">Total</th>
               <th className="p-3" />
@@ -77,8 +78,18 @@ export default function SalesListPage() {
                 <td className="p-3">{s.customer?.name ?? '-'}</td>
                 <td className="p-3">{s.deliverer?.user.name ?? '-'}</td>
                 <td className="p-3">
-                  {s.delivery
+                  {s.delivery?.startedAt
                     ? formatWaitTime(getWaitTimeSeconds(s.createdAt, s.delivery.startedAt))
+                    : '—'}
+                </td>
+                <td className="p-3">
+                  {s.delivery?.startedAt
+                    ? formatWaitTime(
+                        getRouteDurationSeconds(s.delivery.startedAt, s.delivery.completedAt)
+                          ?? (s.delivery.status === 'IN_PROGRESS'
+                            ? getElapsedWaitingSeconds(s.delivery.startedAt)
+                            : null),
+                      )
                     : '—'}
                 </td>
                 <td className="p-3">

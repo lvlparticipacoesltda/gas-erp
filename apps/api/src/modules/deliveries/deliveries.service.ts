@@ -3,7 +3,7 @@ import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { deliveryTrackingSchema, updateDeliveryStatusSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
-import { getElapsedWaitingSeconds, getWaitTimeSeconds } from '@gas-erp/shared';
+import { getDeliveryPhaseMetrics } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
@@ -11,6 +11,7 @@ const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', '
 type DeliveryWithSale = {
   status: DeliveryStatus;
   startedAt: Date | null;
+  completedAt: Date | null;
   sale: {
     createdAt: Date;
     deliveryStreet: string | null;
@@ -36,13 +37,16 @@ function buildDeliveryAddress(sale: DeliveryWithSale['sale']): string | null {
 }
 
 function withDeliveryMetrics<T extends DeliveryWithSale>(delivery: T, now: Date) {
-  const waitTimeSeconds = getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
-  const elapsedWaitingSeconds = getElapsedWaitingSeconds(delivery.sale.createdAt, now);
+  const metrics = getDeliveryPhaseMetrics({
+    saleCreatedAt: delivery.sale.createdAt,
+    deliveryStartedAt: delivery.startedAt,
+    deliveryCompletedAt: delivery.completedAt,
+    now,
+  });
   return {
     ...delivery,
     deliveryAddress: buildDeliveryAddress(delivery.sale),
-    waitTimeSeconds,
-    elapsedWaitingSeconds,
+    ...metrics,
   };
 }
 
