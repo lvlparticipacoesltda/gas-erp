@@ -46,19 +46,27 @@ interface DeliveriesSidebarProps {
 export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps) {
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+  const [userExpanded, setUserExpanded] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await api<DeliveryRow[]>(`/deliveries?storeId=${storeId}`, {}, getToken());
       setDeliveries(data);
+      if (!userExpanded && data.length > 0) {
+        setCollapsed(false);
+      }
+      if (!userExpanded && data.length === 0) {
+        setCollapsed(true);
+      }
     } catch {
       setDeliveries([]);
+      if (!userExpanded) setCollapsed(true);
     } finally {
       setLoading(false);
     }
-  }, [storeId]);
+  }, [storeId, userExpanded]);
 
   useEffect(() => {
     load();
@@ -82,46 +90,81 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
   const pending = deliveries.filter((d) => d.status === 'PENDING');
   const inProgress = deliveries.filter((d) => d.status === 'IN_PROGRESS');
 
+  function expand() {
+    setUserExpanded(true);
+    setCollapsed(false);
+  }
+
+  function collapse() {
+    setUserExpanded(false);
+    setCollapsed(true);
+  }
+
   if (collapsed) {
     return (
-      <aside className={className}>
+      <>
         <button
           type="button"
-          onClick={() => setCollapsed(false)}
-          className="fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-orange-600 lg:static lg:rounded-xl"
+          onClick={expand}
+          className="fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-orange-600 lg:hidden"
         >
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-xs">
             {deliveries.length}
           </span>
           Entregas
         </button>
-      </aside>
+        <aside
+          className={`hidden shrink-0 flex-col border-l border-slate-200 bg-slate-50 lg:flex lg:w-11 ${className ?? ''}`}
+        >
+          <button
+            type="button"
+            onClick={expand}
+            title="Abrir painel de entregas"
+            className="flex h-full min-h-[12rem] flex-col items-center gap-2 border-0 bg-transparent px-1 py-4 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          >
+            <span className="text-base" aria-hidden>
+              📦
+            </span>
+            <span className="text-[10px] font-bold tabular-nums text-orange-600">{deliveries.length}</span>
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wide [writing-mode:vertical-rl] rotate-180"
+            >
+              Entregas
+            </span>
+          </button>
+        </aside>
+      </>
     );
   }
 
   return (
     <aside
-      className={`flex w-full shrink-0 flex-col border-l border-slate-200 bg-slate-50 lg:w-80 xl:w-96 ${className ?? ''}`}
+      className={`flex w-full shrink-0 flex-col border-l border-slate-200 bg-slate-50 lg:w-64 ${className ?? ''}`}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600">📦</span>
-          <div>
-            <div className="font-semibold text-slate-900">{deliveries.length} Entregas</div>
-            <div className="text-xs text-slate-500">Em andamento</div>
+      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-sm text-orange-600">
+            📦
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-slate-900">
+              {deliveries.length} Entregas
+            </div>
+            <div className="text-[11px] text-slate-500">Em andamento</div>
           </div>
         </div>
         <button
           type="button"
-          onClick={() => setCollapsed(true)}
-          className="text-slate-400 hover:text-slate-600 lg:hidden"
-          aria-label="Recolher"
+          onClick={collapse}
+          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          aria-label="Recolher entregas"
+          title="Recolher"
         >
-          ✕
+          ›
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-4 max-h-[calc(100vh-8rem)]">
+      <div className="max-h-[calc(100vh-7rem)] flex-1 space-y-3 overflow-y-auto p-2.5">
         {loading && (
           <div className="flex justify-center py-8">
             <BrandLoader size="sm" showLabel={false} label="Carregando entregas" />
