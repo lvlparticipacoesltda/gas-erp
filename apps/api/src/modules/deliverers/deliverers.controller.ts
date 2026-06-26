@@ -16,6 +16,13 @@ export class DeliverersController {
     return this.service.updateMyPosition(user, body);
   }
 
+  @Get('me')
+  @UseGuards(RolesGuard)
+  @Roles('DELIVERER')
+  getMe(@CurrentUser() user: AuthUser) {
+    return this.service.getMe(user);
+  }
+
   @Put('me/push-token')
   @UseGuards(RolesGuard)
   @Roles('DELIVERER')

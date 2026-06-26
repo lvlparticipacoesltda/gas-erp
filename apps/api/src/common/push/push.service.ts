@@ -57,6 +57,16 @@ export class PushService {
     });
   }
 
+  async notifyAvailabilityChanged(delivererId: string, available: boolean): Promise<void> {
+    await this.sendToDeliverer(delivererId, {
+      title: available ? 'Você está disponível' : 'Você está indisponível',
+      body: available
+        ? 'A loja reativou seu status. Sua localização voltará a aparecer no mapa.'
+        : 'A loja pausou seu status. O compartilhamento de localização foi interrompido.',
+      data: { type: 'AVAILABILITY_CHANGED', available: available ? 'true' : 'false' },
+    });
+  }
+
   private async sendToDeliverer(
     delivererId: string,
     message: { title: string; body: string; data: Record<string, string> },

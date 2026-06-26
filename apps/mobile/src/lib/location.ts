@@ -17,6 +17,8 @@ const FOREGROUND_PRESENCE_INTERVAL_MS = 15_000;
 
 let foregroundIntervalId: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: { remove: () => void } | null = null;
+/** Quando true, presença (sem rota) não envia GPS — ex.: indisponível pela loja. */
+let presenceSharingPaused = false;
 
 type LocationTaskData = { locations: Location.LocationObject[] };
 
@@ -33,7 +35,7 @@ export function confirmBackgroundLocationDisclosure(): Promise<boolean> {
   return new Promise((resolve) => {
     Alert.alert(
       'Uso da sua localização',
-      'Enquanto você estiver logado e disponível, o app compartilha sua posição com a loja — inclusive com o app em segundo plano — para aparecer no mapa de entregadores em tempo real. Durante uma rota, o trajeto também é registrado até a conclusão da entrega. Você pode parar o rastreamento ficando indisponível no app.',
+      'Enquanto você estiver disponível para a loja, o app compartilha sua posição — inclusive com o app em segundo plano — para aparecer no mapa de entregadores. Durante uma rota, o trajeto também é registrado até a conclusão. Quando a loja marcar você como indisponível, o compartilhamento é interrompido.',
       [
         { text: 'Agora não', style: 'cancel', onPress: () => resolve(false) },
         { text: 'Permitir', style: 'default', onPress: () => resolve(true) },
@@ -103,14 +105,16 @@ export async function sendPresenceNow(): Promise<void> {
   const token = await getToken();
   if (!token) return;
 
+  const deliveryId = await SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY);
+  if (!deliveryId && presenceSharingPaused) return;
+
   const fg = await Location.getForegroundPermissionsAsync();
   if (fg.status !== 'granted') return;
 
   try {
-    const [location, battery, deliveryId] = await Promise.all([
+    const [location, battery] = await Promise.all([
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
       readBattery(),
-      SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY),
     ]);
     await sendLocationUpdate(token, location, battery, deliveryId);
   } catch {
@@ -141,6 +145,7 @@ async function getActiveDeliveryMode(): Promise<boolean> {
 async function ensureBackgroundTaskRunning(): Promise<void> {
   const token = await getToken();
   if (!token) return;
+  if (presenceSharingPaused && !(await getActiveDeliveryMode())) return;
 
   const onDelivery = await getActiveDeliveryMode();
   if (!(await isTrackingActive())) {
@@ -150,12 +155,16 @@ async function ensureBackgroundTaskRunning(): Promise<void> {
 
 function handleAppStateChange(state: AppStateStatus): void {
   if (state === 'active') {
-    startForegroundPresenceLoop();
-    void ensurePresenceTrackingFresh();
+    if (!presenceSharingPaused) {
+      startForegroundPresenceLoop();
+      void ensurePresenceTrackingFresh();
+    }
     return;
   }
 
   stopForegroundPresenceLoop();
+  if (presenceSharingPaused) return;
+
   void (async () => {
     await sendPresenceNow();
     await ensureBackgroundTaskRunning();
@@ -166,7 +175,7 @@ function handleAppStateChange(state: AppStateStatus): void {
 export function initForegroundPresence(): void {
   if (appStateSubscription) return;
   appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
-  if (AppState.currentState === 'active') {
+  if (AppState.currentState === 'active' && !presenceSharingPaused) {
     startForegroundPresenceLoop();
   }
 }
@@ -188,6 +197,7 @@ TaskManager.defineTask<LocationTaskData>(LOCATION_TASK, async ({ data, error }) 
     getToken(),
   ]);
   if (!token) return;
+  if (!deliveryId && presenceSharingPaused) return;
 
   const battery = await readBattery();
 
@@ -314,11 +324,53 @@ async function ensureLocationUpdates(onDelivery: boolean): Promise<PermissionRes
   return permissions;
 }
 
+/** Sincroniza compartilhamento de GPS com disponibilidade definida pela loja. */
+export async function syncPresenceSharingEnabled(sharingEnabled: boolean): Promise<void> {
+  const hasDelivery = await getActiveDeliveryMode();
+
+  if (hasDelivery) {
+    presenceSharingPaused = false;
+    if (!(await isTrackingActive())) {
+      const deliveryId = await SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY);
+      if (deliveryId) {
+        await startDeliveryTracking(deliveryId).catch(() => undefined);
+      }
+    }
+    return;
+  }
+
+  if (!sharingEnabled) {
+    presenceSharingPaused = true;
+    stopForegroundPresenceLoop();
+    if (await isTrackingActive()) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
+    }
+    return;
+  }
+
+  presenceSharingPaused = false;
+  if (AppState.currentState === 'active') {
+    startForegroundPresenceLoop();
+  }
+  if (!(await isTrackingActive())) {
+    await startPresenceTracking().catch(() => undefined);
+  }
+}
+
+export function isPresenceSharingPaused(): boolean {
+  return presenceSharingPaused;
+}
+
 /**
  * Inicia o envio periódico de posição de presença (sem rota ativa).
- * Chamado ao autenticar no app.
+ * Chamado ao autenticar no app quando disponível.
  */
 export async function startPresenceTracking(): Promise<PermissionResult> {
+  if (presenceSharingPaused) {
+    const fg = await Location.getForegroundPermissionsAsync();
+    const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+    return { foreground: fg.status === 'granted', background: bg?.status === 'granted' };
+  }
   return ensureLocationUpdates(false);
 }
 
@@ -342,6 +394,7 @@ export async function stopDeliveryTracking(): Promise<void> {
 
 /** Encerra presença e rota (logout). */
 export async function stopAllTracking(): Promise<void> {
+  presenceSharingPaused = false;
   teardownForegroundPresence();
   await SecureStore.deleteItemAsync(ACTIVE_DELIVERY_KEY).catch(() => undefined);
   if (await isTrackingActive()) {
@@ -351,6 +404,7 @@ export async function stopAllTracking(): Promise<void> {
 
 /** Reinicia o task de background de presença (sem rota ativa). */
 async function ensurePresenceTrackingFresh(): Promise<void> {
+  if (presenceSharingPaused) return;
   const onDelivery = await getActiveDeliveryMode();
   if (await isTrackingActive()) return;
   await ensureLocationUpdates(onDelivery).catch(() => undefined);
@@ -361,6 +415,8 @@ async function ensurePresenceTrackingFresh(): Promise<void> {
  */
 export async function recoverStaleLocationTracking(): Promise<void> {
   try {
+    if (presenceSharingPaused) return;
+
     const deliveryId = await SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY);
     if (deliveryId) {
       const token = await getToken();

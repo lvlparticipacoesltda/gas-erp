@@ -84,6 +84,16 @@ export const delivererPositionsResponseSchema = z.array(delivererPositionSchema)
 
 export type UpdateDelivererPositionInput = z.infer<typeof updateDelivererPositionSchema>;
 export type DelivererPendingDelivery = z.infer<typeof delivererPendingDeliverySchema>;
+
+export const delivererMeSchema = z.object({
+  id: z.string(),
+  status: z.enum(DELIVERER_STATUSES),
+  hasActiveRoute: z.boolean(),
+  /** Se o app deve compartilhar GPS (disponível ou em rota ativa). */
+  sharingLocation: z.boolean(),
+});
+
+export type DelivererMe = z.infer<typeof delivererMeSchema>;
 export type DelivererPosition = z.infer<typeof delivererPositionSchema>;
 export type DelivererPositionsResponse = z.infer<typeof delivererPositionsResponseSchema>;
 

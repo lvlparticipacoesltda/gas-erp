@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import { syncDelivererAvailabilityFromServer } from './deliverer-availability-context';
 import { api } from './api';
 
 Notifications.setNotificationHandler({
@@ -75,7 +76,7 @@ function getDeliveryIdFromNotification(
 }
 
 /** Registra token, escuta notificações e atualiza lista / deep link. */
-export function usePushNotifications(onRefresh: () => Promise<void>) {
+export function usePushNotifications(onRefresh: () => void | Promise<void>) {
   const router = useRouter();
   const onRefreshRef = useRef(onRefresh);
   onRefreshRef.current = onRefresh;
@@ -83,14 +84,22 @@ export function usePushNotifications(onRefresh: () => Promise<void>) {
   useEffect(() => {
     registerPushTokenWithApi().catch(() => undefined);
 
-    const received = Notifications.addNotificationReceivedListener(() => {
-      void onRefreshRef.current();
+    const received = Notifications.addNotificationReceivedListener((event) => {
+      const data = event.notification.request.content.data as Record<string, unknown>;
+      if (data?.type === 'AVAILABILITY_CHANGED') {
+        void syncDelivererAvailabilityFromServer().catch(() => undefined);
+      }
+      void Promise.resolve(onRefreshRef.current());
     });
 
     const response = Notifications.addNotificationResponseReceivedListener((event) => {
-      const deliveryId = getDeliveryIdFromNotification(
-        event.notification.request.content.data as Record<string, unknown>,
-      );
+      const data = event.notification.request.content.data as Record<string, unknown>;
+      if (data?.type === 'AVAILABILITY_CHANGED') {
+        void syncDelivererAvailabilityFromServer().catch(() => undefined);
+        void Promise.resolve(onRefreshRef.current());
+        return;
+      }
+      const deliveryId = getDeliveryIdFromNotification(data);
       if (deliveryId) {
         router.push(`/delivery/${deliveryId}`);
       } else {

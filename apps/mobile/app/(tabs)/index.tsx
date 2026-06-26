@@ -14,6 +14,7 @@ import { Loading, StateMessage } from '@/components/ui';
 import { DeliveryCard } from '@/components/DeliveryCard';
 import { useAuth } from '@/lib/auth';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
+import { useDelivererAvailability } from '@/lib/deliverer-availability-context';
 import { colors, radius, spacing } from '@/theme';
 import type { Delivery } from '@/types';
 
@@ -23,6 +24,7 @@ export default function DeliveriesScreen() {
   const router = useRouter();
   const { user, organization, logout } = useAuth();
   const { pending, inProgress, loading, refreshing, error, refresh } = useDeliveriesContext();
+  const { isUnavailable } = useDelivererAvailability();
   const [segment, setSegment] = useState<Segment>('pending');
 
   const data: Delivery[] = segment === 'pending' ? pending : inProgress;
@@ -43,6 +45,16 @@ export default function DeliveriesScreen() {
           <Ionicons name="log-out-outline" size={22} color={colors.textMuted} />
         </Pressable>
       </View>
+
+      {isUnavailable && (
+        <View style={styles.unavailableBanner}>
+          <Text style={styles.unavailableTitle}>Você está indisponível</Text>
+          <Text style={styles.unavailableText}>
+            A loja pausou seu status no mapa. O compartilhamento de localização está desligado até
+            você ser marcado como disponível novamente.
+          </Text>
+        </View>
+      )}
 
       <View style={styles.segments}>
         <SegmentButton
@@ -142,6 +154,17 @@ const styles = StyleSheet.create({
   },
   greeting: { fontSize: 20, fontWeight: '800', color: colors.text },
   subtitle: { fontSize: 13, color: colors.textMuted },
+  unavailableBanner: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  unavailableTitle: { fontSize: 14, fontWeight: '800', color: '#92400E' },
+  unavailableText: { marginTop: 4, fontSize: 12, lineHeight: 17, color: '#B45309' },
   iconButton: {
     width: 40,
     height: 40,

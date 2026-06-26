@@ -1,12 +1,14 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@gas-erp/database';
+import { DeliveryStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { AuditService } from '../../common/audit/audit.service';
+import { PushService } from '../../common/push/push.service';
 
 function buildDeliveryAddress(sale: {
   deliveryStreet: string | null;
@@ -33,6 +35,7 @@ export class DeliverersService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private push: PushService,
   ) {}
 
   private readonly include = {
@@ -241,14 +244,59 @@ export class DeliverersService {
     });
   }
 
+  async getMe(user: AuthUser) {
+    if (user.role !== 'DELIVERER') {
+      throw new ForbiddenException('Apenas entregadores podem consultar este perfil');
+    }
+
+    const deliverer = await this.prisma.deliverer.findUnique({
+      where: { userId: user.id },
+      select: {
+        id: true,
+        status: true,
+        deliveries: {
+          where: { status: DeliveryStatus.IN_PROGRESS },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+
+    const hasActiveRoute = deliverer.deliveries.length > 0;
+    const sharingLocation = deliverer.status !== 'OFFLINE' || hasActiveRoute;
+
+    return {
+      id: deliverer.id,
+      status: deliverer.status,
+      hasActiveRoute,
+      sharingLocation,
+    };
+  }
+
   async updateMyPosition(user: AuthUser, input: unknown) {
     if (user.role !== 'DELIVERER') {
       throw new ForbiddenException('Apenas entregadores podem atualizar posição');
     }
 
     const data = updateDelivererPositionSchema.parse(input);
-    const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
+    const deliverer = await this.prisma.deliverer.findUnique({
+      where: { userId: user.id },
+      include: {
+        deliveries: {
+          where: { status: DeliveryStatus.IN_PROGRESS },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
     if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+
+    if (deliverer.status === 'OFFLINE' && deliverer.deliveries.length === 0) {
+      throw new ForbiddenException(
+        'Você está indisponível. A loja pausou o compartilhamento da sua localização.',
+      );
+    }
 
     return this.prisma.deliverer.update({
       where: { id: deliverer.id },
@@ -353,6 +401,19 @@ export class DeliverersService {
           ? 'AVAILABLE'
           : data.status;
 
+    if (nextStatus === 'OFFLINE') {
+      const inRoute = await this.prisma.delivery.count({
+        where: { delivererId: id, status: DeliveryStatus.IN_PROGRESS },
+      });
+      if (inRoute > 0) {
+        throw new BadRequestException(
+          'Entregador em rota não pode ficar indisponível. Conclua ou cancele a entrega primeiro.',
+        );
+      }
+    }
+
+    const previousStatus = deliverer.status;
+
     const updated = await this.prisma.$transaction(async (tx) => {
       if (data.active !== undefined) {
         await tx.user.update({
@@ -365,6 +426,14 @@ export class DeliverersService {
         where: { id },
         data: {
           ...(nextStatus ? { status: nextStatus } : {}),
+          ...(nextStatus === 'OFFLINE'
+            ? {
+                lastLatitude: null,
+                lastLongitude: null,
+                lastAccuracy: null,
+                lastSeenAt: null,
+              }
+            : {}),
           ...(data.active === false
             ? { expoPushToken: null, pushTokenUpdatedAt: null }
             : {}),
@@ -389,6 +458,14 @@ export class DeliverersService {
       active: data.active,
       status: nextStatus,
     });
+
+    if (nextStatus && nextStatus !== previousStatus) {
+      if (nextStatus === 'OFFLINE') {
+        void this.push.notifyAvailabilityChanged(id, false).catch(() => undefined);
+      } else if (nextStatus === 'AVAILABLE' && previousStatus === 'OFFLINE') {
+        void this.push.notifyAvailabilityChanged(id, true).catch(() => undefined);
+      }
+    }
 
     return updated;
   }

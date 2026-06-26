@@ -13,8 +13,9 @@ export const registerPushTokenSchema = z.object({
 export type RegisterPushTokenInput = z.infer<typeof registerPushTokenSchema>;
 
 export const pushNotificationDataSchema = z.object({
-  type: z.enum(['NEW_DELIVERY', 'DELIVERY_CANCELLED']),
-  deliveryId: z.string().min(1),
+  type: z.enum(['NEW_DELIVERY', 'DELIVERY_CANCELLED', 'AVAILABILITY_CHANGED']),
+  deliveryId: z.string().min(1).optional(),
+  available: z.boolean().optional(),
 });
 
 export type PushNotificationData = z.infer<typeof pushNotificationDataSchema>;
