@@ -17,6 +17,7 @@ export const STORE_NAV_ITEMS: {
   { screen: 'store.stock', segment: 'stock', label: 'Estoque' },
   { screen: 'store.stock.transfers', segment: 'stock/transfers', label: 'Transferências' },
   { screen: 'store.deliverers', segment: 'deliverers', label: 'Entregadores' },
+  { screen: 'store.deliverers.map', segment: 'deliverers/map', label: 'Mapa de entregadores' },
   { screen: 'store.reports', segment: 'reports', label: 'Relatórios' },
 ];
 
@@ -25,7 +26,9 @@ export function pathnameToStoreScreen(pathname: string, storeId: string): StoreS
   if (!pathname.startsWith(prefix)) return null;
   const rest = pathname.slice(prefix.length).replace(/\/$/, '');
   if (rest === 'settings' || rest === 'dashboard') return null;
-  const item = STORE_NAV_ITEMS.find((nav) => nav.segment === rest);
+  const item = STORE_NAV_ITEMS.filter(
+    (nav) => rest === nav.segment || rest.startsWith(`${nav.segment}/`),
+  ).sort((a, b) => b.segment.length - a.segment.length)[0];
   return item?.screen ?? null;
 }
 

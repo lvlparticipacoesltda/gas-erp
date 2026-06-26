@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { MapPin } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
-import { canManageDeliverers, DELIVERER_STATUS_LABELS } from '@gas-erp/shared';
+import { buildStoreHref } from '@/lib/store-nav';
+import { canManageDeliverers, DELIVERER_STATUS_LABELS, hasScreenPermission } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
 interface DelivererStoreLink {
@@ -47,6 +50,7 @@ export default function DeliverersPage() {
   const [editing, setEditing] = useState<Deliverer | null>(null);
   const [ready, setReady] = useState(false);
   const [canManage, setCanManage] = useState(false);
+  const [canViewMap, setCanViewMap] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createStores, setCreateStores] = useState<Set<string>>(() => new Set());
   const [createError, setCreateError] = useState('');
@@ -67,6 +71,9 @@ export default function DeliverersPage() {
   useEffect(() => {
     const user = getStoredUser<AuthUser>();
     setCanManage(user ? canManageDeliverers(user.role) : false);
+    setCanViewMap(
+      user ? hasScreenPermission(user.role, user.permissions, 'store.deliverers.map') : false,
+    );
     setCreateStores(new Set(storeId ? [storeId] : []));
     load().finally(() => setReady(true));
   }, [load, storeId]);
@@ -116,7 +123,21 @@ export default function DeliverersPage() {
 
   return (
     <>
-      <PageHeader title="Entregadores" subtitle={`${deliveriesCount} entregas ativas hoje`} />
+      <PageHeader
+        title="Entregadores"
+        subtitle={`${deliveriesCount} entregas ativas hoje`}
+        action={
+          canViewMap ? (
+            <Link
+              href={buildStoreHref(storeId, 'deliverers/map')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <MapPin className="h-4 w-4" />
+              Ver mapa
+            </Link>
+          ) : undefined
+        }
+      />
 
       <div className={canManage ? 'grid gap-6 lg:grid-cols-2' : ''}>
         {canManage && (

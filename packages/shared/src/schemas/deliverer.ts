@@ -31,3 +31,30 @@ export const updateDelivererSchema = z.object({
 
 export type CreateDelivererInput = z.infer<typeof createDelivererSchema>;
 export type UpdateDelivererInput = z.infer<typeof updateDelivererSchema>;
+
+export const delivererPositionStoreSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+export const delivererPositionSchema = z.object({
+  delivererId: z.string(),
+  name: z.string(),
+  delivererStatus: z.string(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  updatedAt: z.string().nullable(),
+  lastSeenAt: z.string().nullable(),
+  stale: z.boolean(),
+  deliveryId: z.string().nullable().optional(),
+  deliveryStatus: z.string().nullable().optional(),
+  stores: z.array(delivererPositionStoreSchema),
+});
+
+export const delivererPositionsResponseSchema = z.array(delivererPositionSchema);
+
+export type DelivererPosition = z.infer<typeof delivererPositionSchema>;
+export type DelivererPositionsResponse = z.infer<typeof delivererPositionsResponseSchema>;
+
+/** Posição considerada desatualizada após este intervalo (ms). */
+export const DELIVERER_POSITION_STALE_MS = 5 * 60 * 1000;

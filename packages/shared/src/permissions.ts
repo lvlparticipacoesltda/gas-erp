@@ -10,6 +10,7 @@ export const STORE_SCREEN_KEYS = [
   'store.stock',
   'store.stock.transfers',
   'store.deliverers',
+  'store.deliverers.map',
   'store.daily-summary',
   'store.reports',
 ] as const;
@@ -26,6 +27,7 @@ export const STORE_SCREEN_LABELS: Record<StoreScreenKey, string> = {
   'store.stock': 'Estoque',
   'store.stock.transfers': 'Transferências',
   'store.deliverers': 'Entregadores',
+  'store.deliverers.map': 'Mapa de entregadores',
   'store.daily-summary': 'Resumo diário',
   'store.reports': 'Relatórios',
 };

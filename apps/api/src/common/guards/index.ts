@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
-import { AuthUser } from '@gas-erp/shared';
+import { AuthUser, hasScreenPermission } from '@gas-erp/shared';
 import { ROLES_KEY } from '../decorators';
 
 @Injectable()
@@ -68,5 +68,11 @@ export function assertStoreAccess(user: AuthUser, storeId: string) {
   if (user.role === 'ORG_MASTER' || user.role === 'PLATFORM_ADMIN') return;
   if (!user.storeIds.includes(storeId)) {
     throw new ForbiddenException('Sem acesso a esta loja');
+  }
+}
+
+export function assertScreenPermission(user: AuthUser, screen: string) {
+  if (!hasScreenPermission(user.role, user.permissions, screen)) {
+    throw new ForbiddenException('Sem permissão para esta tela');
   }
 }

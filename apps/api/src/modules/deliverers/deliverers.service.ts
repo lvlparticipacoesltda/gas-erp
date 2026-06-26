@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import { Prisma } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema } from '@gas-erp/shared';
+import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, DELIVERER_POSITION_STALE_MS } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
-import { assertStoreAccess } from '../../common/guards';
+import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { AuditService } from '../../common/audit/audit.service';
 
@@ -32,6 +33,114 @@ export class DeliverersService {
       where,
       include: this.include,
       orderBy: { user: { name: 'asc' } },
+    });
+  }
+
+  async getPositions(user: AuthUser, storeId: string) {
+    assertStoreAccess(user, storeId);
+    assertScreenPermission(user, 'store.deliverers.map');
+
+    const store = await this.prisma.store.findFirst({
+      where: { id: storeId, organizationId: user.organizationId },
+    });
+    if (!store) throw new NotFoundException('Loja não encontrada');
+
+    const deliverers = await this.prisma.deliverer.findMany({
+      where: {
+        OR: [
+          { stores: { some: { storeId, store: { organizationId: user.organizationId } } } },
+          {
+            deliveries: {
+              some: {
+                status: 'IN_PROGRESS',
+                sale: { storeId, store: { organizationId: user.organizationId } },
+              },
+            },
+          },
+        ],
+      },
+      include: {
+        user: { select: { name: true } },
+        stores: { include: { store: { select: { id: true, name: true } } } },
+        deliveries: {
+          where: { status: 'IN_PROGRESS' },
+          select: { id: true, status: true, sale: { select: { storeId: true } } },
+        },
+      },
+      orderBy: { user: { name: 'asc' } },
+    });
+
+    if (deliverers.length === 0) return [];
+
+    const delivererIds = deliverers.map((d) => d.id);
+    const latestPoints = await this.prisma.$queryRaw<
+      Array<{
+        delivererId: string;
+        latitude: number;
+        longitude: number;
+        recordedAt: Date;
+        deliveryId: string;
+        deliveryStatus: string;
+      }>
+    >`
+      SELECT DISTINCT ON (d."delivererId")
+        d."delivererId" AS "delivererId",
+        tp.latitude,
+        tp.longitude,
+        tp."recordedAt" AS "recordedAt",
+        d.id AS "deliveryId",
+        d.status::text AS "deliveryStatus"
+      FROM "DeliveryTrackingPoint" tp
+      INNER JOIN "Delivery" d ON d.id = tp."deliveryId"
+      WHERE d."delivererId" IN (${Prisma.join(delivererIds)})
+      ORDER BY d."delivererId", tp."recordedAt" DESC
+    `;
+
+    const pointByDeliverer = new Map(latestPoints.map((p) => [p.delivererId, p]));
+    const now = Date.now();
+
+    return deliverers.map((deliverer) => {
+      const point = pointByDeliverer.get(deliverer.id);
+      const activeAtStore = deliverer.deliveries.find((d) => d.sale.storeId === storeId);
+      const activeDelivery = activeAtStore ?? deliverer.deliveries[0];
+
+      const stores = deliverer.stores.map((s) => ({
+        id: s.store.id,
+        name: s.store.name,
+      }));
+
+      if (!point) {
+        return {
+          delivererId: deliverer.id,
+          name: deliverer.user.name,
+          delivererStatus: deliverer.status,
+          latitude: null,
+          longitude: null,
+          updatedAt: null,
+          lastSeenAt: null,
+          stale: true,
+          deliveryId: activeDelivery?.id ?? null,
+          deliveryStatus: activeDelivery?.status ?? null,
+          stores,
+        };
+      }
+
+      const lastSeenAt = point.recordedAt.toISOString();
+      const stale = now - point.recordedAt.getTime() > DELIVERER_POSITION_STALE_MS;
+
+      return {
+        delivererId: deliverer.id,
+        name: deliverer.user.name,
+        delivererStatus: deliverer.status,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        updatedAt: lastSeenAt,
+        lastSeenAt,
+        stale,
+        deliveryId: activeDelivery?.id ?? point.deliveryId,
+        deliveryStatus: activeDelivery?.status ?? point.deliveryStatus,
+        stores,
+      };
     });
   }
 

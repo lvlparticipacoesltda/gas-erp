@@ -23,6 +23,11 @@ export class DeliverersController {
     return this.service.clearPushToken(user);
   }
 
+  @Get('positions')
+  getPositions(@CurrentUser() user: AuthUser, @Query('storeId') storeId: string) {
+    return this.service.getPositions(user, storeId);
+  }
+
   @Get()
   findAll(@CurrentUser() user: AuthUser, @Query('storeId') storeId?: string) {
     return this.service.findAll(user, storeId);
