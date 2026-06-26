@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { api, ApiError } from './api';
 import { clearSession, getStoredOrganization, getStoredUser, getToken, saveSession } from './storage';
 import { clearPushTokenOnServer } from './notifications';
-import { stopAllTracking } from './location';
+import { startPresenceTracking, stopAllTracking } from './location';
 import type { AuthUser, LoginResponse, Organization } from '../types';
 
 interface AuthState {
@@ -57,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization: res.organization ?? null,
       initializing: false,
     });
+    startPresenceTracking().catch(() => undefined);
   }, []);
 
   const logout = useCallback(async () => {

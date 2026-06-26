@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import {
   formatWaitTime,
+  formatCompletedDeliveryPhases,
   getDeliveryDisplayStatus,
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
@@ -31,16 +32,13 @@ function waitLabel(delivery: Delivery): string {
     return routeSeconds != null ? `${waitPart}Em rota há ${formatWaitTime(routeSeconds)}` : 'Em rota agora';
   }
   if (delivery.status === 'DELIVERED') {
-    const parts: string[] = [];
-    const wait =
-      delivery.waitTimeSeconds
-      ?? getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
-    const route =
-      delivery.routeDurationSeconds
-      ?? getRouteDurationSeconds(delivery.startedAt, delivery.completedAt);
-    if (wait != null) parts.push(`Espera: ${formatWaitTime(wait)}`);
-    if (route != null) parts.push(`Rota: ${formatWaitTime(route)}`);
-    return parts.join(' · ');
+    return formatCompletedDeliveryPhases({
+      waitTimeSeconds: delivery.waitTimeSeconds,
+      routeDurationSeconds: delivery.routeDurationSeconds,
+      saleCreatedAt: delivery.sale.createdAt,
+      deliveryStartedAt: delivery.startedAt,
+      deliveryCompletedAt: delivery.completedAt,
+    });
   }
   return '';
 }

@@ -80,3 +80,40 @@ export function formatWaitTime(seconds: number | null | undefined): string {
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`;
 }
+
+/** Rótulo de espera até iniciar a rota (histórico concluído). */
+export function formatCompletedWaitLabel(seconds: number | null | undefined): string {
+  if (seconds == null) return '';
+  return `Esperou ${formatWaitTime(seconds)}`;
+}
+
+/** Rótulo de duração em rota (histórico concluído). */
+export function formatCompletedRouteLabel(seconds: number | null | undefined): string {
+  if (seconds == null) return '';
+  return `Em rota: ${formatWaitTime(seconds)}`;
+}
+
+/** Junta espera + rota para cards de histórico. */
+export function formatCompletedDeliveryPhases(input: {
+  waitTimeSeconds?: number | null;
+  routeDurationSeconds?: number | null;
+  saleCreatedAt?: string | Date;
+  deliveryStartedAt?: string | Date | null;
+  deliveryCompletedAt?: string | Date | null;
+}): string {
+  const wait =
+    input.waitTimeSeconds
+    ?? (input.saleCreatedAt && input.deliveryStartedAt
+      ? getWaitTimeSeconds(input.saleCreatedAt, input.deliveryStartedAt)
+      : null);
+  const route =
+    input.routeDurationSeconds
+    ?? getRouteDurationSeconds(input.deliveryStartedAt, input.deliveryCompletedAt);
+
+  const parts: string[] = [];
+  const waitLabel = formatCompletedWaitLabel(wait);
+  const routeLabel = formatCompletedRouteLabel(route);
+  if (waitLabel) parts.push(waitLabel);
+  if (routeLabel) parts.push(routeLabel);
+  return parts.join(' · ');
+}

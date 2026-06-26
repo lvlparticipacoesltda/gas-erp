@@ -85,7 +85,7 @@ export class DeliveriesService {
     if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
 
     const deliveries = await this.prisma.delivery.findMany({
-      where: { delivererId: deliverer.id, status: { not: DeliveryStatus.CANCELLED } },
+      where: { delivererId: deliverer.id },
       include: {
         sale: { include: { customer: true, items: { include: { product: true } }, payments: true } },
         trackingPoints: { orderBy: { recordedAt: 'desc' }, take: 5 },

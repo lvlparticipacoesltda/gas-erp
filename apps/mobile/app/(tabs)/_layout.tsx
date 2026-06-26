@@ -35,6 +35,13 @@ function TabsNav() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="sale"
+        options={{
+          title: 'Venda',
+          tabBarIcon: ({ color, size }) => <Ionicons name="add-circle-outline" size={size} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

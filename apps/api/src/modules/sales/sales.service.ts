@@ -1,12 +1,16 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { BackdateApprovalStatus, DeliveryStatus, SaleStatus } from '@gas-erp/database';
+import { BackdateApprovalStatus, DeliveryStatus, MobileApprovalStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   createSaleSchema,
+  createMobileSaleSchema,
   updateSaleStatusSchema,
   rejectSaleBackdateSchema,
+  rejectSaleMobileSchema,
   type CreateSaleInput,
+  type CreateMobileSaleInput,
   canManageSales,
+  canApproveMobileSales,
   resolveSaleBackdateInput,
   toNumber,
 } from '@gas-erp/shared';
@@ -32,6 +36,8 @@ export class SalesService {
     attendant: { select: { id: true, name: true } },
     deliverer: { include: { user: { select: { id: true, name: true } } } },
     backdateApprovedBy: { select: { id: true, name: true } },
+    mobileApprovedBy: { select: { id: true, name: true } },
+    createdByDeliverer: { include: { user: { select: { id: true, name: true } } } },
     items: { include: { product: true } },
     payments: true,
     delivery: true,
@@ -40,6 +46,10 @@ export class SalesService {
       include: { user: { select: { id: true, name: true, email: true } } },
     },
     backdateLogs: {
+      orderBy: { createdAt: 'asc' as const },
+      include: { user: { select: { id: true, name: true } } },
+    },
+    mobileLogs: {
       orderBy: { createdAt: 'asc' as const },
       include: { user: { select: { id: true, name: true } } },
     },
@@ -52,6 +62,7 @@ export class SalesService {
     page = 1,
     pageSize = 20,
     backdatePending?: boolean,
+    mobilePending?: boolean,
   ) {
     assertStoreAccess(user, storeId);
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
@@ -59,6 +70,7 @@ export class SalesService {
       storeId,
       ...(status ? { status: status as SaleStatus } : {}),
       ...(backdatePending ? { backdateApproval: 'PENDING' as BackdateApprovalStatus } : {}),
+      ...(mobilePending ? { mobileApproval: 'PENDING' as MobileApprovalStatus } : {}),
     };
     const [data, total] = await Promise.all([
       this.prisma.sale.findMany({
@@ -257,6 +269,308 @@ export class SalesService {
     }
 
     return sale;
+  }
+
+  async createMobile(user: AuthUser, input: unknown) {
+    if (user.role !== 'DELIVERER') {
+      throw new ForbiddenException('Apenas entregadores podem criar vendas pelo app.');
+    }
+
+    const data = createMobileSaleSchema.parse(input);
+    assertStoreAccess(user, data.storeId);
+
+    const deliverer = await this.prisma.deliverer.findUnique({
+      where: { userId: user.id },
+      include: { stores: { where: { storeId: data.storeId } } },
+    });
+    if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+    if (deliverer.stores.length === 0) {
+      throw new BadRequestException('Você não atende esta unidade.');
+    }
+
+    const isPickup = data.fulfillmentType === 'PICKUP';
+    const deliveryFee = isPickup
+      ? 0
+      : await this.resolveDeliveryFee(data.storeId, data.items);
+
+    const itemsTotal = data.items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice - (item.discount ?? 0),
+      0,
+    );
+    const total = itemsTotal + deliveryFee;
+
+    const payments = data.payments?.length
+      ? data.payments
+      : [{ method: 'CASH' as const, amount: total }];
+
+    const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    if (total > 0 && paidTotal < total - 0.009) {
+      throw new BadRequestException(
+        'Informe o valor do pagamento. Verifique o preço unitário do produto.',
+      );
+    }
+
+    await this.validateMobileSaleReferences(user, data);
+
+    const sale = await this.prisma.sale.create({
+      data: {
+        storeId: data.storeId,
+        customerId: data.customerId,
+        delivererId: isPickup ? undefined : deliverer.id,
+        createdByDelivererId: deliverer.id,
+        channel: isPickup ? 'IN_STORE' : 'APP',
+        status: SaleStatus.DRAFT,
+        total,
+        deliveryFee,
+        notes: data.notes,
+        mobileApproval: 'PENDING' as MobileApprovalStatus,
+        deliveryStreet: isPickup ? undefined : data.deliveryStreet || undefined,
+        deliveryNumber: isPickup ? undefined : data.deliveryNumber || undefined,
+        deliveryComplement: isPickup ? undefined : data.deliveryComplement || undefined,
+        deliveryNeighborhood: isPickup ? undefined : data.deliveryNeighborhood || undefined,
+        deliveryCity: isPickup ? undefined : data.deliveryCity || undefined,
+        deliveryState: isPickup ? undefined : data.deliveryState || undefined,
+        deliveryLandmark: isPickup ? undefined : data.deliveryLandmark || undefined,
+        items: {
+          create: data.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discount: item.discount ?? 0,
+            total: item.quantity * item.unitPrice - (item.discount ?? 0),
+          })),
+        },
+        payments: { create: payments },
+        statusLogs: {
+          create: [{
+            status: SaleStatus.DRAFT,
+            userId: user.id,
+            notes: 'Venda enviada pelo app — aguardando aprovação da loja',
+          }],
+        },
+        mobileLogs: {
+          create: [{
+            action: 'REQUESTED',
+            userId: user.id,
+            notes: 'Venda criada pelo entregador no app',
+          }],
+        },
+      },
+      include: this.saleInclude,
+    });
+
+    try {
+      await this.audit.log(user, 'CREATE_MOBILE', 'Sale', sale.id, {
+        storeId: data.storeId,
+        delivererId: deliverer.id,
+        total,
+        fulfillmentType: data.fulfillmentType,
+      });
+    } catch {
+      // Auditoria não bloqueia o fluxo.
+    }
+
+    return sale;
+  }
+
+  async findMobilePendingByDeliverer(user: AuthUser) {
+    if (user.role !== 'DELIVERER') {
+      throw new ForbiddenException('Apenas entregadores podem consultar vendas do app.');
+    }
+
+    const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
+    if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+
+    return this.prisma.sale.findMany({
+      where: {
+        createdByDelivererId: deliverer.id,
+        mobileApproval: 'PENDING' as MobileApprovalStatus,
+      },
+      include: this.saleInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async approveMobile(user: AuthUser, id: string) {
+    if (!canApproveMobileSales(user.role)) {
+      throw new ForbiddenException('Sem permissão para aprovar vendas do app.');
+    }
+
+    const sale = await this.findOne(user, id);
+    if (sale.mobileApproval !== 'PENDING') {
+      throw new BadRequestException('Esta venda não está aguardando aprovação do app.');
+    }
+
+    const pickup = sale.channel === 'IN_STORE';
+    const saleInput: CreateSaleInput = {
+      storeId: sale.storeId,
+      customerId: sale.customerId ?? undefined,
+      channel: sale.channel as CreateSaleInput['channel'],
+      fulfillmentType: pickup ? 'PICKUP' : 'DELIVERY',
+      delivererId: sale.delivererId ?? undefined,
+      items: sale.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: toNumber(item.unitPrice),
+        discount: toNumber(item.discount),
+      })),
+    };
+
+    await this.validateSaleReferences(user, saleInput);
+
+    const now = new Date();
+
+    const { updated, pushDelivery } = await this.prisma.$transaction(async (tx) => {
+      const newDelivery = await this.finalizeSaleFulfillment(tx, sale.id, saleInput, user.id, pickup);
+
+      const nextStatus = pickup ? SaleStatus.PORTARIA : SaleStatus.CONFIRMED;
+      const result = await tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          mobileApproval: 'APPROVED',
+          mobileApprovedAt: now,
+          mobileApprovedById: user.id,
+          attendantId: user.id,
+          confirmedAt: now,
+          deliveredAt: pickup ? now : undefined,
+          status: nextStatus,
+        },
+        include: this.saleInclude,
+      });
+
+      await tx.saleMobileApprovalLog.create({
+        data: {
+          saleId: sale.id,
+          userId: user.id,
+          action: 'APPROVED',
+          notes: 'Venda do app aprovada',
+        },
+      });
+
+      if (pickup && sale.status !== SaleStatus.PORTARIA) {
+        await tx.saleStatusLog.create({
+          data: {
+            saleId: sale.id,
+            status: SaleStatus.PORTARIA,
+            userId: user.id,
+            notes: 'Aprovada — retirada na portaria',
+          },
+        });
+      } else if (!pickup && sale.status !== SaleStatus.CONFIRMED) {
+        await tx.saleStatusLog.create({
+          data: {
+            saleId: sale.id,
+            status: SaleStatus.CONFIRMED,
+            userId: user.id,
+            notes: 'Venda do app aprovada',
+          },
+        });
+      }
+
+      await this.audit.log(user, 'APPROVE_MOBILE', 'Sale', sale.id, {
+        approvedBy: user.id,
+        approvedByName: user.name,
+      });
+
+      return { updated: result, pushDelivery: newDelivery };
+    });
+
+    if (pushDelivery) {
+      void this.push
+        .notifyNewDelivery(pushDelivery.delivererId, pushDelivery.id)
+        .catch(() => undefined);
+    }
+
+    return updated;
+  }
+
+  async rejectMobile(user: AuthUser, id: string, input: unknown) {
+    if (!canApproveMobileSales(user.role)) {
+      throw new ForbiddenException('Sem permissão para rejeitar vendas do app.');
+    }
+
+    const data = rejectSaleMobileSchema.parse(input);
+    const sale = await this.findOne(user, id);
+    if (sale.mobileApproval !== 'PENDING') {
+      throw new BadRequestException('Esta venda não está aguardando aprovação do app.');
+    }
+
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          mobileApproval: 'REJECTED',
+          mobileRejectionReason: data.reason.trim(),
+          status: SaleStatus.CANCELLED,
+          canceledAt: now,
+          canceledReason: `Venda do app rejeitada: ${data.reason.trim()}`,
+        },
+        include: this.saleInclude,
+      });
+
+      await tx.saleMobileApprovalLog.create({
+        data: {
+          saleId: sale.id,
+          userId: user.id,
+          action: 'REJECTED',
+          notes: data.reason.trim(),
+        },
+      });
+
+      await tx.saleStatusLog.create({
+        data: {
+          saleId: sale.id,
+          status: SaleStatus.CANCELLED,
+          userId: user.id,
+          notes: `Venda do app rejeitada: ${data.reason.trim()}`,
+        },
+      });
+
+      await this.audit.log(user, 'REJECT_MOBILE', 'Sale', sale.id, {
+        rejectedBy: user.id,
+        rejectedByName: user.name,
+        reason: data.reason.trim(),
+      });
+
+      return result;
+    });
+
+    return updated;
+  }
+
+  private async validateMobileSaleReferences(user: AuthUser, data: CreateMobileSaleInput) {
+    const store = await this.prisma.store.findFirst({
+      where: { id: data.storeId, organizationId: user.organizationId },
+    });
+    if (!store) {
+      throw new BadRequestException('Loja não encontrada.');
+    }
+
+    if (data.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: {
+          id: data.customerId,
+          organizationId: user.organizationId,
+        },
+      });
+      if (!customer) {
+        throw new BadRequestException('Cliente não encontrado.');
+      }
+    }
+
+    for (const item of data.items) {
+      const product = await this.prisma.product.findFirst({
+        where: {
+          id: item.productId,
+          organizationId: user.organizationId,
+          active: true,
+        },
+      });
+      if (!product) {
+        throw new BadRequestException('Produto não encontrado ou inativo.');
+      }
+    }
   }
 
   private async finalizeSaleFulfillment(
@@ -604,6 +918,16 @@ export class SalesService {
 
     if (sale.backdateApproval === 'REJECTED') {
       throw new BadRequestException('Venda retroativa rejeitada não pode ser alterada.');
+    }
+
+    if (sale.mobileApproval === 'PENDING') {
+      throw new BadRequestException(
+        'Venda aguardando aprovação do app. Aguarde aprovação da loja.',
+      );
+    }
+
+    if (sale.mobileApproval === 'REJECTED') {
+      throw new BadRequestException('Venda do app rejeitada não pode ser alterada.');
     }
 
     this.assertCanUpdateSaleStatus(user, sale.status, nextStatus);

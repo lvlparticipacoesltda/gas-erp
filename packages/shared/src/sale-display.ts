@@ -11,8 +11,17 @@ export interface SaleDisplayStatus {
 /** Status unificado para venda + entrega (histórico e sidebar). */
 export function getSaleDisplayStatus(sale: {
   status: string;
+  mobileApproval?: string;
   delivery?: { status: string } | null;
 }): SaleDisplayStatus {
+  if (sale.mobileApproval === 'PENDING') {
+    return { key: 'MOBILE_PENDING', label: 'Aguardando aprovação (app)', tone: 'warning' };
+  }
+
+  if (sale.mobileApproval === 'REJECTED') {
+    return { key: 'MOBILE_REJECTED', label: 'Rejeitada (app)', tone: 'danger' };
+  }
+
   if (sale.status === 'CANCELLED') {
     return { key: 'CANCELLED', label: 'Cancelada', tone: 'danger' };
   }

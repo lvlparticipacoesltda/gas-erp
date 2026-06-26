@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 import type { LocationTaskOptions } from 'expo-location';
@@ -10,8 +10,13 @@ import { getToken } from './storage';
 export const LOCATION_TASK = 'gas-delivery-location-tracking';
 const ACTIVE_DELIVERY_KEY = 'gas_active_delivery';
 
-/** Intervalo de envio de pontos GPS (ms). */
+/** Intervalo de envio em background (ms). */
 const UPDATE_INTERVAL_MS = 45_000;
+/** Intervalo de envio com app em primeiro plano (ms). */
+const FOREGROUND_PRESENCE_INTERVAL_MS = 30_000;
+
+let foregroundIntervalId: ReturnType<typeof setInterval> | null = null;
+let appStateSubscription: { remove: () => void } | null = null;
 
 type LocationTaskData = { locations: Location.LocationObject[] };
 
@@ -53,6 +58,86 @@ async function sendPresence(
   });
 }
 
+async function sendLocationUpdate(
+  token: string,
+  location: Location.LocationObject,
+  battery: BatteryPayload,
+  deliveryId: string | null,
+): Promise<void> {
+  if (deliveryId) {
+    await api(`/deliveries/${deliveryId}/tracking`, {
+      method: 'POST',
+      token,
+      body: {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        accuracy: location.coords.accuracy ?? undefined,
+        ...battery,
+      },
+    });
+  } else {
+    await sendPresence(token, location, battery);
+  }
+}
+
+/** Envia posição e bateria imediatamente (foreground ou ao voltar ao app). */
+export async function sendPresenceNow(): Promise<void> {
+  const token = await getToken();
+  if (!token) return;
+
+  const fg = await Location.getForegroundPermissionsAsync();
+  if (fg.status !== 'granted') return;
+
+  try {
+    const [location, battery, deliveryId] = await Promise.all([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      readBattery(),
+      SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY),
+    ]);
+    await sendLocationUpdate(token, location, battery, deliveryId);
+  } catch {
+    // Rede ou GPS indisponível — o próximo ciclo tentará de novo.
+  }
+}
+
+function startForegroundPresenceLoop(): void {
+  if (foregroundIntervalId) return;
+  void sendPresenceNow();
+  foregroundIntervalId = setInterval(() => {
+    void sendPresenceNow();
+  }, FOREGROUND_PRESENCE_INTERVAL_MS);
+}
+
+function stopForegroundPresenceLoop(): void {
+  if (!foregroundIntervalId) return;
+  clearInterval(foregroundIntervalId);
+  foregroundIntervalId = null;
+}
+
+function handleAppStateChange(state: AppStateStatus): void {
+  if (state === 'active') {
+    startForegroundPresenceLoop();
+    void ensurePresenceTrackingFresh();
+  } else {
+    stopForegroundPresenceLoop();
+  }
+}
+
+/** Listener de AppState: envio rápido em foreground e imediato ao voltar ao app. */
+export function initForegroundPresence(): void {
+  if (appStateSubscription) return;
+  appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+  if (AppState.currentState === 'active') {
+    startForegroundPresenceLoop();
+  }
+}
+
+export function teardownForegroundPresence(): void {
+  stopForegroundPresenceLoop();
+  appStateSubscription?.remove();
+  appStateSubscription = null;
+}
+
 // O handler precisa ser registrado no escopo global do bundle (import em _layout).
 TaskManager.defineTask<LocationTaskData>(LOCATION_TASK, async ({ data, error }) => {
   if (error) return;
@@ -68,20 +153,7 @@ TaskManager.defineTask<LocationTaskData>(LOCATION_TASK, async ({ data, error }) 
   const battery = await readBattery();
 
   try {
-    if (deliveryId) {
-      await api(`/deliveries/${deliveryId}/tracking`, {
-        method: 'POST',
-        token,
-        body: {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          accuracy: location.coords.accuracy ?? undefined,
-          ...battery,
-        },
-      });
-    } else {
-      await sendPresence(token, location, battery);
-    }
+    await sendLocationUpdate(token, location, battery, deliveryId);
   } catch {
     // Erros de rede em background são ignorados; o próximo ponto tentará de novo.
   }
@@ -124,7 +196,8 @@ function buildTrackingOptions(
   const base: LocationTaskOptions = {
     accuracy: Location.Accuracy.Balanced,
     timeInterval: UPDATE_INTERVAL_MS,
-    distanceInterval: 25,
+    // Presença parada: distanceInterval bloqueia updates no Android; rota usa distância.
+    distanceInterval: onDelivery ? 25 : 0,
     pausesUpdatesAutomatically: false,
   };
 
@@ -196,10 +269,18 @@ export async function stopDeliveryTracking(): Promise<void> {
 
 /** Encerra presença e rota (logout). */
 export async function stopAllTracking(): Promise<void> {
+  teardownForegroundPresence();
   await SecureStore.deleteItemAsync(ACTIVE_DELIVERY_KEY).catch(() => undefined);
   if (await isTrackingActive()) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
   }
+}
+
+/** Reinicia o task de background de presença (sem rota ativa). */
+async function ensurePresenceTrackingFresh(): Promise<void> {
+  const deliveryId = await SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY);
+  if (deliveryId) return;
+  await startPresenceTracking().catch(() => undefined);
 }
 
 /**
@@ -231,9 +312,7 @@ export async function recoverStaleLocationTracking(): Promise<void> {
       }
     }
 
-    if (!(await isTrackingActive())) {
-      await startPresenceTracking().catch(() => undefined);
-    }
+    await ensurePresenceTrackingFresh();
   } catch {
     // Ignora — melhor abrir o app sem GPS do que crashar.
   }

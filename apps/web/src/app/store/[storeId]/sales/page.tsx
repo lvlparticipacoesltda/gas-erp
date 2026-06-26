@@ -11,7 +11,9 @@ import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   BACKDATE_APPROVAL_LABELS,
+  MOBILE_APPROVAL_LABELS,
   canManageSales,
+  canApproveMobileSales,
   formatSaleDateLabel,
   formatWaitTime,
   getElapsedWaitingSeconds,
@@ -28,6 +30,7 @@ interface Sale {
   saleDate?: string;
   status: string;
   backdateApproval?: string;
+  mobileApproval?: string;
   total: number | string;
   customer?: { name: string };
   deliverer?: { user: { name: string } };
@@ -44,22 +47,25 @@ export default function SalesListPage() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
   const [backdateFilter, setBackdateFilter] = useState(false);
+  const [mobileFilter, setMobileFilter] = useState(false);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
+  const canApproveMobile = currentUser ? canApproveMobileSales(currentUser.role) : false;
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, backdateFilter, storeId]);
+  }, [statusFilter, backdateFilter, mobileFilter, storeId]);
 
   useEffect(() => {
     if (!storeId) return;
     setLoading(true);
     const statusQuery = statusFilter ? `&status=${statusFilter}` : '';
     const backdateQuery = backdateFilter ? '&backdatePending=true' : '';
+    const mobileQuery = mobileFilter ? '&mobilePending=true' : '';
     api<PaginatedResponse<Sale>>(
-      `/sales?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}${statusQuery}${backdateQuery}`,
+      `/sales?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}${statusQuery}${backdateQuery}${mobileQuery}`,
       {},
       getToken(),
     )
@@ -72,7 +78,7 @@ export default function SalesListPage() {
         setLoading(false);
         setReady(true);
       });
-  }, [storeId, statusFilter, backdateFilter, page]);
+  }, [storeId, statusFilter, backdateFilter, mobileFilter, page]);
 
   if (!ready) {
     return <PageLoader />;
@@ -113,6 +119,17 @@ export default function SalesListPage() {
             Só aguardando aprovação de data
           </label>
         )}
+        {canApproveMobile && (
+          <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={mobileFilter}
+              onChange={(e) => setMobileFilter(e.target.checked)}
+              className="rounded border-slate-300 text-brand focus:ring-brand"
+            />
+            Só aguardando aprovação (app)
+          </label>
+        )}
       </div>
 
       {loading && <p className="mb-3 text-sm text-slate-500">Carregando...</p>}
@@ -141,6 +158,13 @@ export default function SalesListPage() {
                     <div className="mt-1">
                       <Badge tone={s.backdateApproval === 'PENDING' ? 'warning' : s.backdateApproval === 'REJECTED' ? 'danger' : 'success'}>
                         {BACKDATE_APPROVAL_LABELS[s.backdateApproval as keyof typeof BACKDATE_APPROVAL_LABELS] ?? s.backdateApproval}
+                      </Badge>
+                    </div>
+                  )}
+                  {s.mobileApproval && s.mobileApproval !== 'NOT_REQUIRED' && (
+                    <div className="mt-1">
+                      <Badge tone={s.mobileApproval === 'PENDING' ? 'warning' : s.mobileApproval === 'REJECTED' ? 'danger' : 'success'}>
+                        {MOBILE_APPROVAL_LABELS[s.mobileApproval as keyof typeof MOBILE_APPROVAL_LABELS] ?? s.mobileApproval}
                       </Badge>
                     </div>
                   )}

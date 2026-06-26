@@ -11,7 +11,9 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
 import {
   BACKDATE_APPROVAL_LABELS,
+  MOBILE_APPROVAL_LABELS,
   canManageSales,
+  canApproveMobileSales,
   formatSaleDateLabel,
   getSaleDisplayStatus,
   PAYMENT_METHOD_LABELS,
@@ -34,6 +36,11 @@ interface SaleDetail {
   backdateRejectionReason?: string | null;
   backdateApprovedAt?: string | null;
   backdateApprovedBy?: { id: string; name: string } | null;
+  mobileApproval?: string;
+  mobileRejectionReason?: string | null;
+  mobileApprovedAt?: string | null;
+  mobileApprovedBy?: { id: string; name: string } | null;
+  createdByDeliverer?: { user: { name: string } } | null;
   channel: string;
   total: number | string;
   gasDoPovoBenefit?: boolean;
@@ -64,6 +71,12 @@ interface SaleDetail {
     notes?: string | null;
     user?: { id: string; name: string } | null;
   }[];
+  mobileLogs?: {
+    action: string;
+    createdAt: string;
+    notes?: string | null;
+    user?: { id: string; name: string } | null;
+  }[];
 }
 
 interface Deliverer { id: string; user: { name: string } }
@@ -76,9 +89,11 @@ export default function SaleDetailPage() {
   const [delivererId, setDelivererId] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [mobileRejectReason, setMobileRejectReason] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [backdateAction, setBackdateAction] = useState<'approve' | 'reject' | null>(null);
+  const [mobileAction, setMobileAction] = useState<'approve' | 'reject' | null>(null);
 
   async function load() {
     const [s, d] = await Promise.all([
@@ -151,6 +166,41 @@ export default function SaleDetailPage() {
     }
   }
 
+  async function approveMobile() {
+    if (!sale) return;
+    setError('');
+    setMobileAction('approve');
+    try {
+      await api(`/sales/${saleId}/mobile/approve`, { method: 'POST' }, getToken());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao aprovar venda');
+    } finally {
+      setMobileAction(null);
+    }
+  }
+
+  async function rejectMobile() {
+    if (!sale) return;
+    if (!mobileRejectReason.trim()) {
+      setError('Informe o motivo da rejeição.');
+      return;
+    }
+    setError('');
+    setMobileAction('reject');
+    try {
+      await api(`/sales/${saleId}/mobile/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: mobileRejectReason.trim() }),
+      }, getToken());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao rejeitar venda');
+    } finally {
+      setMobileAction(null);
+    }
+  }
+
   if (!sale) {
     return <PageLoader />;
   }
@@ -165,10 +215,13 @@ export default function SaleDetailPage() {
   const display = getSaleDisplayStatus(sale);
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
+  const canApproveMobile = currentUser ? canApproveMobileSales(currentUser.role) : false;
   const isPendingBackdate = sale.backdateApproval === 'PENDING';
+  const isPendingMobile = sale.mobileApproval === 'PENDING';
   const isTerminal = sale.status === 'DELIVERED' || sale.status === 'PORTARIA';
   const canEdit =
     !isPendingBackdate &&
+    !isPendingMobile &&
     sale.status !== 'CANCELLED' &&
     (!isTerminal || isManager);
   const cancelLog = sale.statusLogs.find((log) => log.status === 'CANCELLED');
@@ -228,6 +281,45 @@ export default function SaleDetailPage() {
           </div>
         )}
 
+        {isPendingMobile && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-medium">Aguardando aprovação de venda do app</p>
+            {sale.createdByDeliverer?.user.name && (
+              <p className="mt-1">Criada por: {sale.createdByDeliverer.user.name}</p>
+            )}
+            {canApproveMobile && (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={mobileAction !== null}
+                    onClick={approveMobile}
+                  >
+                    {mobileAction === 'approve' ? 'Aprovando...' : 'Aprovar venda'}
+                  </Button>
+                </div>
+                <div>
+                  <Label>Motivo da rejeição</Label>
+                  <Input
+                    value={mobileRejectReason}
+                    onChange={(e) => setMobileRejectReason(e.target.value)}
+                    placeholder="Explique por que a venda não será aceita"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-2"
+                    disabled={mobileAction !== null}
+                    onClick={rejectMobile}
+                  >
+                    {mobileAction === 'reject' ? 'Rejeitando...' : 'Rejeitar venda'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {error && (
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
@@ -245,9 +337,17 @@ export default function SaleDetailPage() {
                   </dd>
                 </div>
               )}
+              {sale.mobileApproval && sale.mobileApproval !== 'NOT_REQUIRED' && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Venda do app</dt>
+                  <dd>
+                    {MOBILE_APPROVAL_LABELS[sale.mobileApproval as keyof typeof MOBILE_APPROVAL_LABELS] ?? sale.mobileApproval}
+                  </dd>
+                </div>
+              )}
               <div className="flex justify-between"><dt className="text-slate-500">Data da venda</dt><dd>{formatSaleDateLabel(sale.saleDate ?? sale.createdAt)}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Canal</dt><dd>{SALE_CHANNEL_LABELS[sale.channel] ?? sale.channel}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Registrado por</dt><dd>{sale.attendant?.name ?? '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Registrado por</dt><dd>{sale.attendant?.name ?? sale.createdByDeliverer?.user.name ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Registrado em</dt><dd>{formatDate(sale.createdAt)}</dd></div>
               {sale.backdateApprovedBy && (
                 <div className="flex justify-between">
@@ -259,6 +359,18 @@ export default function SaleDetailPage() {
                 <div className="flex justify-between">
                   <dt className="text-slate-500">Motivo rejeição</dt>
                   <dd>{sale.backdateRejectionReason}</dd>
+                </div>
+              )}
+              {sale.mobileApprovedBy && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Aprovada (app) por</dt>
+                  <dd>{sale.mobileApprovedBy.name}</dd>
+                </div>
+              )}
+              {sale.mobileRejectionReason && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Motivo rejeição (app)</dt>
+                  <dd>{sale.mobileRejectionReason}</dd>
                 </div>
               )}
               <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{sale.deliverer?.user.name ?? '—'}</dd></div>
@@ -385,6 +497,28 @@ export default function SaleDetailPage() {
                 <h3 className="mb-2 mt-8 font-medium">Histórico de data retroativa</h3>
                 <ul className="space-y-3 text-sm">
                   {sale.backdateLogs!.map((log) => (
+                    <li key={`${log.action}-${log.createdAt}`} className="rounded-lg border border-slate-100 px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-slate-800">{log.action}</span>
+                        <span className="text-slate-500">{formatDate(log.createdAt)}</span>
+                      </div>
+                      {log.user && (
+                        <p className="mt-1 text-slate-600">Por {log.user.name}</p>
+                      )}
+                      {log.notes && (
+                        <p className="mt-1 text-slate-600">{log.notes}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {(sale.mobileLogs?.length ?? 0) > 0 && (
+              <>
+                <h3 className="mb-2 mt-8 font-medium">Histórico de aprovação (app)</h3>
+                <ul className="space-y-3 text-sm">
+                  {sale.mobileLogs!.map((log) => (
                     <li key={`${log.action}-${log.createdAt}`} className="rounded-lg border border-slate-100 px-3 py-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-medium text-slate-800">{log.action}</span>

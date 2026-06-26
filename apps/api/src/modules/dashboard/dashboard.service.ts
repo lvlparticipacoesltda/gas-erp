@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
+  COUNTED_MOBILE_APPROVALS,
   DashboardDateQuery,
   PAYMENT_METHOD_LABELS,
   formatDashboardDateRangeLabel,
@@ -79,6 +80,7 @@ export class DashboardService {
                 storeId: store.id,
                 saleDate: { gte: start, lt: end },
                 backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+                mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
                 status: { not: SaleStatus.CANCELLED },
               },
               _sum: { total: true },
@@ -168,6 +170,7 @@ export class DashboardService {
       ...storeFilter,
       saleDate: { gte: start, lt: end },
       backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+      mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
       status: { not: SaleStatus.CANCELLED },
     };
 
@@ -196,6 +199,7 @@ export class DashboardService {
             ...storeFilter,
             saleDate: { gte: start, lt: end },
             backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+            mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
           },
         },
         include: {

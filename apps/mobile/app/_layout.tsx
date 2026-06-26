@@ -7,7 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { DeliveriesProvider } from '@/lib/deliveries-context';
 import { PushNotificationsBridge } from '@/components/PushNotificationsBridge';
-import { recoverStaleLocationTracking } from '@/lib/location';
+import { recoverStaleLocationTracking, initForegroundPresence, teardownForegroundPresence } from '@/lib/location';
 import { colors } from '@/theme';
 
 /** Entregas compartilhadas entre abas e tela de detalhe (/delivery/[id]). */
@@ -16,7 +16,11 @@ function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!token) return;
+    initForegroundPresence();
     recoverStaleLocationTracking().catch(() => undefined);
+    return () => {
+      teardownForegroundPresence();
+    };
   }, [token]);
 
   if (!token) return children;

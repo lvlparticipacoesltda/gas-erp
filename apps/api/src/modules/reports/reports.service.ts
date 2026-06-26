@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
+  COUNTED_MOBILE_APPROVALS,
   DashboardDateQuery,
   PAYMENT_METHOD_LABELS,
   SALE_STATUS_LABELS,
@@ -49,6 +50,7 @@ export class ReportsService {
       storeId,
       saleDate: { gte: start, lt: end },
       backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+      mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
     };
 
     const [statusGroups, dayGroups, paymentGroups, deliveries] = await Promise.all([
@@ -75,6 +77,7 @@ export class ReportsService {
             storeId,
             saleDate: { gte: start, lt: end },
             backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+            mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
           },
         },
         include: {

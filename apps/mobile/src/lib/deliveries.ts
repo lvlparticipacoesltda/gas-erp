@@ -40,3 +40,34 @@ export function isToday(iso?: string | null): boolean {
     d.getDate() === now.getDate()
   );
 }
+
+export type HistoryPeriod = 'today' | '7d' | '30d' | 'all';
+
+/** Data de referência para filtro de histórico (conclusão ou criação). */
+export function historyReferenceDate(delivery: Delivery): string {
+  return delivery.completedAt ?? delivery.startedAt ?? delivery.createdAt;
+}
+
+/** Filtra entregas finalizadas (entregue ou cancelada) por período. */
+export function filterHistoryByPeriod(
+  deliveries: Delivery[],
+  period: HistoryPeriod,
+): Delivery[] {
+  if (period === 'all') return deliveries;
+
+  const now = new Date();
+  const cutoff = new Date(now);
+  if (period === 'today') {
+    cutoff.setHours(0, 0, 0, 0);
+  } else {
+    const days = period === '7d' ? 7 : 30;
+    cutoff.setDate(cutoff.getDate() - days);
+    cutoff.setHours(0, 0, 0, 0);
+  }
+
+  return deliveries.filter((d) => {
+    const ref = historyReferenceDate(d);
+    if (period === 'today') return isToday(ref);
+    return new Date(ref) >= cutoff;
+  });
+}

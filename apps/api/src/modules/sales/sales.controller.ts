@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { SalesService } from './sales.service';
-import { JwtAuthGuard } from '../../common/guards';
-import { CurrentUser } from '../../common/decorators';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
+import { CurrentUser, Roles } from '../../common/decorators';
 import { AuthUser } from '@gas-erp/shared';
 
 @Controller('sales')
@@ -17,6 +17,7 @@ export class SalesController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('backdatePending') backdatePending?: string,
+    @Query('mobilePending') mobilePending?: string,
   ) {
     return this.salesService.findAll(
       user,
@@ -25,7 +26,22 @@ export class SalesController {
       Number(page) || 1,
       Number(pageSize) || 20,
       backdatePending === 'true',
+      mobilePending === 'true',
     );
+  }
+
+  @Get('mobile/mine')
+  @UseGuards(RolesGuard)
+  @Roles('DELIVERER')
+  findMobilePendingByDeliverer(@CurrentUser() user: AuthUser) {
+    return this.salesService.findMobilePendingByDeliverer(user);
+  }
+
+  @Post('mobile')
+  @UseGuards(RolesGuard)
+  @Roles('DELIVERER')
+  createMobile(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.salesService.createMobile(user, body);
   }
 
   @Get(':id')
@@ -51,5 +67,15 @@ export class SalesController {
   @Post(':id/backdate/reject')
   rejectBackdate(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     return this.salesService.rejectBackdate(user, id, body);
+  }
+
+  @Post(':id/mobile/approve')
+  approveMobile(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.salesService.approveMobile(user, id);
+  }
+
+  @Post(':id/mobile/reject')
+  rejectMobile(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.salesService.rejectMobile(user, id, body);
   }
 }
