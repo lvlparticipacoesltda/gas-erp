@@ -46,7 +46,7 @@ export class PushService {
       title: 'Nova entrega aguardando',
       body,
       data: { type: 'NEW_DELIVERY', deliveryId },
-    });
+    }, 'NEW_DELIVERY');
   }
 
   async notifyDeliveryCancelled(delivererId: string, deliveryId: string): Promise<void> {
@@ -54,7 +54,7 @@ export class PushService {
       title: 'Entrega cancelada',
       body: 'Uma entrega atribuída a você foi cancelada pela loja.',
       data: { type: 'DELIVERY_CANCELLED', deliveryId },
-    });
+    }, 'DELIVERY_CANCELLED');
   }
 
   async notifyAvailabilityChanged(delivererId: string, available: boolean): Promise<void> {
@@ -64,21 +64,28 @@ export class PushService {
         ? 'A loja reativou seu status. Sua localização voltará a aparecer no mapa.'
         : 'A loja pausou seu status. O compartilhamento de localização foi interrompido.',
       data: { type: 'AVAILABILITY_CHANGED', available: available ? 'true' : 'false' },
-    });
+    }, 'AVAILABILITY_CHANGED');
   }
 
   private async sendToDeliverer(
     delivererId: string,
     message: { title: string; body: string; data: Record<string, string> },
+    eventType: string,
   ): Promise<void> {
     const deliverer = await this.prisma.deliverer.findUnique({
       where: { id: delivererId },
       select: { expoPushToken: true },
     });
-    if (!deliverer?.expoPushToken) return;
+    if (!deliverer?.expoPushToken) {
+      this.logger.warn(
+        `Push ${eventType} ignorado: entregador ${delivererId} sem expoPushToken registrado`,
+      );
+      return;
+    }
 
-    const ok = await this.sendExpoPush(deliverer.expoPushToken, message);
+    const ok = await this.sendExpoPush(deliverer.expoPushToken, message, eventType, delivererId);
     if (ok === 'invalid') {
+      this.logger.warn(`Push ${eventType}: token inválido removido do entregador ${delivererId}`);
       await this.prisma.deliverer.update({
         where: { id: delivererId },
         data: { expoPushToken: null, pushTokenUpdatedAt: null },
@@ -90,6 +97,8 @@ export class PushService {
   private async sendExpoPush(
     token: string,
     message: { title: string; body: string; data: Record<string, string> },
+    eventType: string,
+    delivererId: string,
   ): Promise<'sent' | 'invalid' | 'skipped'> {
     try {
       const res = await fetch('https://exp.host/--/api/v2/push/send', {
@@ -122,7 +131,10 @@ export class PushService {
       const ticket = payload.data?.[0];
       if (!ticket) return 'skipped';
 
-      if (ticket.status === 'ok') return 'sent';
+      if (ticket.status === 'ok') {
+        this.logger.log(`Push ${eventType} enviado para entregador ${delivererId}`);
+        return 'sent';
+      }
 
       const error = ticket.details?.error;
       if (error === 'DeviceNotRegistered') return 'invalid';

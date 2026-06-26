@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@gas-erp/database';
 import { DeliveryStatus } from '@gas-erp/database';
@@ -32,6 +32,8 @@ function buildDeliveryAddress(sale: {
 
 @Injectable()
 export class DeliverersService {
+  private readonly logger = new Logger(DeliverersService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -479,11 +481,13 @@ export class DeliverersService {
     const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
     if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
 
-    return this.prisma.deliverer.update({
+    const updated = await this.prisma.deliverer.update({
       where: { id: deliverer.id },
       data: { expoPushToken: token, pushTokenUpdatedAt: new Date() },
       select: { id: true, pushTokenUpdatedAt: true },
     });
+    this.logger.log(`Push token registrado para entregador ${deliverer.id} (usuário ${user.id})`);
+    return updated;
   }
 
   async clearPushToken(user: AuthUser) {
