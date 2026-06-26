@@ -85,9 +85,19 @@ export class SalesService {
     );
     const total = itemsTotal + deliveryFee;
 
-    const payments = data.payments?.length
+    const gasDoPovoBenefit = data.gasDoPovoBenefit ?? false;
+
+    let payments = data.payments?.length
       ? data.payments
       : [{ method: 'CASH' as const, amount: total }];
+
+    if (gasDoPovoBenefit) {
+      payments = [{ method: 'GDP' as const, amount: total }];
+    } else if (payments.some((p) => p.method === 'GDP')) {
+      throw new BadRequestException(
+        'Forma de pagamento GDP só é permitida com benefício Gás do Povo.',
+      );
+    }
 
     const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
     if (total > 0 && paidTotal < total - 0.009) {
@@ -115,7 +125,7 @@ export class SalesService {
         channel,
         status: initialStatus,
         total,
-        gasDoPovoBenefit: data.gasDoPovoBenefit ?? false,
+        gasDoPovoBenefit,
         deliveryFee,
         notes: data.notes,
         deliveryStreet: isPickup ? undefined : data.deliveryStreet || undefined,

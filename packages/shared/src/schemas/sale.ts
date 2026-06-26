@@ -31,6 +31,23 @@ export const createSaleSchema = z.object({
   payments: z.array(salePaymentSchema).optional(),
   fulfillmentType: z.enum(FULFILLMENT_TYPES).optional(),
   gasDoPovoBenefit: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  const benefit = data.gasDoPovoBenefit ?? false;
+  const payments = data.payments ?? [];
+  if (benefit && payments.some((p) => p.method !== 'GDP')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Com benefício Gás do Povo, o pagamento deve ser GDP.',
+      path: ['payments'],
+    });
+  }
+  if (!benefit && payments.some((p) => p.method === 'GDP')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'GDP só é permitido quando o benefício Gás do Povo está ativo.',
+      path: ['payments'],
+    });
+  }
 });
 
 export const updateSaleStatusSchema = z.object({

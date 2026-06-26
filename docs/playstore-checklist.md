@@ -4,6 +4,8 @@ Guia prático para publicar o app de entregadores na Play Store. O ponto mais se
 a **permissão de localização em segundo plano** (`ACCESS_BACKGROUND_LOCATION`), que o
 Google revisa manualmente.
 
+Comandos de dev/emulador/EAS: [development.md](development.md)
+
 ## 1. Pré-requisitos do projeto (já implementados)
 
 - [x] `android.package` definido (`com.gaserp.entregador`) em `apps/mobile/app.json`.
@@ -76,6 +78,5 @@ npx eas submit -p android --latest              # envia para o Play Console
 
 ## 7. Observações
 
-- GPS em background **não funciona no Expo Go** — teste com `--profile development`
-  (dev build) ou `preview` (APK interno).
+- GPS em background **não funciona no Expo Go** — teste com dev build local (`expo run:android` + `expo start --dev-client`) ou APK EAS (`preview`/`development`).
 - Releases de teste interno na Play Store ajudam a validar a permissão antes da produção.

@@ -23,8 +23,16 @@ interface StoreDashboardData {
     slowDeliveries: {
       saleId: string;
       customerName: string;
+      delivererName: string;
       waitTimeSeconds: number | null;
       routeDurationSeconds: number | null;
+    }[];
+    byDeliverer: {
+      delivererId: string;
+      delivererName: string;
+      deliveryCount: number;
+      avgWaitTimeSeconds: number | null;
+      avgRouteDurationSeconds: number | null;
     }[];
   };
 }
@@ -86,6 +94,7 @@ export default function DailySummaryPage() {
             <thead className="bg-slate-50 text-left">
               <tr>
                 <th className="p-3">Cliente</th>
+                <th className="p-3">Entregador</th>
                 <th className="p-3">Espera até a rota</th>
                 <th className="p-3">Tempo em rota</th>
               </tr>
@@ -94,8 +103,35 @@ export default function DailySummaryPage() {
               {metrics.slowDeliveries.map((d) => (
                 <tr key={d.saleId} className="border-t border-slate-100">
                   <td className="p-3">{d.customerName}</td>
+                  <td className="p-3">{d.delivererName}</td>
                   <td className="p-3">{formatWaitTime(d.waitTimeSeconds)}</td>
                   <td className="p-3">{formatWaitTime(d.routeDurationSeconds)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </>
+      )}
+
+      {metrics?.byDeliverer && metrics.byDeliverer.length > 0 && (
+        <>
+          <h2 className="mb-3 mt-8 font-semibold">Por entregador</h2>
+          <Table>
+            <thead className="bg-slate-50 text-left">
+              <tr>
+                <th className="p-3">Entregador</th>
+                <th className="p-3">Entregas</th>
+                <th className="p-3">Média até aceitar rota</th>
+                <th className="p-3">Média para finalizar rota</th>
+              </tr>
+            </thead>
+            <tbody>
+              {metrics.byDeliverer.map((d) => (
+                <tr key={d.delivererId} className="border-t border-slate-100">
+                  <td className="p-3">{d.delivererName}</td>
+                  <td className="p-3">{d.deliveryCount}</td>
+                  <td className="p-3">{formatWaitTime(d.avgWaitTimeSeconds)}</td>
+                  <td className="p-3">{formatWaitTime(d.avgRouteDurationSeconds)}</td>
                 </tr>
               ))}
             </tbody>

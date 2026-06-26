@@ -9,6 +9,7 @@
     "db:migrate": "pnpm --filter @gas-erp/database migrate",
     "db:push": "pnpm --filter @gas-erp/database push",
     "db:deploy": "pnpm --filter @gas-erp/database run migrate:deploy",
+    "db:deploy:force": "pnpm --filter @gas-erp/database run migrate:deploy:force",
     "db:seed": "pnpm --filter @gas-erp/database seed",
     "db:studio": "pnpm --filter @gas-erp/database studio",
     "verify:deploy": "bash scripts/verify-deploy-ready.sh"

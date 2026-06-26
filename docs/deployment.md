@@ -9,7 +9,7 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Item | Status | Detalhe |
 |------|--------|---------|
 | Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
-| Banco PostgreSQL (Neon) | ✅ | 3 migrations aplicadas + seed demo |
+| Banco PostgreSQL (Neon) | ✅ | 4 migrations (ver abaixo); rodar `pnpm db:deploy` se `deliverer_multi_store` pendente |
 | API (Railway) | ✅ | `https://gas-erpapi-production.up.railway.app` |
 | Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
 | Domínio customizado | ✅ | `https://thlgasdopovo.com.br` → Vercel (DNS Hostinger) |
@@ -26,19 +26,22 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Senhas demo | ⏳ | Ainda `admin123` — trocar em produção |
 | CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
 | Módulo fiscal | ⏳ | Fase 2 |
-| App entregador (Expo) | 🟡 | MVP entregue (código em `apps/mobile`); build/distribuição via EAS pendente |
+| Sidebar entregas + métrica tempo até rota | ✅ | `delivery-metrics.ts` no dashboard e listagens |
+| Entregador N:N unidades (`DelivererStore`) | ✅ | Migration `20260625120000_deliverer_multi_store` |
+| App entregador (Expo) | 🟡 | MVP testado (emulador + EAS preview APK); Play Store pendente |
 | App cliente | ⏳ | Fase 2 |
+
+> **Guia de desenvolvimento local e mobile:** [development.md](development.md)
 
 ### Commits recentes (main)
 
 | Commit | Descrição |
 |--------|-----------|
+| `feat: entregador multi-unidade, branding e prep Play Store` | `DelivererStore`, branding no app, docs Play Store |
+| `fix(mobile): DeliveriesProvider na tela de detalhe` | Corrige crash ao abrir `/delivery/[id]` |
+| `fix(mobile): babel-preset-expo` / `shared` no EAS | Builds EAS funcionando |
 | `d2fc64a` | Multi-select de lojas com checkboxes no cadastro de usuários |
 | `5b8ee16` | Rota `/master/settings` + permissões por tela por usuário |
-| `e6ee64b` | Recuperação de senha, logo, confirmações, erros claros |
-| `08d8cf0` | CORS callback para múltiplas origens em `WEB_URL` |
-| `0763a5b` | `GET /api/v1/health` |
-| `e3e003d` | Build Railway com `--prod=false` |
 
 ### URLs de produção
 
@@ -137,13 +140,22 @@ EXPO_PUBLIC_API_URL=https://gas-erpapi-production.up.railway.app/api/v1
 
 ### Desenvolvimento local
 
+Ver guia completo: **[development.md](development.md)** (JAVA_HOME, emulador, Metro, troubleshooting).
+
+Resumo:
+
 ```bash
-# Na raiz do monorepo
-pnpm install
-pnpm --filter @gas-erp/mobile start
+# Na raiz
+pnpm install && pnpm dev
+
+# Mobile — emulador (dev build)
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+cd apps/mobile
+npx expo run:android              # primeira vez (~15–20 min)
+npx expo start --dev-client       # dia a dia (Metro obrigatório)
 ```
 
-> **GPS em segundo plano não funciona no Expo Go.** As permissões de background location e o foreground service exigem um **dev build** (perfil `development` do EAS) ou um build interno (`preview`). No Expo Go é possível testar login, listas, detalhe e abertura do Maps, mas o tracking em background só roda em dev build/EAS.
+> **GPS em segundo plano não funciona no Expo Go.** Use dev build (`expo run:android`) ou APK EAS (`preview`/`development`). Permissão "o tempo todo" necessária para tracking em background.
 
 ### Build interno Android (EAS)
 
@@ -477,7 +489,7 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 | **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub já existe em `packages/shared`) | Alta |
 | **Financeiro** | Contas a pagar/receber, fluxo de caixa | Alta |
 | **Relatórios** | Exportação PDF/Excel, filtros avançados | Média |
-| **App entregador** | Expo/React Native — GPS, rotas, confirmação de entrega. **MVP entregue** em `apps/mobile`; falta build/distribuição via EAS (ver seção acima) | Alta |
+| **App entregador** | **MVP entregue** em `apps/mobile` (login, rotas, GPS, EAS preview APK). Falta publicação Play Store — ver [playstore-checklist.md](playstore-checklist.md) | Alta |
 | **App cliente** | Pedido online, rastreamento, pagamento (Pix/cartão) | Média |
 | **WhatsApp** | Notificações e pedidos via API Business | Média |
 | **Redis / filas** | Entregas em tempo real, jobs assíncronos (Upstash) | Média |

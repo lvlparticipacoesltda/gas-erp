@@ -28,6 +28,8 @@ interface Deliverer { id: string; user: { name: string } }
 
 type Step = 1 | 2 | 3;
 
+const REGULAR_PAYMENT_METHODS = PAYMENT_METHODS.filter((m) => m !== 'GDP');
+
 const STEPS = [
   { n: 1, label: 'Cliente' },
   { n: 2, label: 'Produto' },
@@ -243,7 +245,9 @@ export default function NewSalePage() {
             quantity: draft.quantity,
             unitPrice: draft.unitPrice,
           }],
-          payments: [{ method: draft.paymentMethod, amount: total }],
+          payments: draft.gasDoPovoBenefit
+            ? [{ method: 'GDP', amount: total }]
+            : [{ method: draft.paymentMethod, amount: total }],
         }),
       }, getToken());
       router.push(`/store/${storeId}/sales`);
@@ -394,18 +398,6 @@ export default function NewSalePage() {
               )}
 
               <div className="mt-6">
-                <Label>Pagamento</Label>
-                <Select
-                  value={draft.paymentMethod}
-                  onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })}
-                >
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="mt-6">
                 <Label>Benefício Gás do Povo</Label>
                 <button
                   type="button"
@@ -419,9 +411,30 @@ export default function NewSalePage() {
                 >
                   <span className="font-medium">Benefício Gás do Povo</span>
                   <span className="mt-1 block text-xs opacity-80">
-                    {draft.gasDoPovoBenefit ? 'Sim — cliente utiliza o benefício' : 'Não — toque para marcar como sim'}
+                    {draft.gasDoPovoBenefit
+                      ? 'Sim — pagamento via GDP (forma de pagamento desativada)'
+                      : 'Não — toque para marcar como sim'}
                   </span>
                 </button>
+              </div>
+
+              <div className="mt-6">
+                <Label>Pagamento</Label>
+                {draft.gasDoPovoBenefit ? (
+                  <p className="mt-2 rounded-lg border border-brand bg-brand-muted px-3 py-2 text-sm text-brand-dark">
+                    Pagamento registrado como <strong>GDP</strong> (Benefício Gás do Povo)
+                  </p>
+                ) : (
+                  <Select
+                    className="mt-2"
+                    value={draft.paymentMethod}
+                    onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })}
+                  >
+                    {REGULAR_PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
+                    ))}
+                  </Select>
+                )}
               </div>
             </Card>
 
@@ -439,7 +452,10 @@ export default function NewSalePage() {
                 </p>
               )}
               <p className="mt-1 text-sm text-slate-600">
-                Benefício Gás do Povo: {draft.gasDoPovoBenefit ? 'Sim' : 'Não'}
+                Pagamento:{' '}
+                {draft.gasDoPovoBenefit
+                  ? PAYMENT_METHOD_LABELS.GDP
+                  : (PAYMENT_METHOD_LABELS[draft.paymentMethod] ?? draft.paymentMethod)}
               </p>
               <p className="mt-4 text-xl font-bold text-slate-900">{formatCurrency(total)}</p>
               <div className="mt-6 flex gap-2">

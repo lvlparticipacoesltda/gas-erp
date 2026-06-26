@@ -16,8 +16,9 @@ Sistema de gestão multi-loja para distribuidoras/revendas de gás (GLP).
 ```
 apps/web          Painel web (master + loja)
 apps/api          REST API NestJS
+apps/mobile       App entregador (Expo SDK 56, Android)
 packages/database Prisma schema + seeds + migrations
-packages/shared   Types, Zod schemas, enums, permissões
+packages/shared   Types, Zod schemas, enums, permissões, métricas
 ```
 
 ## Setup local
@@ -73,9 +74,12 @@ MVP **em produção** e funcional. Refinamentos de UX, auth e RBAC concluídos n
 | Vínculo usuário ↔ múltiplas lojas | ✅ Checkboxes no cadastro |
 | Edição de lojas e usuários | ✅ |
 | Confirmação ao desativar | ✅ |
-| Módulo fiscal / financeiro / apps mobile | ⏳ Fase 2 |
+| Sidebar entregas + métrica tempo até rota | ✅ |
+| Entregador multi-unidade (`DelivererStore`) | ✅ |
+| App entregador (`apps/mobile`) | 🟡 MVP testado; Play Store pendente |
+| Módulo fiscal / financeiro | ⏳ Fase 2 |
 
-Documentação detalhada: [docs/deployment.md](docs/deployment.md) · [docs/rbac.md](docs/rbac.md) · [docs/architecture.md](docs/architecture.md)
+Documentação: [docs/development.md](docs/development.md) · [docs/deployment.md](docs/deployment.md) · [docs/architecture.md](docs/architecture.md) · [docs/api-contracts.md](docs/api-contracts.md)
 
 ## Módulos MVP
 
@@ -146,15 +150,27 @@ Guia completo: [docs/deployment.md](docs/deployment.md)
 | `20250624000000_init` | Schema inicial |
 | `20250624140000_password_reset_tokens` | Recuperação de senha |
 | `20250624180000_user_permissions` | `User.permissions String[]` |
+| `20260625120000_deliverer_multi_store` | Entregador N:N com unidades |
 
 Aplicar em produção: `pnpm db:deploy` (também roda no `releaseCommand` do Railway).
 
+## App entregador (mobile)
+
+```bash
+cd apps/mobile
+cp .env.example .env
+npx expo start --dev-client    # com dev build instalado no emulador
+eas build -p android --profile preview   # APK para celulares
+```
+
+Guia completo: [docs/development.md](docs/development.md) · Play Store: [docs/playstore-checklist.md](docs/playstore-checklist.md)
+
 ## Próximos passos
 
-Ver [docs/deployment.md#próximos-passos](docs/deployment.md#próximos-passos). Resumo:
+Ver [docs/deployment.md#próximos-passos](docs/deployment.md#próximos-passos) e [docs/development.md](docs/development.md). Resumo:
 
-1. Finalizar verificação do domínio na Resend (e-mail em produção)
-2. Trocar senhas demo em produção
-3. Redirect `www` → apex (opcional)
-4. Subdomínio `api.` no Railway (opcional)
-5. **Fase 2:** fiscal, financeiro, app entregador, relatórios
+1. `pnpm db:deploy` se migration `deliverer_multi_store` ainda não aplicada em produção
+2. Novo APK EAS (`eas build --profile preview`) para entregadores
+3. Finalizar Resend + trocar senhas demo
+4. Publicação Play Store (AAB + política de privacidade)
+5. **Fase 2:** fiscal, financeiro, push notifications, relatórios

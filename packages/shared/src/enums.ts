@@ -23,6 +23,7 @@ export const PAYMENT_METHODS = [
   'DEBIT_CARD',
   'CHECK',
   'CUSTOMER_CREDIT',
+  'GDP',
   'OTHER',
 ] as const;
 
@@ -43,6 +44,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   DEBIT_CARD: 'Cartão de Débito',
   CHECK: 'Cheque',
   CUSTOMER_CREDIT: 'Crédito de Cliente',
+  GDP: 'GDP (Gás do Povo)',
   OTHER: 'Outro',
 };
 

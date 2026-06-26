@@ -99,7 +99,10 @@ export class DashboardService {
 
     const deliveries = await this.prisma.delivery.findMany({
       where: { sale: { storeId, createdAt: { gte: start, lt: end } } },
-      include: { sale: { include: { customer: true } } },
+      include: {
+        sale: { include: { customer: true } },
+        deliverer: { include: { user: true } },
+      },
     });
 
     const pendingDeliveries = deliveries.filter((d) => d.status === 'PENDING').length;
@@ -111,15 +114,33 @@ export class DashboardService {
     const slowDeliveries: {
       saleId: string;
       customerName: string;
+      delivererName: string;
       waitTimeSeconds: number | null;
       routeDurationSeconds: number | null;
     }[] = [];
+    const delivererStats = new Map<
+      string,
+      { delivererName: string; waitTimes: number[]; routeTimes: number[]; deliveryCount: number }
+    >();
+
     for (const delivery of deliveries) {
+      const delivererName = delivery.deliverer.user.name;
       const waitTimeSeconds = getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
       const routeDurationSeconds = getRouteDurationSeconds(delivery.startedAt, delivery.completedAt);
 
       if (waitTimeSeconds != null) waitTimes.push(waitTimeSeconds);
       if (routeDurationSeconds != null) routeTimes.push(routeDurationSeconds);
+
+      const stats = delivererStats.get(delivery.delivererId) ?? {
+        delivererName,
+        waitTimes: [],
+        routeTimes: [],
+        deliveryCount: 0,
+      };
+      stats.deliveryCount += 1;
+      if (waitTimeSeconds != null) stats.waitTimes.push(waitTimeSeconds);
+      if (routeDurationSeconds != null) stats.routeTimes.push(routeDurationSeconds);
+      delivererStats.set(delivery.delivererId, stats);
 
       const isSlowWait = waitTimeSeconds != null && waitTimeSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS;
       const isSlowRoute = routeDurationSeconds != null && routeDurationSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS;
@@ -127,6 +148,7 @@ export class DashboardService {
         slowDeliveries.push({
           saleId: delivery.saleId,
           customerName: delivery.sale.customer?.name ?? 'Cliente avulso',
+          delivererName,
           waitTimeSeconds,
           routeDurationSeconds,
         });
@@ -146,6 +168,20 @@ export class DashboardService {
       const bMax = Math.max(b.waitTimeSeconds ?? 0, b.routeDurationSeconds ?? 0);
       return bMax - aMax;
     });
+
+    const byDeliverer = Array.from(delivererStats.entries())
+      .map(([delivererId, stats]) => ({
+        delivererId,
+        delivererName: stats.delivererName,
+        deliveryCount: stats.deliveryCount,
+        avgWaitTimeSeconds: stats.waitTimes.length
+          ? Math.round(stats.waitTimes.reduce((sum, value) => sum + value, 0) / stats.waitTimes.length)
+          : null,
+        avgRouteDurationSeconds: stats.routeTimes.length
+          ? Math.round(stats.routeTimes.reduce((sum, value) => sum + value, 0) / stats.routeTimes.length)
+          : null,
+      }))
+      .sort((a, b) => a.delivererName.localeCompare(b.delivererName, 'pt-BR'));
 
     return {
       date: dateKey,
@@ -168,6 +204,7 @@ export class DashboardService {
         inProgressCount: inProgressDeliveries,
         completedCount: completedDeliveries,
         slowDeliveries,
+        byDeliverer,
       },
     };
   }

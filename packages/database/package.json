@@ -9,6 +9,7 @@
     "migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "push": "dotenv -e ../../.env -- prisma db push",
     "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "migrate:deploy:force": "dotenv -e ../../.env -- sh -c 'PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy'",
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "build": "tsc"
