@@ -19,9 +19,9 @@ const CODE_MESSAGES: Record<string, { status: number; message: string }> = {
   },
   P2025: { status: HttpStatus.NOT_FOUND, message: 'Registro não encontrado.' },
   P2028: {
-    status: HttpStatus.INTERNAL_SERVER_ERROR,
+    status: HttpStatus.CONFLICT,
     message:
-      'Falha na transação do banco (Neon). Use a URL direta do Postgres no Railway, sem "-pooler".',
+      'Não foi possível concluir a operação agora. Aguarde alguns segundos e tente novamente.',
   },
   P2034: {
     status: HttpStatus.CONFLICT,

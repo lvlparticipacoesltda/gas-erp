@@ -1018,6 +1018,10 @@ export class SalesService {
         });
       }
 
+      return { updated, pushNewDelivery, pushCancelled };
+    });
+
+    try {
       await this.audit.log(user, 'UPDATE_STATUS', 'Sale', id, {
         status: data.status,
         previousStatus: sale.status,
@@ -1025,8 +1029,9 @@ export class SalesService {
         canceledBy: user.id,
         canceledByName: user.name,
       });
-      return { updated, pushNewDelivery, pushCancelled };
-    });
+    } catch {
+      // Auditoria não deve bloquear alteração de status já persistida.
+    }
 
     if (result.pushNewDelivery) {
       void this.push

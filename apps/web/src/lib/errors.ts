@@ -25,5 +25,6 @@ function mapKnownErrors(message: string): string {
   if (lower.includes('estoque insuficiente') || lower.includes('sem estoque cadastrado')) return message;
   if (lower.includes('cliente não encontrado') || lower.includes('entregador não encontrado')) return message;
   if (lower.includes('loja não encontrada') || lower.includes('produto não encontrado')) return message;
+  if (lower.includes('não foi possível concluir a operação agora')) return message;
   return message;
 }
