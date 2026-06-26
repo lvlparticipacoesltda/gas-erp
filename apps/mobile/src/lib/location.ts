@@ -322,3 +322,55 @@ export async function recoverStaleLocationTracking(): Promise<void> {
 export async function getActiveDeliveryId(): Promise<string | null> {
   return SecureStore.getItemAsync(ACTIVE_DELIVERY_KEY);
 }
+
+export interface GeocodedAddress {
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  landmark?: string;
+}
+
+function normalizeState(region?: string | null): string | undefined {
+  if (!region) return undefined;
+  const trimmed = region.trim();
+  if (trimmed.length === 2) return trimmed.toUpperCase();
+  return undefined;
+}
+
+/** Obtém endereço aproximado a partir da posição GPS atual do entregador. */
+export async function getCurrentDeliveryAddress(): Promise<GeocodedAddress | null> {
+  const fg = await Location.getForegroundPermissionsAsync();
+  if (fg.status !== 'granted') {
+    const requested = await Location.requestForegroundPermissionsAsync();
+    if (requested.status !== 'granted') return null;
+  }
+
+  try {
+    const location = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    const [results] = await Location.reverseGeocodeAsync({
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+    });
+
+    if (!results) {
+      return {
+        landmark: `GPS ${location.coords.latitude.toFixed(5)}, ${location.coords.longitude.toFixed(5)}`,
+      };
+    }
+
+    return {
+      street: results.street ?? results.name ?? undefined,
+      number: results.streetNumber ?? undefined,
+      neighborhood: results.district ?? results.subregion ?? undefined,
+      city: results.city ?? results.subregion ?? undefined,
+      state: normalizeState(results.isoCountryCode === 'BR' ? results.region : results.region),
+      landmark: `GPS ${location.coords.latitude.toFixed(5)}, ${location.coords.longitude.toFixed(5)}`,
+    };
+  } catch {
+    return null;
+  }
+}

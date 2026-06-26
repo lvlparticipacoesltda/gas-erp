@@ -68,6 +68,7 @@ export class DeliverersService {
     const deliverers = await this.prisma.deliverer.findMany({
       where: {
         user: { active: true },
+        status: { not: 'OFFLINE' },
         OR: [
           { stores: { some: { storeId, store: { organizationId: user.organizationId } } } },
           {
@@ -184,6 +185,7 @@ export class DeliverersService {
         return {
           delivererId: deliverer.id,
           name: deliverer.user.name,
+          status: deliverer.status,
           delivererStatus,
           latitude: null,
           longitude: null,
@@ -206,6 +208,7 @@ export class DeliverersService {
       return {
         delivererId: deliverer.id,
         name: deliverer.user.name,
+        status: deliverer.status,
         delivererStatus,
         latitude,
         longitude,

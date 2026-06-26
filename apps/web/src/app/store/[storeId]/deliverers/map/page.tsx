@@ -7,16 +7,23 @@ import Link from 'next/link';
 import { MapPin, RefreshCw } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { Badge, Card, PageHeader } from '@/components/ui';
-import { api, getToken } from '@/lib/api';
+import { api, getStoredUser, getToken } from '@/lib/api';
 import { buildStoreHref } from '@/lib/store-nav';
-import type { DelivererPosition } from '@gas-erp/shared';
+import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
 import {
+  canManageDeliverers,
   DELIVERER_STATUS_LABELS,
   DELIVERY_STATUS_LABELS,
   getDelivererPositionBadge,
 } from '@gas-erp/shared';
 
 const REFRESH_INTERVAL_MS = 20_000;
+
+interface DelivererListItem {
+  id: string;
+  status: string;
+  user: { name: string; active: boolean };
+}
 
 const DelivererPositionsMap = dynamic(
   () =>
@@ -63,13 +70,61 @@ function formatTime(iso: string | null): string {
   });
 }
 
+function AvailabilityToggle({
+  available,
+  locked,
+  saving,
+  onToggle,
+}: {
+  available: boolean;
+  locked: boolean;
+  saving: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  if (locked) {
+    return (
+      <p className="mt-2 text-xs text-slate-500">
+        Disponibilidade bloqueada enquanto houver entrega em rota.
+      </p>
+    );
+  }
+
+  return (
+    <div
+      className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <span className="text-xs font-medium text-slate-700">Disponibilidade</span>
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => onToggle(!available)}
+        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+          available
+            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+            : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+        }`}
+        aria-pressed={available}
+      >
+        {saving ? 'Salvando…' : available ? 'Disponível' : 'Indisponível'}
+      </button>
+    </div>
+  );
+}
+
 export default function DelivererMapPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [positions, setPositions] = useState<DelivererPosition[]>([]);
+  const [offlineDeliverers, setOfflineDeliverers] = useState<DelivererListItem[]>([]);
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [canManage] = useState(() => {
+    const user = getStoredUser<AuthUser>();
+    return user ? canManageDeliverers(user.role) : false;
+  });
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const data = await api<DelivererPosition[]>(
@@ -81,21 +136,66 @@ export default function DelivererMapPage() {
     setLastUpdated(new Date());
   }, [storeId]);
 
+  const loadOffline = useCallback(async () => {
+    const all = await api<DelivererListItem[]>(`/deliverers?storeId=${storeId}`, {}, getToken());
+    setOfflineDeliverers(
+      all.filter((d) => d.user.active && d.status === 'OFFLINE'),
+    );
+  }, [storeId]);
+
+  const loadAll = useCallback(async () => {
+    await load();
+    if (canManage) {
+      await loadOffline().catch(() => setOfflineDeliverers([]));
+    }
+  }, [load, loadOffline, canManage]);
+
   useEffect(() => {
-    load()
+    loadAll()
       .catch(() => setPositions([]))
       .finally(() => setReady(true));
-  }, [load]);
+  }, [loadAll]);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setRefreshing(true);
-      load()
+      loadAll()
         .catch(() => undefined)
         .finally(() => setRefreshing(false));
     }, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [loadAll]);
+
+  async function setAvailability(delivererId: string, available: boolean) {
+    if (!available) {
+      const deliverer = positions.find((p) => p.delivererId === delivererId);
+      const name = deliverer?.name ?? offlineDeliverers.find((d) => d.id === delivererId)?.user.name;
+      const ok = confirm(
+        `Marcar ${name ?? 'entregador'} como indisponível?\n\nEle deixará de aparecer no mapa até ser reativado.`,
+      );
+      if (!ok) return;
+    }
+
+    setSavingId(delivererId);
+    try {
+      await api(
+        `/deliverers/${delivererId}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ status: available ? 'AVAILABLE' : 'OFFLINE' }),
+        },
+        getToken(),
+      );
+      if (selectedId === delivererId && !available) {
+        setSelectedId(null);
+      }
+      await loadAll();
+    } catch {
+      // api() already surfaces errors to the user when applicable
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   const withPosition = useMemo(
     () => positions.filter((p) => p.latitude !== null && p.longitude !== null),
@@ -126,7 +226,7 @@ export default function DelivererMapPage() {
               type="button"
               onClick={() => {
                 setRefreshing(true);
-                load().finally(() => setRefreshing(false));
+                loadAll().finally(() => setRefreshing(false));
               }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
             >
@@ -143,7 +243,7 @@ export default function DelivererMapPage() {
         }
       />
 
-      {withPosition.length === 0 ? (
+      {withPosition.length === 0 && positions.length === 0 && offlineDeliverers.length === 0 ? (
         <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <MapPin className="h-10 w-10 text-slate-300" />
           <p className="text-lg font-medium text-slate-700">Nenhum entregador com posição no mapa</p>
@@ -155,22 +255,38 @@ export default function DelivererMapPage() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <Card className="overflow-hidden p-0">
-            <DelivererPositionsMap
-              positions={positions}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-            />
+            {withPosition.length === 0 ? (
+              <div className="flex h-[420px] flex-col items-center justify-center gap-2 px-6 text-center">
+                <MapPin className="h-8 w-8 text-slate-300" />
+                <p className="text-sm font-medium text-slate-700">Nenhuma posição no mapa</p>
+                <p className="max-w-sm text-xs text-slate-500">
+                  Entregadores indisponíveis ou sem GPS não aparecem no mapa.
+                </p>
+              </div>
+            ) : (
+              <DelivererPositionsMap
+                positions={positions}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+            )}
           </Card>
 
           <Card className="flex max-h-[560px] flex-col">
             <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800">
-              Entregadores ({positions.length})
+              No mapa ({positions.length})
             </h2>
             <ul className="flex-1 divide-y divide-slate-100 overflow-y-auto">
+              {positions.length === 0 && (
+                <li className="px-4 py-6 text-center text-sm text-slate-400">
+                  Nenhum entregador disponível no mapa.
+                </li>
+              )}
               {positions.map((p) => {
                 const hasCoords = p.latitude !== null && p.longitude !== null;
                 const isSelected = selectedId === p.delivererId;
                 const badge = getDelivererPositionBadge(p);
+                const availabilityLocked = p.delivererStatus === 'ON_DELIVERY';
                 return (
                   <li key={p.delivererId}>
                     <button
@@ -209,11 +325,41 @@ export default function DelivererMapPage() {
                           Unidades: {p.stores.map((s) => s.name).join(', ')}
                         </p>
                       )}
+                      {canManage && (
+                        <AvailabilityToggle
+                          available={p.status !== 'OFFLINE'}
+                          locked={availabilityLocked}
+                          saving={savingId === p.delivererId}
+                          onToggle={(next) => setAvailability(p.delivererId, next)}
+                        />
+                      )}
                     </button>
                   </li>
                 );
               })}
             </ul>
+
+            {canManage && offlineDeliverers.length > 0 && (
+              <>
+                <h2 className="border-y border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800">
+                  Indisponíveis ({offlineDeliverers.length})
+                </h2>
+                <ul className="divide-y divide-slate-100 overflow-y-auto">
+                  {offlineDeliverers.map((d) => (
+                    <li key={d.id} className="px-4 py-3">
+                      <p className="font-medium text-slate-900">{d.user.name}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">Não exibido no mapa</p>
+                      <AvailabilityToggle
+                        available={false}
+                        locked={false}
+                        saving={savingId === d.id}
+                        onToggle={(next) => setAvailability(d.id, next)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </Card>
         </div>
       )}

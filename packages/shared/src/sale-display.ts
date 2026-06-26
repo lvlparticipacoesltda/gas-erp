@@ -1,3 +1,5 @@
+import { BACKDATE_APPROVAL_LABELS } from './sale-backdate';
+import { MOBILE_APPROVAL_LABELS } from './sale-mobile';
 import { DELIVERY_STATUS_LABELS, SALE_STATUS_LABELS } from './enums';
 
 export type SaleDisplayTone = 'default' | 'success' | 'warning' | 'danger';
@@ -8,18 +10,61 @@ export interface SaleDisplayStatus {
   tone: SaleDisplayTone;
 }
 
+export function isMobileOriginatedSale(sale: {
+  channel?: string;
+  createdByDelivererId?: string | null;
+  createdByDeliverer?: unknown | null;
+  mobileApproval?: string;
+}): boolean {
+  return (
+    sale.channel === 'APP' ||
+    sale.mobileApproval === 'PENDING' ||
+    sale.mobileApproval === 'APPROVED' ||
+    sale.mobileApproval === 'REJECTED' ||
+    Boolean(sale.createdByDelivererId ?? sale.createdByDeliverer)
+  );
+}
+
+export function getSaleAttendantName(sale: {
+  attendant?: { name: string } | null;
+  createdByDeliverer?: { user: { name: string } } | null;
+}): string | null {
+  return sale.attendant?.name ?? sale.createdByDeliverer?.user.name ?? null;
+}
+
 /** Status unificado para venda + entrega (histórico e sidebar). */
 export function getSaleDisplayStatus(sale: {
   status: string;
+  backdateApproval?: string;
   mobileApproval?: string;
   delivery?: { status: string } | null;
 }): SaleDisplayStatus {
   if (sale.mobileApproval === 'PENDING') {
-    return { key: 'MOBILE_PENDING', label: 'Aguardando aprovação (app)', tone: 'warning' };
+    return {
+      key: 'MOBILE_PENDING',
+      label: MOBILE_APPROVAL_LABELS.PENDING,
+      tone: 'warning',
+    };
+  }
+
+  if (sale.backdateApproval === 'PENDING') {
+    return {
+      key: 'BACKDATE_PENDING',
+      label: BACKDATE_APPROVAL_LABELS.PENDING,
+      tone: 'warning',
+    };
   }
 
   if (sale.mobileApproval === 'REJECTED') {
-    return { key: 'MOBILE_REJECTED', label: 'Rejeitada (app)', tone: 'danger' };
+    return { key: 'MOBILE_REJECTED', label: MOBILE_APPROVAL_LABELS.REJECTED, tone: 'danger' };
+  }
+
+  if (sale.backdateApproval === 'REJECTED') {
+    return {
+      key: 'BACKDATE_REJECTED',
+      label: BACKDATE_APPROVAL_LABELS.REJECTED,
+      tone: 'danger',
+    };
   }
 
   if (sale.status === 'CANCELLED') {

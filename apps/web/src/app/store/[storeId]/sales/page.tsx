@@ -10,16 +10,16 @@ import { Badge, Button, Label, PageHeader, Select, Table } from '@/components/ui
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
-  BACKDATE_APPROVAL_LABELS,
-  MOBILE_APPROVAL_LABELS,
   canManageSales,
   canApproveMobileSales,
   formatSaleDateLabel,
   formatWaitTime,
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
+  getSaleAttendantName,
   getSaleDisplayStatus,
   getWaitTimeSeconds,
+  isMobileOriginatedSale,
   SALE_STATUS_LABELS,
   type PaginatedResponse,
 } from '@gas-erp/shared';
@@ -29,10 +29,13 @@ interface Sale {
   createdAt: string;
   saleDate?: string;
   status: string;
+  channel?: string;
   backdateApproval?: string;
   mobileApproval?: string;
   total: number | string;
   customer?: { name: string };
+  attendant?: { name: string } | null;
+  createdByDeliverer?: { user: { name: string } } | null;
   deliverer?: { user: { name: string } };
   delivery?: { status: string; startedAt?: string | null; completedAt?: string | null } | null;
 }
@@ -139,6 +142,7 @@ export default function SalesListPage() {
             <tr>
               <th className="p-3">Data</th>
               <th className="p-3">Cliente</th>
+              <th className="p-3">Atendente</th>
               <th className="p-3">Entregador</th>
               <th className="p-3">Espera p/ rota</th>
               <th className="p-3">Tempo em rota</th>
@@ -150,26 +154,25 @@ export default function SalesListPage() {
           <tbody>
             {sales.map((s) => {
               const display = getSaleDisplayStatus(s);
+              const attendantName = getSaleAttendantName(s);
+              const fromMobile = isMobileOriginatedSale(s);
               return (
               <tr key={s.id} className="border-t border-slate-100">
                 <td className="p-3">
                   <div>{formatSaleDateLabel(s.saleDate ?? s.createdAt)}</div>
-                  {s.backdateApproval && s.backdateApproval !== 'NOT_REQUIRED' && (
+                  {fromMobile && (
                     <div className="mt-1">
-                      <Badge tone={s.backdateApproval === 'PENDING' ? 'warning' : s.backdateApproval === 'REJECTED' ? 'danger' : 'success'}>
-                        {BACKDATE_APPROVAL_LABELS[s.backdateApproval as keyof typeof BACKDATE_APPROVAL_LABELS] ?? s.backdateApproval}
-                      </Badge>
-                    </div>
-                  )}
-                  {s.mobileApproval && s.mobileApproval !== 'NOT_REQUIRED' && (
-                    <div className="mt-1">
-                      <Badge tone={s.mobileApproval === 'PENDING' ? 'warning' : s.mobileApproval === 'REJECTED' ? 'danger' : 'success'}>
-                        {MOBILE_APPROVAL_LABELS[s.mobileApproval as keyof typeof MOBILE_APPROVAL_LABELS] ?? s.mobileApproval}
-                      </Badge>
+                      <Badge tone="default">App entregador</Badge>
                     </div>
                   )}
                 </td>
                 <td className="p-3">{s.customer?.name ?? '-'}</td>
+                <td className="p-3">
+                  <div>{attendantName ?? '—'}</div>
+                  {fromMobile && attendantName && (
+                    <div className="mt-0.5 text-xs text-slate-500">via app</div>
+                  )}
+                </td>
                 <td className="p-3">{s.deliverer?.user.name ?? '-'}</td>
                 <td className="p-3">
                   {s.delivery?.startedAt
@@ -201,7 +204,7 @@ export default function SalesListPage() {
             );})}
             {sales.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-6 text-center text-sm text-slate-400">
+                <td colSpan={9} className="p-6 text-center text-sm text-slate-400">
                   Nenhuma venda encontrada.
                 </td>
               </tr>

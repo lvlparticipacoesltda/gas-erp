@@ -100,7 +100,7 @@ export const DELIVERY_STATUS_LABELS: Record<string, string> = {
 export const DELIVERER_STATUS_LABELS: Record<string, string> = {
   AVAILABLE: 'Disponível',
   ON_DELIVERY: 'Em rota',
-  OFFLINE: 'Offline',
+  OFFLINE: 'Indisponível',
 };
 
 export const SUPPLIER_TYPE_LABELS: Record<string, string> = {
