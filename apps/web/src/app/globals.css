@@ -25,47 +25,44 @@ body {
   font-family: Inter, system-ui, sans-serif;
 }
 
-@keyframes brand-loader-fill {
-  0% {
-    height: 0;
-  }
-  45% {
-    height: 100%;
-  }
-  55% {
-    height: 100%;
-  }
+/* Loader da marca — preenchimento suave de baixo para cima */
+@keyframes brand-loader-clip {
+  0%,
   100% {
-    height: 0;
+    transform: scaleY(0.28);
+  }
+  50% {
+    transform: scaleY(1);
   }
 }
 
-@keyframes brand-loader-shimmer {
-  0% {
-    transform: translateX(-120%);
-  }
+@keyframes brand-loader-breathe {
+  0%,
   100% {
-    transform: translateX(120%);
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
   }
 }
 
-@utility animate-brand-loader-fill {
-  animation: brand-loader-fill 2.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+.brand-loader-clip {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: brand-loader-clip 1.6s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
 }
 
-@utility animate-brand-loader-shimmer {
-  animation: brand-loader-shimmer 2.2s ease-in-out infinite;
+.brand-loader-shell {
+  animation: brand-loader-breathe 1.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .motion-safe\:animate-brand-loader-fill {
+  .brand-loader-clip {
     animation: none;
-    height: 100%;
-    opacity: 0.85;
+    transform: scaleY(0.85);
   }
 
-  .motion-safe\:animate-brand-loader-shimmer {
+  .brand-loader-shell {
     animation: none;
-    opacity: 0;
   }
 }
