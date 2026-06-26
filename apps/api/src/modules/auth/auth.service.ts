@@ -42,7 +42,7 @@ export class AuthService {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Credenciais inválidas');
 
-    if (user.role === 'DELIVERER' && client !== 'mobile') {
+    if (user.role === 'DELIVERER' && client === 'web') {
       throw new ForbiddenException(
         'Entregadores devem acessar pelo aplicativo móvel. O painel web é exclusivo para a equipe da loja.',
       );

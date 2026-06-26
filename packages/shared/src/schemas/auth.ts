@@ -5,8 +5,8 @@ export const LOGIN_CLIENTS = ['web', 'mobile'] as const;
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  /** `mobile` libera login de entregadores; `web` (padrão) bloqueia papel DELIVERER. */
-  client: z.enum(LOGIN_CLIENTS).optional().default('web'),
+  /** `web` bloqueia login de entregadores; omitir ou `mobile` permite (app). */
+  client: z.enum(LOGIN_CLIENTS).optional(),
 });
 
 export const updateProfileSchema = z.object({
