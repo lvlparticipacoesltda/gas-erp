@@ -57,6 +57,7 @@ interface MobileSaleRow {
   total: number | string;
   mobileApproval: string;
   status: string;
+  store?: { id: string; name: string; code: string };
   customer?: { name: string } | null;
   items: { quantity: number; product: { name: string } }[];
 }
@@ -792,6 +793,12 @@ export default function NewSaleScreen() {
                     {new Date(item.createdAt).toLocaleString('pt-BR')}
                   </Text>
                 </View>
+                {item.store ? (
+                  <Text style={styles.pendingStore}>
+                    {item.store.name}
+                    {item.store.code ? ` · ${item.store.code}` : ''}
+                  </Text>
+                ) : null}
                 <Text style={styles.pendingCustomer}>
                   {item.customer?.name ?? 'Cliente não identificado'}
                 </Text>
@@ -917,6 +924,13 @@ const styles = StyleSheet.create({
   pendingCard: { gap: spacing.xs },
   pendingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   pendingDate: { fontSize: 11, color: colors.textFaint },
+  pendingStore: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.navy,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
   pendingCustomer: { fontSize: 15, fontWeight: '700', color: colors.text },
   pendingItems: { fontSize: 13, color: colors.textMuted },
   pendingTotal: { fontSize: 13, fontWeight: '600', color: colors.text },

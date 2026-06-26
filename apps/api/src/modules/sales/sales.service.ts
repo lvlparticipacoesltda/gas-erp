@@ -32,6 +32,7 @@ export class SalesService {
   ) {}
 
   private saleInclude = {
+    store: { select: { id: true, name: true, code: true } },
     customer: true,
     attendant: { select: { id: true, name: true } },
     deliverer: { include: { user: { select: { id: true, name: true } } } },
