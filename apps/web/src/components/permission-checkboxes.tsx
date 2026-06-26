@@ -2,6 +2,7 @@
 
 import {
   ROLE_DEFAULT_PERMISSIONS,
+  resolveUserPermissions,
   STORE_SCREEN_KEYS,
   STORE_SCREEN_LABELS,
   type StoreScreenKey,
@@ -18,9 +19,8 @@ export function permissionsToPayload(role: string, selected: string[]): string[]
   return selected;
 }
 
-export function effectivePermissions(role: string, custom?: string[]): string[] {
-  if (custom && custom.length > 0) return custom;
-  return ROLE_DEFAULT_PERMISSIONS[role] ?? ['store.daily-summary'];
+export function effectivePermissions(role: string, custom?: string[] | null): string[] {
+  return resolveUserPermissions(role, custom);
 }
 
 export function PermissionCheckboxes({

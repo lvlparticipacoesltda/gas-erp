@@ -1,9 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
-import { PAYMENT_METHOD_LABELS, getWaitTimeSeconds } from '@gas-erp/shared';
+import {
+  PAYMENT_METHOD_LABELS,
+  getBusinessDayBounds,
+  getWaitTimeSeconds,
+  toNumber,
+} from '@gas-erp/shared';
 
 const SLOW_DELIVERY_THRESHOLD_SECONDS = 900;
 
@@ -12,10 +17,7 @@ export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
   async masterOverview(user: AuthUser) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const { start, end } = getBusinessDayBounds();
 
     const stores = await this.prisma.store.findMany({
       where: { organizationId: user.organizationId, active: true },
@@ -27,11 +29,11 @@ export class DashboardService {
           this.prisma.sale.aggregate({
             where: {
               storeId: store.id,
-              createdAt: { gte: today, lt: tomorrow },
+              createdAt: { gte: start, lt: end },
               status: { not: SaleStatus.CANCELLED },
             },
             _sum: { total: true },
-            _count: true,
+            _count: { _all: true },
           }),
           this.prisma.delivery.count({
             where: {
@@ -45,28 +47,25 @@ export class DashboardService {
         ]);
         return {
           store,
-          salesCount: salesToday._count,
-          salesTotal: salesToday._sum.total ?? 0,
+          salesCount: salesToday._count._all,
+          salesTotal: toNumber(salesToday._sum.total),
           activeDeliveries,
           lowStockItems: lowStock,
         };
       }),
     );
 
-    return { stores: storeStats };
+    return { stores: storeStats, date: getBusinessDayBounds().dateKey };
   }
 
   async storeDashboard(user: AuthUser, storeId: string, date?: string) {
     assertStoreAccess(user, storeId);
-    const day = date ? new Date(date) : new Date();
-    day.setHours(0, 0, 0, 0);
-    const nextDay = new Date(day);
-    nextDay.setDate(nextDay.getDate() + 1);
+    const { start, end, dateKey } = getBusinessDayBounds(date);
 
     const sales = await this.prisma.sale.findMany({
       where: {
         storeId,
-        createdAt: { gte: day, lt: nextDay },
+        createdAt: { gte: start, lt: end },
         status: { not: SaleStatus.CANCELLED },
       },
       include: { items: { include: { product: true } }, payments: true },
@@ -77,10 +76,10 @@ export class DashboardService {
     const productsSold: Record<string, { name: string; qty: number; total: number }> = {};
 
     for (const sale of sales) {
-      revenue += Number(sale.total);
+      revenue += toNumber(sale.total);
       for (const payment of sale.payments) {
         const label = PAYMENT_METHOD_LABELS[payment.method] ?? payment.method;
-        paymentsByMethod[label] = (paymentsByMethod[label] ?? 0) + Number(payment.amount);
+        paymentsByMethod[label] = (paymentsByMethod[label] ?? 0) + toNumber(payment.amount);
       }
       for (const item of sale.items) {
         const key = item.productId;
@@ -88,17 +87,17 @@ export class DashboardService {
           productsSold[key] = { name: item.product.name, qty: 0, total: 0 };
         }
         productsSold[key].qty += item.quantity;
-        productsSold[key].total += Number(item.total);
+        productsSold[key].total += toNumber(item.total);
       }
     }
 
     const movements = await this.prisma.stockMovement.findMany({
-      where: { storeId, createdAt: { gte: day, lt: nextDay } },
+      where: { storeId, createdAt: { gte: start, lt: end } },
       include: { product: true },
     });
 
     const deliveries = await this.prisma.delivery.findMany({
-      where: { sale: { storeId, createdAt: { gte: day, lt: nextDay } } },
+      where: { sale: { storeId, createdAt: { gte: start, lt: end } } },
       include: { sale: { include: { customer: true } } },
     });
 
@@ -123,17 +122,22 @@ export class DashboardService {
 
     const avgWaitTimeSeconds = waitTimes.length
       ? Math.round(waitTimes.reduce((sum, value) => sum + value, 0) / waitTimes.length)
-      : 0;
-    const maxWaitTimeSeconds = waitTimes.length ? Math.max(...waitTimes) : 0;
+      : null;
+    const maxWaitTimeSeconds = waitTimes.length ? Math.max(...waitTimes) : null;
     slowDeliveries.sort((a, b) => b.waitTimeSeconds - a.waitTimeSeconds);
 
     return {
-      date: day.toISOString().slice(0, 10),
+      date: dateKey,
       revenue,
       paymentsByMethod,
       productsSold: Object.values(productsSold),
       stockMovements: movements.length,
-      deliveries: { pending: pendingDeliveries, completed: completedDeliveries },
+      salesCount: sales.length,
+      deliveries: {
+        pending: pendingDeliveries,
+        inProgress: inProgressDeliveries,
+        completed: completedDeliveries,
+      },
       deliveryMetrics: {
         avgWaitTimeSeconds,
         maxWaitTimeSeconds,
@@ -142,7 +146,6 @@ export class DashboardService {
         completedCount: completedDeliveries,
         slowDeliveries,
       },
-      salesCount: sales.length,
     };
   }
 }

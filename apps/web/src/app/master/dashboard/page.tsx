@@ -10,19 +10,24 @@ import { formatCurrency } from '@/lib/utils';
 interface StoreStat {
   store: { id: string; name: string; code: string; city?: string };
   salesCount: number;
-  salesTotal: number | string;
+  salesTotal: number;
   activeDeliveries: number;
   lowStockItems: number;
 }
 
 export default function MasterDashboardPage() {
   const router = useRouter();
-  const [data, setData] = useState<{ stores: StoreStat[] } | null>(null);
+  const [data, setData] = useState<{ stores: StoreStat[]; date?: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api<{ stores: StoreStat[] }>('/dashboard/master', {}, getToken())
+    api<{ stores: StoreStat[]; date?: string }>('/dashboard/master', {}, getToken())
       .then(setData)
+      .catch((err) => {
+        setData(null);
+        setError(err instanceof Error ? err.message : 'Erro ao carregar visão geral');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -33,9 +38,23 @@ export default function MasterDashboardPage() {
 
   if (loading) return <PageLoader />;
 
+  if (error) {
+    return (
+      <>
+        <PageHeader title="Painel Master" subtitle="Visão consolidada de todas as unidades" />
+        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      </>
+    );
+  }
+
+  const dateLabel = data?.date?.split('-').reverse().join('/');
+
   return (
     <>
-      <PageHeader title="Painel Master" subtitle="Visão consolidada de todas as unidades" />
+      <PageHeader
+        title="Painel Master"
+        subtitle={dateLabel ? `Visão consolidada · ${dateLabel}` : 'Visão consolidada de todas as unidades'}
+      />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.stores.map((s) => (
           <button

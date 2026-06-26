@@ -14,5 +14,6 @@ export * from './schemas/delivery';
 export * from './permissions';
 export * from './sale-display';
 export * from './delivery-metrics';
+export * from './business-day';
 export * from './types';
 export * from './fiscal/fiscal-provider';

@@ -8,54 +8,75 @@ import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { formatWaitTime } from '@gas-erp/shared';
 
-interface DeliveryMetrics {
-  avgWaitTimeSeconds: number | null;
-  maxWaitTimeSeconds: number | null;
-  pendingCount: number;
-  inProgressCount: number;
-  completedCount: number;
-  slowDeliveries: { saleId: string; customerName: string; waitTimeSeconds: number }[];
+interface StoreDashboardData {
+  date: string;
+  revenue: number;
+  salesCount: number;
+  paymentsByMethod: Record<string, number>;
+  productsSold: { name: string; qty: number; total: number }[];
+  deliveries: { pending: number; inProgress: number; completed: number };
+  deliveryMetrics?: {
+    avgWaitTimeSeconds: number | null;
+    maxWaitTimeSeconds: number | null;
+    slowDeliveries: { saleId: string; customerName: string; waitTimeSeconds: number }[];
+  };
 }
 
 export default function DailySummaryPage() {
   const { storeId } = useParams<{ storeId: string }>();
-  const [data, setData] = useState<{
-    revenue: number;
-    paymentsByMethod: Record<string, number>;
-    productsSold: { name: string; qty: number; total: number }[];
-    deliveries: { pending: number; completed: number };
-    deliveryMetrics?: DeliveryMetrics;
-  } | null>(null);
+  const [data, setData] = useState<StoreDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!storeId) return;
     setLoading(true);
-    api<typeof data>(`/dashboard/store?storeId=${storeId}`, {}, getToken())
+    setError('');
+    api<StoreDashboardData>(`/dashboard/store?storeId=${storeId}`, {}, getToken())
       .then(setData)
+      .catch((err) => {
+        setData(null);
+        setError(err instanceof Error ? err.message : 'Erro ao carregar resumo');
+      })
       .finally(() => setLoading(false));
   }, [storeId]);
 
   if (loading) return <PageLoader />;
 
+  if (error) {
+    return (
+      <>
+        <PageHeader title="Resumo diário" subtitle="Fechamento operacional da unidade" />
+        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      </>
+    );
+  }
+
+  const metrics = data?.deliveryMetrics;
+
   return (
     <>
-      <PageHeader title="Resumo diário" subtitle="Fechamento operacional da unidade" />
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card><div className="text-sm text-slate-500">Faturamento</div><div className="text-2xl font-bold">{formatCurrency(data?.revenue ?? 0)}</div></Card>
+      <PageHeader
+        title="Resumo diário"
+        subtitle={data?.date ? `Fechamento operacional · ${data.date.split('-').reverse().join('/')}` : 'Fechamento operacional da unidade'}
+      />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Card><div className="text-sm text-slate-500">Faturamento hoje</div><div className="text-2xl font-bold">{formatCurrency(data?.revenue ?? 0)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Vendas</div><div className="text-2xl font-bold">{data?.salesCount ?? 0}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas pendentes</div><div className="text-2xl font-bold">{data?.deliveries.pending ?? 0}</div></Card>
+        <Card><div className="text-sm text-slate-500">Entregas em rota</div><div className="text-2xl font-bold">{data?.deliveries.inProgress ?? 0}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas concluídas</div><div className="text-2xl font-bold">{data?.deliveries.completed ?? 0}</div></Card>
-        <Card><div className="text-sm text-slate-500">Tempo médio de espera</div><div className="text-2xl font-bold">{formatWaitTime(data?.deliveryMetrics?.avgWaitTimeSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Maior espera do dia</div><div className="text-2xl font-bold">{formatWaitTime(data?.deliveryMetrics?.maxWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Tempo médio de espera</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior espera do dia</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
       </div>
 
-      {data?.deliveryMetrics?.slowDeliveries && data.deliveryMetrics.slowDeliveries.length > 0 && (
+      {metrics?.slowDeliveries && metrics.slowDeliveries.length > 0 && (
         <>
           <h2 className="mb-3 mt-8 font-semibold">Entregas com espera alta</h2>
           <Table>
             <thead className="bg-slate-50 text-left"><tr><th className="p-3">Cliente</th><th className="p-3">Tempo de espera</th></tr></thead>
             <tbody>
-              {data.deliveryMetrics.slowDeliveries.map((d) => (
+              {metrics.slowDeliveries.map((d) => (
                 <tr key={d.saleId} className="border-t border-slate-100"><td className="p-3">{d.customerName}</td><td className="p-3">{formatWaitTime(d.waitTimeSeconds)}</td></tr>
               ))}
             </tbody>

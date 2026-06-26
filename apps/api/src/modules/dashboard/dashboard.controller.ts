@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { CurrentUser, Roles } from '../../common/decorators';
@@ -22,6 +22,9 @@ export class DashboardController {
     @Query('storeId') storeId: string,
     @Query('date') date?: string,
   ) {
+    if (!storeId) {
+      throw new BadRequestException('storeId é obrigatório');
+    }
     return this.service.storeDashboard(user, storeId, date);
   }
 }
