@@ -2,7 +2,14 @@
 
 import { useLayoutEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { api, clearAuth, getCurrentStoreId, getStoredUser, getToken, setCurrentStoreId } from '@/lib/api';
+import {
+  api,
+  clearAuth,
+  getCurrentStoreId,
+  getToken,
+  refreshStoredUser,
+  setCurrentStoreId,
+} from '@/lib/api';
 import { buildStoreHref, defaultStorePath, STORE_NAV_ITEMS } from '@/lib/store-nav';
 import { NavLink } from '@/components/ui';
 import { Logo } from '@/components/logo';
@@ -19,13 +26,6 @@ interface Store {
 let cachedUser: AuthUser | null = null;
 let cachedStores: Store[] | null = null;
 let storesRequest: Promise<Store[]> | null = null;
-
-function readSessionUser(): AuthUser | null {
-  if (typeof window === 'undefined') return null;
-  const token = getToken();
-  const stored = getStoredUser<AuthUser>();
-  return token && stored ? stored : null;
-}
 
 function fetchStores(): Promise<Store[]> {
   if (cachedStores) return Promise.resolve(cachedStores);
@@ -50,39 +50,49 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
   const pathname = usePathname();
   const storeIdFromPath = pathname.match(/^\/store\/([^/]+)/)?.[1] ?? null;
 
-  const [user, setUser] = useState<AuthUser | null>(() => cachedUser ?? readSessionUser());
+  const [user, setUser] = useState<AuthUser | null>(() => cachedUser);
+  const [sessionReady, setSessionReady] = useState(false);
   const [stores, setStores] = useState<Store[]>(() => cachedStores ?? []);
   const [storeId, setStoreId] = useState<string | null>(() => storeIdFromPath ?? getCurrentStoreId());
 
   useLayoutEffect(() => {
-    const stored = readSessionUser();
-    if (!stored) {
+    if (!getToken()) {
       router.replace('/login');
       return;
     }
-    if (stored.role === 'DELIVERER') {
-      clearAuth();
-      clearAppShellCache();
-      router.replace('/login');
-      return;
-    }
-    cachedUser = stored;
-    setUser(stored);
 
-    void fetchStores().then((data) => {
-      setStores(data);
-      if (mode === 'store') {
-        if (storeIdFromPath) {
-          setStoreId(storeIdFromPath);
-          setCurrentStoreId(storeIdFromPath);
-        } else if (getCurrentStoreId() && data.some((s) => s.id === getCurrentStoreId())) {
-          setStoreId(getCurrentStoreId());
-        } else if (data[0]) {
-          setStoreId(data[0].id);
-          setCurrentStoreId(data[0].id);
+    void refreshStoredUser()
+      .then((fresh) => {
+        if (!fresh || fresh.role === 'DELIVERER') {
+          clearAuth();
+          clearAppShellCache();
+          router.replace('/login');
+          return;
         }
-      }
-    });
+        cachedUser = fresh;
+        setUser(fresh);
+        setSessionReady(true);
+
+        return fetchStores().then((data) => {
+          setStores(data);
+          if (mode === 'store') {
+            if (storeIdFromPath) {
+              setStoreId(storeIdFromPath);
+              setCurrentStoreId(storeIdFromPath);
+            } else if (getCurrentStoreId() && data.some((s) => s.id === getCurrentStoreId())) {
+              setStoreId(getCurrentStoreId());
+            } else if (data[0]) {
+              setStoreId(data[0].id);
+              setCurrentStoreId(data[0].id);
+            }
+          }
+        });
+      })
+      .catch(() => {
+        clearAuth();
+        clearAppShellCache();
+        router.replace('/login');
+      });
   }, [router, mode, storeIdFromPath]);
 
   function logout() {
@@ -99,7 +109,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
 
   const activeStoreId = storeIdFromPath ?? storeId;
 
-  if (!user) {
+  if (!user || !sessionReady) {
     return (
       <div className="min-h-screen">
         <aside className="hidden border-r border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col" />
