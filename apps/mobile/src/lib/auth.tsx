@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from './api';
 import { clearSession, getStoredOrganization, getStoredUser, getToken, saveSession } from './storage';
 import { clearPushTokenOnServer } from './notifications';
-import { syncDelivererAvailabilityFromServer } from './deliverer-availability-context';
-import { startPresenceTracking, stopAllTracking } from './location';
+import { stopAllTracking } from './location';
 import type { AuthUser, LoginResponse, Organization } from '../types';
 
 interface AuthState {
@@ -58,14 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization: res.organization ?? null,
       initializing: false,
     });
-    try {
-      const me = await syncDelivererAvailabilityFromServer();
-      if (me.sharingLocation) {
-        startPresenceTracking().catch(() => undefined);
-      }
-    } catch {
-      // Perfil indisponível ou erro de rede — não inicia GPS até sincronizar.
-    }
   }, []);
 
   const logout = useCallback(async () => {

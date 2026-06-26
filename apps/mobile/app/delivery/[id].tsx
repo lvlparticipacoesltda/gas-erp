@@ -14,7 +14,7 @@ import {
 import { Badge, Button, Card, Loading, StateMessage } from '@/components/ui';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
 import { deliveryAddress, updateDeliveryStatus } from '@/lib/deliveries';
-import { confirmBackgroundLocationDisclosure, hasBackgroundPermission, startDeliveryTracking, stopDeliveryTracking } from '@/lib/location';
+import { startDeliveryTracking, stopDeliveryTracking } from '@/lib/location';
 import { callPhone, openGoogleMaps, openWaze } from '@/lib/navigation';
 import { colors, radius, spacing } from '@/theme';
 import type { Delivery } from '@/types';
@@ -69,13 +69,6 @@ export default function DeliveryDetailScreen() {
         'Você já tem uma entrega em rota. Conclua-a antes de iniciar outra.',
       );
       return;
-    }
-
-    // Divulgação destacada exigida pela Google Play antes de coletar localização
-    // em segundo plano. Só é mostrada enquanto a permissão não foi concedida.
-    if (!(await hasBackgroundPermission())) {
-      const consent = await confirmBackgroundLocationDisclosure();
-      if (!consent) return;
     }
 
     setBusy(true);

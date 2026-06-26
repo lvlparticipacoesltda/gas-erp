@@ -19,6 +19,9 @@ let foregroundIntervalId: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: { remove: () => void } | null = null;
 /** Quando true, presença (sem rota) não envia GPS — ex.: indisponível pela loja. */
 let presenceSharingPaused = false;
+/** Evita prompts de permissão sobrepostos quando vários fluxos iniciam GPS ao mesmo tempo. */
+let permissionsInFlight: Promise<PermissionResult> | null = null;
+let locationSetupInFlight: Promise<PermissionResult> | null = null;
 
 type LocationTaskData = { locations: Location.LocationObject[] };
 
@@ -228,8 +231,24 @@ export async function requestLocationPermissions(): Promise<PermissionResult> {
 
 /** Solicita background com divulgação destacada quando ainda não concedida. */
 export async function requestLocationPermissionsWithDisclosure(): Promise<PermissionResult> {
+  if (permissionsInFlight) {
+    return permissionsInFlight;
+  }
+
+  permissionsInFlight = requestLocationPermissionsWithDisclosureOnce();
+  try {
+    return await permissionsInFlight;
+  } finally {
+    permissionsInFlight = null;
+  }
+}
+
+async function requestLocationPermissionsWithDisclosureOnce(): Promise<PermissionResult> {
   const fg = await Location.getForegroundPermissionsAsync();
   if (fg.status !== 'granted') {
+    if (fg.status === 'denied') {
+      return { foreground: false, background: false };
+    }
     const requested = await Location.requestForegroundPermissionsAsync();
     if (requested.status !== 'granted') return { foreground: false, background: false };
   }
@@ -303,6 +322,19 @@ function buildTrackingOptions(
 }
 
 async function ensureLocationUpdates(onDelivery: boolean): Promise<PermissionResult> {
+  if (locationSetupInFlight) {
+    return locationSetupInFlight;
+  }
+
+  locationSetupInFlight = ensureLocationUpdatesOnce(onDelivery);
+  try {
+    return await locationSetupInFlight;
+  } finally {
+    locationSetupInFlight = null;
+  }
+}
+
+async function ensureLocationUpdatesOnce(onDelivery: boolean): Promise<PermissionResult> {
   const permissions = await requestLocationPermissionsWithDisclosure();
   if (!permissions.foreground) return permissions;
 
@@ -470,11 +502,8 @@ function normalizeState(region?: string | null): string | undefined {
 
 /** Obtém endereço aproximado a partir da posição GPS atual do entregador. */
 export async function getCurrentDeliveryAddress(): Promise<GeocodedAddress | null> {
-  const fg = await Location.getForegroundPermissionsAsync();
-  if (fg.status !== 'granted') {
-    const requested = await Location.requestForegroundPermissionsAsync();
-    if (requested.status !== 'granted') return null;
-  }
+  const permissions = await requestLocationPermissionsWithDisclosure();
+  if (!permissions.foreground) return null;
 
   try {
     const location = await Location.getCurrentPositionAsync({

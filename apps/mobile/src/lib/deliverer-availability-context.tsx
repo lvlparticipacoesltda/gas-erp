@@ -10,7 +10,7 @@ import {
 import { AppState } from 'react-native';
 import type { DelivererMe } from '@gas-erp/shared';
 import { api } from './api';
-import { syncPresenceSharingEnabled } from './location';
+import { syncPresenceSharingEnabled, recoverStaleLocationTracking } from './location';
 
 const SYNC_INTERVAL_MS = 30_000;
 
@@ -28,7 +28,14 @@ const DelivererAvailabilityContext = createContext<DelivererAvailabilityContextV
 
 export async function syncDelivererAvailabilityFromServer(): Promise<DelivererMe> {
   const me = await api<DelivererMe>('/deliverers/me');
-  await syncPresenceSharingEnabled(me.sharingLocation);
+  if (!me.sharingLocation && !me.hasActiveRoute) {
+    await syncPresenceSharingEnabled(false);
+  } else {
+    await recoverStaleLocationTracking();
+    if (me.sharingLocation) {
+      await syncPresenceSharingEnabled(true);
+    }
+  }
   return me;
 }
 

@@ -58,32 +58,55 @@ export class PushService {
   }
 
   async notifyAvailabilityChanged(delivererId: string, available: boolean): Promise<void> {
-    await this.sendToDeliverer(delivererId, {
-      title: available ? 'Você está disponível' : 'Você está indisponível',
-      body: available
-        ? 'A loja reativou seu status. Sua localização voltará a aparecer no mapa.'
-        : 'A loja pausou seu status. O compartilhamento de localização foi interrompido.',
-      data: { type: 'AVAILABILITY_CHANGED', available: available ? 'true' : 'false' },
-    }, 'AVAILABILITY_CHANGED');
+    const deliverer = await this.prisma.deliverer.findUnique({
+      where: { id: delivererId },
+      select: { expoPushToken: true },
+    });
+    if (!deliverer?.expoPushToken) {
+      // App consulta /deliverers/me a cada 30s — push aqui é complementar.
+      this.logger.debug(
+        `Push AVAILABILITY_CHANGED omitido: entregador ${delivererId} sem expoPushToken`,
+      );
+      return;
+    }
+
+    await this.sendToDeliverer(
+      delivererId,
+      {
+        title: available ? 'Você está disponível' : 'Você está indisponível',
+        body: available
+          ? 'A loja reativou seu status. Sua localização voltará a aparecer no mapa.'
+          : 'A loja pausou seu status. O compartilhamento de localização foi interrompido.',
+        data: { type: 'AVAILABILITY_CHANGED', available: available ? 'true' : 'false' },
+      },
+      'AVAILABILITY_CHANGED',
+      deliverer.expoPushToken,
+    );
   }
 
   private async sendToDeliverer(
     delivererId: string,
     message: { title: string; body: string; data: Record<string, string> },
     eventType: string,
+    knownToken?: string,
   ): Promise<void> {
-    const deliverer = await this.prisma.deliverer.findUnique({
-      where: { id: delivererId },
-      select: { expoPushToken: true },
-    });
-    if (!deliverer?.expoPushToken) {
+    const token =
+      knownToken ??
+      (
+        await this.prisma.deliverer.findUnique({
+          where: { id: delivererId },
+          select: { expoPushToken: true },
+        })
+      )?.expoPushToken;
+
+    if (!token) {
       this.logger.warn(
         `Push ${eventType} ignorado: entregador ${delivererId} sem expoPushToken registrado`,
       );
       return;
     }
 
-    const ok = await this.sendExpoPush(deliverer.expoPushToken, message, eventType, delivererId);
+    const ok = await this.sendExpoPush(token, message, eventType, delivererId);
     if (ok === 'invalid') {
       this.logger.warn(`Push ${eventType}: token inválido removido do entregador ${delivererId}`);
       await this.prisma.deliverer.update({

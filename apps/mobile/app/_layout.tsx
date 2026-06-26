@@ -8,8 +8,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import { DeliveriesProvider } from '@/lib/deliveries-context';
 import { DelivererAvailabilityProvider } from '@/lib/deliverer-availability-context';
 import { PushNotificationsBridge } from '@/components/PushNotificationsBridge';
-import { recoverStaleLocationTracking, initForegroundPresence, teardownForegroundPresence } from '@/lib/location';
-import { syncDelivererAvailabilityFromServer } from '@/lib/deliverer-availability-context';
+import { initForegroundPresence, teardownForegroundPresence } from '@/lib/location';
 import { colors } from '@/theme';
 
 /** Entregas compartilhadas entre abas e tela de detalhe (/delivery/[id]). */
@@ -19,13 +18,6 @@ function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return;
     initForegroundPresence();
-    void syncDelivererAvailabilityFromServer()
-      .then((me) => {
-        if (me.sharingLocation) {
-          return recoverStaleLocationTracking();
-        }
-      })
-      .catch(() => undefined);
     return () => {
       teardownForegroundPresence();
     };

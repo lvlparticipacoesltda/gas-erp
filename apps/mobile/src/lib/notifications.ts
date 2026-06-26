@@ -1,11 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { syncDelivererAvailabilityFromServer } from './deliverer-availability-context';
 import { api } from './api';
+
+/** Aguarda prompts de localização na primeira abertura antes de pedir notificações. */
+const PUSH_REGISTER_DELAY_MS = 4_000;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -37,6 +40,7 @@ export async function getExpoPushToken(): Promise<string | null> {
   const { status: existing } = await Notifications.getPermissionsAsync();
   let status = existing;
   if (existing !== 'granted') {
+    if (existing === 'denied') return null;
     const requested = await Notifications.requestPermissionsAsync();
     status = requested.status;
   }
@@ -51,13 +55,14 @@ export async function getExpoPushToken(): Promise<string | null> {
   return token.data;
 }
 
-export async function registerPushTokenWithApi(): Promise<void> {
+export async function registerPushTokenWithApi(): Promise<boolean> {
   const token = await getExpoPushToken();
-  if (!token) return;
+  if (!token) return false;
   await api('/deliverers/me/push-token', {
     method: 'PUT',
     body: { token },
   });
+  return true;
 }
 
 export async function clearPushTokenOnServer(): Promise<void> {
@@ -82,7 +87,24 @@ export function usePushNotifications(onRefresh: () => void | Promise<void>) {
   onRefreshRef.current = onRefresh;
 
   useEffect(() => {
-    registerPushTokenWithApi().catch(() => undefined);
+    let cancelled = false;
+    let delayTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const tryRegister = () => {
+      void registerPushTokenWithApi().catch((err) => {
+        if (__DEV__) {
+          console.warn('[push] falha ao registrar token:', err);
+        }
+      });
+    };
+
+    delayTimer = setTimeout(() => {
+      if (!cancelled) tryRegister();
+    }, PUSH_REGISTER_DELAY_MS);
+
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') tryRegister();
+    });
 
     const received = Notifications.addNotificationReceivedListener((event) => {
       const data = event.notification.request.content.data as Record<string, unknown>;
@@ -108,6 +130,9 @@ export function usePushNotifications(onRefresh: () => void | Promise<void>) {
     });
 
     return () => {
+      cancelled = true;
+      if (delayTimer) clearTimeout(delayTimer);
+      appStateSub.remove();
       received.remove();
       response.remove();
     };
