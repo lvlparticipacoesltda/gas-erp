@@ -8,6 +8,7 @@ import { MapPin, RefreshCw } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { Badge, Card, PageHeader } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
+import { RouteElapsed } from '@/components/route-elapsed';
 import { buildStoreHref } from '@/lib/store-nav';
 import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
 import {
@@ -310,6 +311,7 @@ export default function DelivererMapPage() {
                           Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
                         </p>
                       )}
+                      <RouteElapsed startedAt={p.routeStartedAt} />
                       {p.customerName && (
                         <p className="mt-1 text-xs text-slate-600">Cliente: {p.customerName}</p>
                       )}

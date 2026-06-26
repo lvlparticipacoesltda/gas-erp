@@ -89,6 +89,7 @@ export class DeliverersService {
           select: {
             id: true,
             status: true,
+            startedAt: true,
             sale: {
               select: {
                 storeId: true,
@@ -161,6 +162,7 @@ export class DeliverersService {
       const deliveryFields = {
         deliveryId,
         deliveryStatus,
+        routeStartedAt: activeAtStore?.startedAt?.toISOString() ?? null,
         customerName,
         deliveryAddress,
       };

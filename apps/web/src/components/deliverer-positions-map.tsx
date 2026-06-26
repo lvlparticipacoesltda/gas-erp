@@ -9,6 +9,7 @@ import {
   DELIVERY_STATUS_LABELS,
   getDelivererPositionBadge,
 } from '@gas-erp/shared';
+import { RouteElapsed } from '@/components/route-elapsed';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_CENTER: L.LatLngExpression = [-23.5505, -46.6333];
@@ -138,6 +139,7 @@ export function DelivererPositionsMap({
                     Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
                   </p>
                 )}
+                <RouteElapsed startedAt={p.routeStartedAt} className="text-sm font-semibold text-amber-700" />
                 {p.customerName && (
                   <p className="text-slate-600">Cliente: {p.customerName}</p>
                 )}

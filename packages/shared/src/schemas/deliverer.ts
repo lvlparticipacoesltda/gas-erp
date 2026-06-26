@@ -63,6 +63,8 @@ export const delivererPositionSchema = z.object({
   batteryCharging: z.boolean().nullable().optional(),
   deliveryId: z.string().nullable().optional(),
   deliveryStatus: z.string().nullable().optional(),
+  /** Início da rota ativa (ISO), para exibir tempo em rota no mapa. */
+  routeStartedAt: z.string().nullable().optional(),
   customerName: z.string().nullable().optional(),
   deliveryAddress: z.string().nullable().optional(),
   stores: z.array(delivererPositionStoreSchema),

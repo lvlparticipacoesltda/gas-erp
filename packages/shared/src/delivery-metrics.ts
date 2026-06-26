@@ -93,6 +93,16 @@ export function formatCompletedRouteLabel(seconds: number | null | undefined): s
   return `Em rota: ${formatWaitTime(seconds)}`;
 }
 
+/** Rótulo ao vivo para entrega em andamento (ex.: mapa de entregadores). */
+export function formatActiveRouteLabel(
+  deliveryStartedAt: string | Date | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  if (!deliveryStartedAt) return null;
+  const seconds = getElapsedWaitingSeconds(deliveryStartedAt, now);
+  return `Em rota há ${formatWaitTime(seconds)}`;
+}
+
 /** Junta espera + rota para cards de histórico. */
 export function formatCompletedDeliveryPhases(input: {
   waitTimeSeconds?: number | null;
