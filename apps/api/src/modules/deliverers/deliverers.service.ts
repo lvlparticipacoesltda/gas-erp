@@ -74,7 +74,7 @@ export class DeliverersService {
           {
             deliveries: {
               some: {
-                status: 'IN_PROGRESS',
+                status: { in: ['PENDING', 'IN_PROGRESS'] },
                 sale: { storeId, store: { organizationId: user.organizationId } },
               },
             },
@@ -85,11 +85,15 @@ export class DeliverersService {
         user: { select: { name: true } },
         stores: { include: { store: { select: { id: true, name: true } } } },
         deliveries: {
-          where: { status: 'IN_PROGRESS' },
+          where: {
+            status: { in: ['PENDING', 'IN_PROGRESS'] },
+            sale: { storeId, store: { organizationId: user.organizationId } },
+          },
           select: {
             id: true,
             status: true,
             startedAt: true,
+            createdAt: true,
             sale: {
               select: {
                 storeId: true,
@@ -104,6 +108,7 @@ export class DeliverersService {
               },
             },
           },
+          orderBy: { createdAt: 'asc' },
         },
       },
       orderBy: { user: { name: 'asc' } },
@@ -140,7 +145,9 @@ export class DeliverersService {
 
     return deliverers.map((deliverer) => {
       const trackingFallback = pointByDeliverer.get(deliverer.id);
-      const activeAtStore = deliverer.deliveries.find((d) => d.sale.storeId === storeId);
+      const storeDeliveries = deliverer.deliveries;
+      const activeAtStore = storeDeliveries.find((d) => d.status === 'IN_PROGRESS');
+      const pendingAtStore = storeDeliveries.filter((d) => d.status === 'PENDING');
       const hasActiveDelivery = !!activeAtStore;
 
       const delivererStatus = hasActiveDelivery
@@ -154,6 +161,13 @@ export class DeliverersService {
       const customerName = activeAtStore?.sale.customer?.name ?? null;
       const deliveryAddress = activeAtStore ? buildDeliveryAddress(activeAtStore.sale) : null;
 
+      const pendingDeliveries = pendingAtStore.map((delivery) => ({
+        id: delivery.id,
+        assignedAt: delivery.createdAt.toISOString(),
+        customerName: delivery.sale.customer?.name ?? null,
+        deliveryAddress: buildDeliveryAddress(delivery.sale),
+      }));
+
       const stores = deliverer.stores.map((s) => ({
         id: s.store.id,
         name: s.store.name,
@@ -165,6 +179,7 @@ export class DeliverersService {
         routeStartedAt: activeAtStore?.startedAt?.toISOString() ?? null,
         customerName,
         deliveryAddress,
+        pendingDeliveries,
       };
 
       const hasPresence =

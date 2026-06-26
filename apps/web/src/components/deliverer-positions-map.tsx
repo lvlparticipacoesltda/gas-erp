@@ -10,6 +10,7 @@ import {
   getDelivererPositionBadge,
 } from '@gas-erp/shared';
 import { RouteElapsed } from '@/components/route-elapsed';
+import { PendingDeliveriesInfo } from '@/components/pending-deliveries-info';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_CENTER: L.LatLngExpression = [-23.5505, -46.6333];
@@ -147,17 +148,24 @@ export function DelivererPositionsMap({
                 <p className="mt-1 text-slate-600">
                   {DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus}
                 </p>
-                {p.deliveryStatus && (
-                  <p className="text-slate-600">
-                    Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
-                  </p>
+                {p.deliveryStatus === 'IN_PROGRESS' && (
+                  <>
+                    <p className="text-slate-600">
+                      Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
+                    </p>
+                    <RouteElapsed startedAt={p.routeStartedAt} className="text-sm font-semibold text-amber-700" />
+                    {p.customerName && (
+                      <p className="text-slate-600">Cliente: {p.customerName}</p>
+                    )}
+                    {p.deliveryAddress && (
+                      <p className="text-slate-500">{p.deliveryAddress}</p>
+                    )}
+                  </>
                 )}
-                <RouteElapsed startedAt={p.routeStartedAt} className="text-sm font-semibold text-amber-700" />
-                {p.customerName && (
-                  <p className="text-slate-600">Cliente: {p.customerName}</p>
-                )}
-                {p.deliveryAddress && (
-                  <p className="text-slate-500">{p.deliveryAddress}</p>
+                {(p.pendingDeliveries?.length ?? 0) > 0 && (
+                  <div className="mt-2">
+                    <PendingDeliveriesInfo pendingDeliveries={p.pendingDeliveries!} compact />
+                  </div>
                 )}
                 <p className="mt-1 text-xs text-slate-500">
                   Registrado: {formatTime(p.lastSeenAt)}

@@ -9,6 +9,7 @@ import { PageLoader } from '@/components/brand-loader';
 import { Badge } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { RouteElapsed } from '@/components/route-elapsed';
+import { PendingDeliveriesInfo } from '@/components/pending-deliveries-info';
 import { buildStoreHref } from '@/lib/store-nav';
 import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
 import {
@@ -213,6 +214,11 @@ export default function DelivererMapPage() {
     [positions],
   );
 
+  const pendingRouteCount = useMemo(
+    () => positions.reduce((sum, p) => sum + (p.pendingDeliveries?.length ?? 0), 0),
+    [positions],
+  );
+
   if (!ready) {
     return <PageLoader />;
   }
@@ -273,7 +279,7 @@ export default function DelivererMapPage() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center">
               <p className="text-lg font-bold text-slate-900">{positions.length}</p>
               <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">No painel</p>
@@ -286,6 +292,10 @@ export default function DelivererMapPage() {
               <p className="text-lg font-bold text-amber-800">{inRouteCount}</p>
               <p className="text-[10px] font-medium uppercase tracking-wide text-amber-700">Em rota</p>
             </div>
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-2 py-1.5 text-center">
+              <p className="text-lg font-bold text-orange-800">{pendingRouteCount}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-orange-700">Aguard. aceite</p>
+            </div>
           </div>
         </div>
 
@@ -295,7 +305,7 @@ export default function DelivererMapPage() {
               <MapPin className="h-8 w-8 text-slate-300" />
               <p className="text-sm font-medium text-slate-600">Nenhum entregador no mapa</p>
               <p className="text-xs text-slate-400">
-                Atualização automática a cada 20 segundos.
+                Atualização automática a cada 15 segundos.
               </p>
             </li>
           )}
@@ -322,17 +332,24 @@ export default function DelivererMapPage() {
                     </div>
                     <Badge tone={badge.tone}>{badge.label}</Badge>
                   </div>
-                  {p.deliveryStatus && (
-                    <p className="mt-1.5 text-xs text-slate-600">
-                      Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
-                    </p>
+                  {p.deliveryStatus === 'IN_PROGRESS' && (
+                    <>
+                      <p className="mt-1.5 text-xs text-slate-600">
+                        Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
+                      </p>
+                      <RouteElapsed startedAt={p.routeStartedAt} />
+                      {p.customerName && (
+                        <p className="mt-1 text-xs text-slate-600">Cliente: {p.customerName}</p>
+                      )}
+                      {p.deliveryAddress && (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{p.deliveryAddress}</p>
+                      )}
+                    </>
                   )}
-                  <RouteElapsed startedAt={p.routeStartedAt} />
-                  {p.customerName && (
-                    <p className="mt-1 text-xs text-slate-600">Cliente: {p.customerName}</p>
-                  )}
-                  {p.deliveryAddress && (
-                    <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{p.deliveryAddress}</p>
+                  {(p.pendingDeliveries?.length ?? 0) > 0 && (
+                    <div className="mt-2">
+                      <PendingDeliveriesInfo pendingDeliveries={p.pendingDeliveries!} />
+                    </div>
                   )}
                   {hasCoords && (
                     <p className="mt-1 text-xs text-slate-500">{positionStatusLabel(p)}</p>

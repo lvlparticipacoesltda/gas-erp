@@ -39,6 +39,14 @@ export const delivererPositionStoreSchema = z.object({
   name: z.string(),
 });
 
+export const delivererPendingDeliverySchema = z.object({
+  id: z.string(),
+  /** Quando a rota foi direcionada ao entregador (criação da entrega). */
+  assignedAt: z.string(),
+  customerName: z.string().nullable(),
+  deliveryAddress: z.string().nullable(),
+});
+
 export const updateDelivererPositionSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
@@ -67,12 +75,15 @@ export const delivererPositionSchema = z.object({
   routeStartedAt: z.string().nullable().optional(),
   customerName: z.string().nullable().optional(),
   deliveryAddress: z.string().nullable().optional(),
+  /** Rotas direcionadas ao entregador ainda não iniciadas (PENDING). */
+  pendingDeliveries: z.array(delivererPendingDeliverySchema).optional(),
   stores: z.array(delivererPositionStoreSchema),
 });
 
 export const delivererPositionsResponseSchema = z.array(delivererPositionSchema);
 
 export type UpdateDelivererPositionInput = z.infer<typeof updateDelivererPositionSchema>;
+export type DelivererPendingDelivery = z.infer<typeof delivererPendingDeliverySchema>;
 export type DelivererPosition = z.infer<typeof delivererPositionSchema>;
 export type DelivererPositionsResponse = z.infer<typeof delivererPositionsResponseSchema>;
 
