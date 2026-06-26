@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { MapPin, RefreshCw } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
-import { Badge, Card, PageHeader } from '@/components/ui';
+import { Badge } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { RouteElapsed } from '@/components/route-elapsed';
 import { buildStoreHref } from '@/lib/store-nav';
@@ -32,7 +32,7 @@ const DelivererPositionsMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[420px] items-center justify-center rounded-xl bg-slate-100 text-sm text-slate-500">
+      <div className="flex h-full items-center justify-center bg-slate-100 text-sm text-slate-500">
         Carregando mapa…
       </div>
     ),
@@ -208,163 +208,177 @@ export default function DelivererMapPage() {
     [withPosition],
   );
 
+  const inRouteCount = useMemo(
+    () => positions.filter((p) => p.deliveryStatus === 'IN_PROGRESS').length,
+    [positions],
+  );
+
   if (!ready) {
     return <PageLoader />;
   }
 
   return (
-    <>
-      <PageHeader
-        title="Mapa de entregadores"
-        subtitle={
-          lastUpdated
-            ? `${recentCount} ao vivo · atualizado às ${lastUpdated.toLocaleTimeString('pt-BR')}`
-            : 'Posições em tempo quase real'
-        }
-        action={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setRefreshing(true);
-                loadAll().finally(() => setRefreshing(false));
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Atualizar
-            </button>
-            <Link
-              href={buildStoreHref(storeId, 'deliverers')}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              Lista de entregadores
-            </Link>
+    <div className="-m-6 flex h-[calc(100vh-3rem)] min-h-0 flex-col lg:h-[calc(100vh)] lg:flex-row">
+      {/* Mapa em tela cheia (área à esquerda) */}
+      <div className="relative min-h-[45vh] flex-1 lg:min-h-0">
+        <DelivererPositionsMap
+          positions={positions}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          fitPaddingRight={400}
+        />
+
+        {withPosition.length === 0 && (
+          <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4">
+            <div className="rounded-lg border border-slate-200 bg-white/95 px-4 py-2 text-center text-sm text-slate-600 shadow-md backdrop-blur-sm">
+              {positions.length === 0
+                ? 'Nenhum entregador disponível no mapa. Posições aparecem com o app aberto e GPS ativo.'
+                : 'Nenhuma posição GPS no momento — entregadores sem sinal ou indisponíveis.'}
+            </div>
           </div>
-        }
-      />
+        )}
+      </div>
 
-      {withPosition.length === 0 && positions.length === 0 && offlineDeliverers.length === 0 ? (
-        <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-          <MapPin className="h-10 w-10 text-slate-300" />
-          <p className="text-lg font-medium text-slate-700">Nenhum entregador com posição no mapa</p>
-          <p className="max-w-md text-sm text-slate-500">
-            As posições aparecem quando um entregador está logado no app mobile com GPS ativo.
-            A atualização automática ocorre a cada 20 segundos.
-          </p>
-        </Card>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Card className="overflow-hidden p-0">
-            {withPosition.length === 0 ? (
-              <div className="flex h-[420px] flex-col items-center justify-center gap-2 px-6 text-center">
-                <MapPin className="h-8 w-8 text-slate-300" />
-                <p className="text-sm font-medium text-slate-700">Nenhuma posição no mapa</p>
-                <p className="max-w-sm text-xs text-slate-500">
-                  Entregadores indisponíveis ou sem GPS não aparecem no mapa.
-                </p>
-              </div>
-            ) : (
-              <DelivererPositionsMap
-                positions={positions}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-              />
-            )}
-          </Card>
+      {/* Painel lateral direito */}
+      <aside className="flex h-[min(55vh,520px)] w-full shrink-0 flex-col border-t border-slate-200 bg-white shadow-xl lg:h-full lg:w-[min(100%,400px)] lg:max-w-md lg:border-l lg:border-t-0">
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-base font-bold text-slate-900">Entregadores</h1>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {lastUpdated
+                  ? `Atualizado às ${lastUpdated.toLocaleTimeString('pt-BR')}`
+                  : 'Posições em tempo quase real'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setRefreshing(true);
+                  loadAll().finally(() => setRefreshing(false));
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                title="Atualizar"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                Atualizar
+              </button>
+              <Link
+                href={buildStoreHref(storeId, 'deliverers')}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Lista
+              </Link>
+            </div>
+          </div>
 
-          <Card className="flex max-h-[560px] flex-col">
-            <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800">
-              No mapa ({positions.length})
-            </h2>
-            <ul className="flex-1 divide-y divide-slate-100 overflow-y-auto">
-              {positions.length === 0 && (
-                <li className="px-4 py-6 text-center text-sm text-slate-400">
-                  Nenhum entregador disponível no mapa.
-                </li>
-              )}
-              {positions.map((p) => {
-                const hasCoords = p.latitude !== null && p.longitude !== null;
-                const isSelected = selectedId === p.delivererId;
-                const badge = getDelivererPositionBadge(p);
-                const availabilityLocked = p.delivererStatus === 'ON_DELIVERY';
-                return (
-                  <li key={p.delivererId}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(p.delivererId)}
-                      className={`w-full px-4 py-3 text-left transition-colors ${
-                        isSelected ? 'bg-orange-50' : 'hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-medium text-slate-900">{p.name}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            {DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus}
-                          </p>
-                        </div>
-                        <Badge tone={badge.tone}>{badge.label}</Badge>
-                      </div>
-                      {p.deliveryStatus && (
-                        <p className="mt-1 text-xs text-slate-600">
-                          Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
-                        </p>
-                      )}
-                      <RouteElapsed startedAt={p.routeStartedAt} />
-                      {p.customerName && (
-                        <p className="mt-1 text-xs text-slate-600">Cliente: {p.customerName}</p>
-                      )}
-                      {p.deliveryAddress && (
-                        <p className="mt-0.5 text-xs text-slate-500">{p.deliveryAddress}</p>
-                      )}
-                      {hasCoords && (
-                        <p className="mt-1 text-xs text-slate-500">{positionStatusLabel(p)}</p>
-                      )}
-                      <BatteryInfo level={p.batteryLevel} charging={p.batteryCharging} />
-                      {p.stores.length > 1 && (
-                        <p className="mt-1 text-xs text-slate-400">
-                          Unidades: {p.stores.map((s) => s.name).join(', ')}
-                        </p>
-                      )}
-                      {canManage && (
-                        <AvailabilityToggle
-                          available={p.status !== 'OFFLINE'}
-                          locked={availabilityLocked}
-                          saving={savingId === p.delivererId}
-                          onToggle={(next) => setAvailability(p.delivererId, next)}
-                        />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-
-            {canManage && offlineDeliverers.length > 0 && (
-              <>
-                <h2 className="border-y border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800">
-                  Indisponíveis ({offlineDeliverers.length})
-                </h2>
-                <ul className="divide-y divide-slate-100 overflow-y-auto">
-                  {offlineDeliverers.map((d) => (
-                    <li key={d.id} className="px-4 py-3">
-                      <p className="font-medium text-slate-900">{d.user.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">Não exibido no mapa</p>
-                      <AvailabilityToggle
-                        available={false}
-                        locked={false}
-                        saving={savingId === d.id}
-                        onToggle={(next) => setAvailability(d.id, next)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </Card>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center">
+              <p className="text-lg font-bold text-slate-900">{positions.length}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">No painel</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-center">
+              <p className="text-lg font-bold text-emerald-800">{recentCount}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-emerald-700">Ao vivo</p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-center">
+              <p className="text-lg font-bold text-amber-800">{inRouteCount}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-amber-700">Em rota</p>
+            </div>
+          </div>
         </div>
-      )}
-    </>
+
+        <ul className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+          {positions.length === 0 && (
+            <li className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+              <MapPin className="h-8 w-8 text-slate-300" />
+              <p className="text-sm font-medium text-slate-600">Nenhum entregador no mapa</p>
+              <p className="text-xs text-slate-400">
+                Atualização automática a cada 20 segundos.
+              </p>
+            </li>
+          )}
+          {positions.map((p) => {
+            const hasCoords = p.latitude !== null && p.longitude !== null;
+            const isSelected = selectedId === p.delivererId;
+            const badge = getDelivererPositionBadge(p);
+            const availabilityLocked = p.delivererStatus === 'ON_DELIVERY';
+            return (
+              <li key={p.delivererId}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(p.delivererId)}
+                  className={`w-full px-4 py-3 text-left transition-colors ${
+                    isSelected ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : 'hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900">{p.name}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus}
+                      </p>
+                    </div>
+                    <Badge tone={badge.tone}>{badge.label}</Badge>
+                  </div>
+                  {p.deliveryStatus && (
+                    <p className="mt-1.5 text-xs text-slate-600">
+                      Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
+                    </p>
+                  )}
+                  <RouteElapsed startedAt={p.routeStartedAt} />
+                  {p.customerName && (
+                    <p className="mt-1 text-xs text-slate-600">Cliente: {p.customerName}</p>
+                  )}
+                  {p.deliveryAddress && (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{p.deliveryAddress}</p>
+                  )}
+                  {hasCoords && (
+                    <p className="mt-1 text-xs text-slate-500">{positionStatusLabel(p)}</p>
+                  )}
+                  <BatteryInfo level={p.batteryLevel} charging={p.batteryCharging} />
+                  {p.stores.length > 1 && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Unidades: {p.stores.map((s) => s.name).join(', ')}
+                    </p>
+                  )}
+                  {canManage && (
+                    <AvailabilityToggle
+                      available={p.status !== 'OFFLINE'}
+                      locked={availabilityLocked}
+                      saving={savingId === p.delivererId}
+                      onToggle={(next) => setAvailability(p.delivererId, next)}
+                    />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        {canManage && offlineDeliverers.length > 0 && (
+          <div className="shrink-0 border-t border-slate-200">
+            <h2 className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Indisponíveis ({offlineDeliverers.length})
+            </h2>
+            <ul className="max-h-40 divide-y divide-slate-100 overflow-y-auto">
+              {offlineDeliverers.map((d) => (
+                <li key={d.id} className="px-4 py-3">
+                  <p className="font-medium text-slate-900">{d.user.name}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Não exibido no mapa</p>
+                  <AvailabilityToggle
+                    available={false}
+                    locked={false}
+                    saving={savingId === d.id}
+                    onToggle={(next) => setAvailability(d.id, next)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </aside>
+    </div>
   );
 }

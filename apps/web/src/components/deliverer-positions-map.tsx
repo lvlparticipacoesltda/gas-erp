@@ -61,7 +61,13 @@ function BatteryInfo({
   );
 }
 
-function FitBounds({ positions }: { positions: DelivererPosition[] }) {
+function FitBounds({
+  positions,
+  paddingRight = 80,
+}: {
+  positions: DelivererPosition[];
+  paddingRight?: number;
+}) {
   const map = useMap();
   const withCoords = positions.filter(
     (p) => p.latitude !== null && p.longitude !== null,
@@ -69,13 +75,18 @@ function FitBounds({ positions }: { positions: DelivererPosition[] }) {
 
   useEffect(() => {
     if (withCoords.length === 0) return;
+    const pad = { top: 64, right: paddingRight, bottom: 64, left: 64 };
     if (withCoords.length === 1) {
       map.setView([withCoords[0].latitude, withCoords[0].longitude], 15);
       return;
     }
     const bounds = L.latLngBounds(withCoords.map((p) => [p.latitude, p.longitude]));
-    map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
-  }, [map, withCoords]);
+    map.fitBounds(bounds, {
+      paddingTopLeft: L.point(pad.left, pad.top),
+      paddingBottomRight: L.point(pad.right, pad.bottom),
+      maxZoom: 15,
+    });
+  }, [map, withCoords, paddingRight]);
 
   return null;
 }
@@ -84,10 +95,12 @@ export function DelivererPositionsMap({
   positions,
   selectedId,
   onSelect,
+  fitPaddingRight = 80,
 }: {
   positions: DelivererPosition[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  fitPaddingRight?: number;
 }) {
   const withCoords = positions.filter(
     (p) => p.latitude !== null && p.longitude !== null,
@@ -97,14 +110,14 @@ export function DelivererPositionsMap({
     <MapContainer
       center={DEFAULT_CENTER}
       zoom={DEFAULT_ZOOM}
-      className="h-full min-h-[420px] w-full rounded-xl"
+      className="h-full w-full"
       scrollWheelZoom
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds positions={positions} />
+      <FitBounds positions={positions} paddingRight={fitPaddingRight} />
       {withCoords.map((p) => {
         const isSelected = selectedId === p.delivererId;
         const color = markerColor(p);
