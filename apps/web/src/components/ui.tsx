@@ -33,7 +33,7 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
     return (
       <input
         ref={ref}
-        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted"
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted"
         {...props}
       />
     );
@@ -43,7 +43,7 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
+      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
       {...props}
     />
   );

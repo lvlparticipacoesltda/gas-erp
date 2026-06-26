@@ -25,6 +25,7 @@ export interface CustomerAddress {
   neighborhood?: string;
   city: string;
   state: string;
+  zipCode?: string;
 }
 
 export function formatAddressShort(addr?: CustomerAddress): string {

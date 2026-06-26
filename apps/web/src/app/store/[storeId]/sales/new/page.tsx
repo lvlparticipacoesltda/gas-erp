@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { CustomerAddressFields, type CustomerAddressForm } from '@/components/customer-address-fields';
 import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-picker';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -55,6 +56,7 @@ export default function NewSalePage() {
     deliveryNeighborhood: '',
     deliveryCity: '',
     deliveryState: 'SP',
+    deliveryZipCode: '',
   });
 
   useEffect(() => {
@@ -81,6 +83,7 @@ export default function NewSalePage() {
         deliveryNeighborhood: '',
         deliveryCity: '',
         deliveryState: 'SP',
+        deliveryZipCode: '',
       }));
       return;
     }
@@ -94,6 +97,7 @@ export default function NewSalePage() {
         deliveryNeighborhood: '',
         deliveryCity: '',
         deliveryState: 'SP',
+        deliveryZipCode: '',
       }));
       return;
     }
@@ -108,6 +112,30 @@ export default function NewSalePage() {
       deliveryNeighborhood: addr?.neighborhood ?? '',
       deliveryCity: addr?.city ?? '',
       deliveryState: addr?.state ?? 'SP',
+      deliveryZipCode: addr?.zipCode ?? '',
+    }));
+  }
+
+  function deliveryAddressForm(): CustomerAddressForm {
+    return {
+      zipCode: draft.deliveryZipCode,
+      street: draft.deliveryStreet,
+      number: draft.deliveryNumber,
+      neighborhood: draft.deliveryNeighborhood,
+      city: draft.deliveryCity,
+      state: draft.deliveryState,
+    };
+  }
+
+  function applyDeliveryAddress(address: CustomerAddressForm) {
+    setDraft((d) => ({
+      ...d,
+      deliveryZipCode: address.zipCode,
+      deliveryStreet: address.street,
+      deliveryNumber: address.number,
+      deliveryNeighborhood: address.neighborhood,
+      deliveryCity: address.city,
+      deliveryState: address.state,
     }));
   }
 
@@ -394,12 +422,11 @@ export default function NewSalePage() {
             {draft.fulfillmentType === 'DELIVERY' && (
               <>
                 <h3 className="mb-3 font-medium">Endereço de entrega</h3>
-                <div className="mb-6 grid gap-3 md:grid-cols-2">
-                  <div className="md:col-span-2"><Label>Logradouro</Label><Input value={draft.deliveryStreet} onChange={(e) => setDraft({ ...draft, deliveryStreet: e.target.value })} /></div>
-                  <div><Label>Número</Label><Input value={draft.deliveryNumber} onChange={(e) => setDraft({ ...draft, deliveryNumber: e.target.value })} /></div>
-                  <div><Label>Bairro</Label><Input value={draft.deliveryNeighborhood} onChange={(e) => setDraft({ ...draft, deliveryNeighborhood: e.target.value })} /></div>
-                  <div><Label>Cidade</Label><Input value={draft.deliveryCity} onChange={(e) => setDraft({ ...draft, deliveryCity: e.target.value })} /></div>
-                  <div><Label>UF</Label><Input value={draft.deliveryState} maxLength={2} onChange={(e) => setDraft({ ...draft, deliveryState: e.target.value })} /></div>
+                <div className="mb-6">
+                  <CustomerAddressFields
+                    value={deliveryAddressForm()}
+                    onChange={applyDeliveryAddress}
+                  />
                 </div>
 
                 <h3 className="mb-3 font-medium">Escolha o entregador</h3>

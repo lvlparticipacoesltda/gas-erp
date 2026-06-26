@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { createUserSchema, updateUserSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { AuditService } from '../../common/audit/audit.service';
+import { syncDelivererStoresForUser } from '../../common/deliverer-store-sync';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 
 @Injectable()
@@ -69,6 +70,10 @@ export class UsersService {
       include: { userStores: { include: { store: true } } },
     });
     await this.audit.log(user, 'CREATE', 'User', created.id);
+    if (created.role === 'DELIVERER') {
+      const storeIds = created.userStores.map((us) => us.storeId);
+      await syncDelivererStoresForUser(this.prisma, created.id, storeIds);
+    }
     const { passwordHash: _, ...safe } = created;
     return safe;
   }
@@ -109,6 +114,10 @@ export class UsersService {
       include: { userStores: { include: { store: true } } },
     });
     await this.audit.log(user, 'UPDATE', 'User', id);
+    if (updated.role === 'DELIVERER') {
+      const storeIds = updated.userStores.map((us) => us.storeId);
+      await syncDelivererStoresForUser(this.prisma, updated.id, storeIds);
+    }
     const { passwordHash: _, ...safe } = updated;
     return safe;
   }

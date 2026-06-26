@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
+import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 
 @Injectable()
 export class DeliverersService {
@@ -34,7 +35,7 @@ export class DeliverersService {
     data.storeIds.forEach((storeId) => assertStoreAccess(user, storeId));
     await this.assertStoresInOrg(user, data.storeIds);
 
-    return this.prisma.deliverer.create({
+    const created = await this.prisma.deliverer.create({
       data: {
         userId: data.userId,
         status: data.status ?? 'AVAILABLE',
@@ -42,6 +43,8 @@ export class DeliverersService {
       },
       include: this.include,
     });
+    await syncUserStoresForDeliverer(this.prisma, data.userId, data.storeIds);
+    return created;
   }
 
   async update(user: AuthUser, id: string, input: unknown) {
@@ -63,7 +66,7 @@ export class DeliverersService {
       await this.assertStoresInOrg(user, data.storeIds);
     }
 
-    return this.prisma.deliverer.update({
+    const updated = await this.prisma.deliverer.update({
       where: { id },
       data: {
         status: data.status,
@@ -78,6 +81,12 @@ export class DeliverersService {
       },
       include: this.include,
     });
+
+    if (data.storeIds) {
+      await syncUserStoresForDeliverer(this.prisma, deliverer.userId, data.storeIds);
+    }
+
+    return updated;
   }
 
   async registerPushToken(user: AuthUser, input: unknown) {

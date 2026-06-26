@@ -1,8 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import Link from 'next/link';
-import { Input } from '@/components/ui';
+import { Button, Input, Label } from '@/components/ui';
+import {
+  CustomerAddressFields,
+  customerAddressPayload,
+  type CustomerAddressForm,
+} from '@/components/customer-address-fields';
 import { api, getToken } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -72,8 +76,86 @@ function CustomerAvatar({ name, className }: { name: string; className?: string 
   );
 }
 
+const emptyQuickAddress: CustomerAddressForm = {
+  zipCode: '',
+  street: '',
+  number: '',
+  neighborhood: '',
+  city: '',
+  state: 'SP',
+};
+
+function QuickCustomerRegister({
+  defaultName,
+  onCreated,
+  onCancel,
+}: {
+  defaultName?: string;
+  onCreated: (customer: SaleCustomer) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(defaultName ?? '');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState(emptyQuickAddress);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setName(defaultName ?? '');
+  }, [defaultName]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      const created = await api<SaleCustomer>(
+        '/customers',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name: name.trim(),
+            phone: phone.trim() || undefined,
+            addresses: [customerAddressPayload(address)],
+          }),
+        },
+        getToken(),
+      );
+      onCreated(created);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao cadastrar cliente');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <p className="text-sm font-semibold text-slate-900">Cadastro rápido</p>
+      <div>
+        <Label>Nome</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} required />
+      </div>
+      <div>
+        <Label>Telefone</Label>
+        <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Opcional" />
+      </div>
+      <CustomerAddressFields value={address} onChange={setAddress} />
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      <div className="flex gap-2 pt-1">
+        <Button type="submit" disabled={saving}>
+          {saving ? 'Salvando…' : 'Cadastrar e selecionar'}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function CustomerPicker({
-  storeId,
+  storeId: _storeId,
   value,
   onChange,
 }: {
@@ -91,6 +173,7 @@ export function CustomerPicker({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [registerOpen, setRegisterOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), DEBOUNCE_MS);
@@ -144,6 +227,7 @@ export function CustomerPicker({
       setDebouncedSearch('');
       setResults([]);
       setOpen(false);
+      setRegisterOpen(false);
     },
     [onChange],
   );
@@ -158,8 +242,15 @@ export function CustomerPicker({
     onChange({ kind: 'none' });
     setSearch('');
     setResults([]);
+    setRegisterOpen(false);
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [onChange]);
+
+  const openRegister = useCallback((prefill?: string) => {
+    setOpen(false);
+    setRegisterOpen(true);
+    if (prefill) setSearch(prefill);
+  }, []);
 
   const optionCount = results.length + 1;
 
@@ -280,15 +371,16 @@ export function CustomerPicker({
             <p className="px-4 py-3 text-sm text-slate-500">Continue digitando para buscar…</p>
           )}
 
-          {showEmpty && (
+          {showEmpty && !registerOpen && (
             <div className="px-4 py-4 text-center">
               <p className="text-sm text-slate-600">Nenhum cliente encontrado para &ldquo;{debouncedSearch}&rdquo;</p>
-              <Link
-                href={`/store/${storeId}/customers`}
-                className="mt-2 inline-block text-sm font-medium text-brand hover:underline"
+              <button
+                type="button"
+                onClick={() => openRegister(debouncedSearch)}
+                className="mt-2 text-sm font-medium text-brand hover:underline"
               >
                 Cadastrar novo cliente
-              </Link>
+              </button>
             </div>
           )}
 
@@ -353,14 +445,35 @@ export function CustomerPicker({
         </div>
       )}
 
-      {!open && search.length === 0 && (
-        <button
-          type="button"
-          onClick={selectAnonymous}
-          className="mt-3 text-sm text-slate-500 underline-offset-2 hover:text-brand hover:underline"
-        >
-          Venda sem cadastro
-        </button>
+      {!registerOpen && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <button
+            type="button"
+            onClick={() => openRegister(search.trim() || undefined)}
+            className="font-medium text-brand hover:underline"
+          >
+            + Cadastrar novo cliente
+          </button>
+          {!open && search.length === 0 ? (
+            <button
+              type="button"
+              onClick={selectAnonymous}
+              className="text-slate-500 underline-offset-2 hover:text-brand hover:underline"
+            >
+              Venda sem cadastro
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      {registerOpen && (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <QuickCustomerRegister
+            defaultName={search.trim() || debouncedSearch}
+            onCreated={selectCustomer}
+            onCancel={() => setRegisterOpen(false)}
+          />
+        </div>
       )}
     </div>
   );
