@@ -58,6 +58,17 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 
 Configuração: **Master → Usuários → Editar → Telas permitidas** (`permission-checkboxes.tsx`).
 
+## Ações restritas por papel
+
+| Ação | Quem pode |
+|------|-----------|
+| Aprovar/rejeitar venda com data anterior | `ORG_MASTER`, `STORE_MANAGER`, `PLATFORM_ADMIN` (`canManageSales`) |
+| Cancelar venda finalizada (Portaria/Entregue) | `canManageSales` |
+| Iniciar rota de entrega (`IN_PROGRESS`) | Apenas o entregador dono (app mobile) |
+| Concluir entrega (`DELIVERED`) | Entregador dono ou equipe da loja |
+
+Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canManageDeliverers`, `hasScreenPermission`.
+
 ## Onde é aplicado
 
 | Camada | Arquivo | Comportamento |

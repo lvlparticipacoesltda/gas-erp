@@ -117,6 +117,19 @@ pnpm db:studio      # Prisma Studio
 | `20250624140000_password_reset_tokens` | Reset de senha |
 | `20250624180000_user_permissions` | Permissões por tela |
 | `20260625120000_deliverer_multi_store` | Entregador N:N com unidades (`DelivererStore`) |
+| `20260625140000_deliverer_push_token` | Token Expo Push |
+| `20260625160000_sync_deliverer_stores` | Backfill `DelivererStore` |
+| `20260625180000_sale_status_portaria` | Status `PORTARIA` |
+| `20260625180001_backfill_sale_status_portaria` | Backfill portaria |
+| `20260625200000_gas_do_povo_benefit_and_delivery_fee` | Benefício Gás do Povo + taxa entrega |
+| `20260625210000_payment_method_gdp` | Pagamento `GDP` |
+| `20260626100000_sale_backdate_approval` | Data da venda + aprovação retroativa |
+
+### Neon / Railway
+
+- `DATABASE_URL` — pooler (uso da API em runtime)
+- `DIRECT_URL` — host **sem** `-pooler` (migrations Prisma)
+- Se `db:deploy` falhar com **P1002** (advisory lock), use `pnpm db:deploy:force` ou libere lock idle no Neon — ver [deployment.md](deployment.md)
 
 ---
 
@@ -307,10 +320,16 @@ adb logcat ReactNativeJS:V AndroidRuntime:E *:S
 | Deploy Vercel + Railway + Neon | ✅ |
 | Domínio thlgasdopovo.com.br | ✅ |
 | Vendas, estoque, clientes, RBAC | ✅ |
-| Wizard de venda + sidebar entregas | ✅ |
+| Wizard de venda + sidebar entregas + Portaria | ✅ |
+| Benefício Gás do Povo + pagamento GDP + taxa entrega | ✅ |
+| **Data retroativa** com aprovação gerente + `SaleBackdateLog` | ✅ |
 | Status unificado venda/entrega | ✅ |
-| Métrica tempo até rota (dashboard) | ✅ |
-| Entregador N:N unidades (`DelivererStore`) | ✅ migration pendente em prod se não rodou `db:deploy` |
+| Resumo diário com filtro De/Até + métricas por entregador | ✅ |
+| Dashboard master consolidado (todas as unidades) | ✅ |
+| Paginação server-side (20/pág) nas listas principais | ✅ |
+| Loading overlay ao trocar período no resumo | ✅ |
+| Entregador N:N unidades (`DelivererStore`) | ✅ |
+| Push Expo (nova entrega / cancelamento) | ✅ |
 
 ### App entregador (`apps/mobile`)
 
@@ -319,20 +338,32 @@ adb logcat ReactNativeJS:V AndroidRuntime:E *:S
 | Login DELIVERER + listas + detalhe | ✅ Testado emulador |
 | Iniciar rota / Maps / concluir | ✅ Testado emulador |
 | GPS background (com permissão "sempre") | ✅ Implementado; testar em dispositivo real |
+| Push notifications (nova entrega / cancelamento) | ✅ |
 | Branding por organização no header | ✅ |
 | Divulgação destacada GPS (Play Store) | ✅ |
 | Build EAS preview (APK) | ✅ Funcionando |
 | Build dev local (`expo run:android`) | ✅ Funcionando |
 | Publicação Play Store (AAB) | ⏳ Ver [playstore-checklist.md](playstore-checklist.md) |
-| Push notifications | ⏳ Fase 2 |
+
+### Commits recentes (referência)
+
+| Commit | Descrição |
+|--------|-----------|
+| `5edbe93` | Data retroativa com aprovação de gerente |
+| `bc84474` | Paginação nas listas + loading ao filtrar período |
+| `aefac8e` | Filtro De/Até no resumo diário e painel master |
+| `891b1b5` | Resumo diário consolidado no master |
+| `a6435ce` | GDP, métricas por entregador, DIRECT_URL |
+| `1335208` | Benefício Gás do Povo, taxa entrega, entregadores |
 
 ### Próximos passos sugeridos
 
-1. Rodar `pnpm db:deploy` em produção se migration `deliverer_multi_store` ainda não aplicada
-2. Gerar APK preview atualizado (`eas build --profile preview`) para entregadores
-3. Testar fluxo completo web → app em dispositivo físico
-4. Política de privacidade pública + formulário Play Store ([privacy-policy.md](privacy-policy.md))
-5. CI/CD (GitHub Actions), staging, módulo fiscal
+1. `git push` + `pnpm db:deploy` em produção (migrations pendentes, incl. `sale_backdate_approval`)
+2. Configurar `DIRECT_URL` no Railway se migrations travarem
+3. Gerar APK preview atualizado (`eas build --profile preview`) para entregadores
+4. Testar fluxo completo web → app em dispositivo físico
+5. Política de privacidade pública + formulário Play Store ([privacy-policy.md](privacy-policy.md))
+6. CI/CD (GitHub Actions), staging, módulo fiscal
 
 ---
 

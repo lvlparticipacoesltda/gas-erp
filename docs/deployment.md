@@ -9,7 +9,7 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Item | Status | Detalhe |
 |------|--------|---------|
 | Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
-| Banco PostgreSQL (Neon) | ✅ | 4 migrations (ver abaixo); rodar `pnpm db:deploy` se `deliverer_multi_store` pendente |
+| Banco PostgreSQL (Neon) | ✅ | 11 migrations (ver abaixo); rodar `pnpm db:deploy` após push com migration nova |
 | API (Railway) | ✅ | `https://gas-erpapi-production.up.railway.app` |
 | Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
 | Domínio customizado | ✅ | `https://thlgasdopovo.com.br` → Vercel (DNS Hostinger) |
@@ -26,8 +26,12 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Senhas demo | ⏳ | Ainda `admin123` — trocar em produção |
 | CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
 | Módulo fiscal | ⏳ | Fase 2 |
-| Sidebar entregas + métrica tempo até rota | ✅ | `delivery-metrics.ts` no dashboard e listagens |
+| Sidebar entregas + métricas espera/rota + por entregador | ✅ | `delivery-metrics.ts` no dashboard e listagens |
+| Resumo diário filtro De/Até (loja + master consolidado) | ✅ | `business-day.ts`, `DailySummaryDateFilter` |
+| Paginação nas listas + loading ao filtrar período | ✅ | Server-side 20/pág; resumo client-side 15/pág |
+| Venda: Portaria, GDP, Gás do Povo, data retroativa | ✅ | Ver migrations jun/2026 |
 | Entregador N:N unidades (`DelivererStore`) | ✅ | Migration `20260625120000_deliverer_multi_store` |
+| Push notifications (Expo) | ✅ | Nova entrega / cancelamento |
 | App entregador (Expo) | 🟡 | MVP testado (emulador + EAS preview APK); Play Store pendente |
 | App cliente | ⏳ | Fase 2 |
 
@@ -37,11 +41,14 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 
 | Commit | Descrição |
 |--------|-----------|
-| `feat: entregador multi-unidade, branding e prep Play Store` | `DelivererStore`, branding no app, docs Play Store |
-| `fix(mobile): DeliveriesProvider na tela de detalhe` | Corrige crash ao abrir `/delivery/[id]` |
-| `fix(mobile): babel-preset-expo` / `shared` no EAS | Builds EAS funcionando |
-| `d2fc64a` | Multi-select de lojas com checkboxes no cadastro de usuários |
-| `5b8ee16` | Rota `/master/settings` + permissões por tela por usuário |
+| `5edbe93` | Data retroativa com aprovação de gerente + `SaleBackdateLog` |
+| `bc84474` | Paginação nas listas + loading ao filtrar período |
+| `aefac8e` | Filtro De/Até no resumo diário e painel master |
+| `891b1b5` | Resumo diário consolidado de todas as unidades (master) |
+| `a6435ce` | GDP como pagamento, métricas por entregador, `DIRECT_URL` |
+| `1335208` | Benefício Gás do Povo, taxa entrega, cadastro entregadores |
+| `d044e6e` | Status Portaria, auditoria, edição por gerente/master |
+| `c2642d7` | Push notifications Expo para entregador |
 
 ### URLs de produção
 
@@ -56,7 +63,8 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 
 | Variável | Onde | Valor atual |
 |----------|------|-------------|
-| `DATABASE_URL` | Railway | Neon (`sslmode=require`) |
+| `DATABASE_URL` | Railway | Neon pooler (`sslmode=require`) |
+| `DIRECT_URL` | Railway | Neon **sem** `-pooler` (migrations Prisma) |
 | `JWT_SECRET` | Railway | gerado (`openssl rand -base64 48`) |
 | `JWT_EXPIRES_IN` | Railway | `7d` |
 | `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
@@ -218,6 +226,7 @@ npx eas build -p android --profile production
 
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/gas_erp?schema=public"
+DIRECT_URL="postgresql://postgres:postgres@localhost:5432/gas_erp?schema=public"
 JWT_SECRET="dev-secret-change-me"
 JWT_EXPIRES_IN="7d"
 API_PORT=3001
@@ -229,7 +238,8 @@ NEXT_PUBLIC_API_URL="http://localhost:3001/api/v1"
 
 | Variável | Onde | Exemplo |
 |----------|------|---------|
-| `DATABASE_URL` | Railway | `postgresql://...@neon.tech/gas_erp?sslmode=require` |
+| `DATABASE_URL` | Railway | `postgresql://...@ep-xxx-pooler.neon.tech/...?sslmode=require` |
+| `DIRECT_URL` | Railway | `postgresql://...@ep-xxx.neon.tech/...?sslmode=require` (sem pooler) |
 | `JWT_SECRET` | Railway | string longa aleatória (`openssl rand -base64 48`) |
 | `JWT_EXPIRES_IN` | Railway | `7d` |
 | `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
@@ -413,11 +423,19 @@ pnpm build
 - O [`railway.toml`](../railway.toml) já usa `pnpm install --prod=false` no `buildCommand`.
 - Faça push dessa alteração e redeploy.
 
-### Prisma: tabelas não existem
+### Prisma: tabelas não existem ou migration pendente
 
 ```bash
-DATABASE_URL="..." pnpm db:deploy
+DATABASE_URL="..." DIRECT_URL="..." pnpm db:deploy
 ```
+
+### Prisma P1002 (advisory lock no Neon)
+
+Causa comum: sessão idle no pooler segurando lock. Soluções:
+
+1. Configure `DIRECT_URL` no Railway (host Neon **sem** `-pooler`)
+2. Encerre sessões idle no console Neon
+3. `pnpm db:deploy:force` (script com retry/lock release) — ver `scripts/db-release-migrate-lock.sh`
 
 ### Web chama API errada
 
@@ -451,11 +469,13 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 
 ### Imediato
 
-1. **Finalizar Resend** — verificar domínio `thlgasdopovo.com.br` na Resend + DNS Hostinger ([resend-setup.md](resend-setup.md))
-2. **Trocar senhas demo** — Minha conta ou recuperação por e-mail
-3. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
-4. **Subdomínio `api.`** (opcional) — Railway Custom Domain + atualizar `NEXT_PUBLIC_API_URL`
-5. **Revalidar fluxos críticos** — venda, estoque, resumo diário após deploys recentes
+1. **`git push`** — commit `5edbe93` (data retroativa) e anteriores se ainda não no remoto
+2. **`pnpm db:deploy`** em produção — aplicar migrations até `20260626100000_sale_backdate_approval`
+3. **`DIRECT_URL`** no Railway — obrigatório para migrations estáveis no Neon
+4. **Finalizar Resend** — verificar domínio `thlgasdopovo.com.br` na Resend + DNS Hostinger ([resend-setup.md](resend-setup.md))
+5. **Trocar senhas demo** — Minha conta ou recuperação por e-mail
+6. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
+7. **Novo APK EAS** — `eas build --profile preview` para entregadores testarem push + GPS
 
 ### Refinamentos MVP (concluídos — jun/2026)
 
@@ -471,6 +491,12 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 - [x] Menu da loja e guard de rota filtrados por permissão
 - [x] Vínculo usuário ↔ **múltiplas lojas** (`StoreMultiSelect` com checkboxes)
 - [x] Coluna "Lojas" na listagem de usuários do master
+- [x] Resumo diário com filtro De/Até e métricas por entregador
+- [x] Dashboard master com resumo consolidado de todas as unidades
+- [x] Paginação nas listagens principais
+- [x] Benefício Gás do Povo + pagamento GDP
+- [x] Data retroativa de venda com aprovação gerente
+- [x] Push notifications Expo (entregador)
 
 ### Infraestrutura (curto prazo)
 
@@ -489,7 +515,7 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 | **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub já existe em `packages/shared`) | Alta |
 | **Financeiro** | Contas a pagar/receber, fluxo de caixa | Alta |
 | **Relatórios** | Exportação PDF/Excel, filtros avançados | Média |
-| **App entregador** | **MVP entregue** em `apps/mobile` (login, rotas, GPS, EAS preview APK). Falta publicação Play Store — ver [playstore-checklist.md](playstore-checklist.md) | Alta |
+| **App entregador** | **MVP entregue** em `apps/mobile` (login, rotas, GPS, push, EAS preview APK). Falta publicação Play Store — ver [playstore-checklist.md](playstore-checklist.md) | Alta |
 | **App cliente** | Pedido online, rastreamento, pagamento (Pix/cartão) | Média |
 | **WhatsApp** | Notificações e pedidos via API Business | Média |
 | **Redis / filas** | Entregas em tempo real, jobs assíncronos (Upstash) | Média |
@@ -497,9 +523,9 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 
 ### Melhorias técnicas (pendentes)
 
-- **Paginação** e busca em listagens grandes
+- **Testes E2E** — Playwright no fluxo de login, venda e aprovação retroativa
 - **Auditoria** — expandir `AuditService` para mais ações
-- **Testes E2E** — Playwright no fluxo de login e venda
+- **Badge pendências** — contador de vendas aguardando aprovação de data no menu
 - **Prisma config** — migrar de `package.json#prisma` para `prisma.config.ts`
 
 ---

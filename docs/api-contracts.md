@@ -37,8 +37,16 @@ Operações escopadas por loja (`X-Store-Id` ou `storeId`).
 
 ### Sales
 
+- `GET /sales?storeId=...&status=...&page=...&pageSize=...&backdatePending=true` — lista paginada (20 padrão). `backdatePending=true` filtra vendas aguardando aprovação de data.
 - `POST /sales` — criar venda confirmada com itens e pagamentos
-- `PATCH /sales/:id/status` — atualizar status
+  - `saleDate` (opcional, `YYYY-MM-DD`) — dia operacional da venda; padrão = hoje
+  - `backdateRequestNotes` — obrigatório se atendente lança data anterior
+  - `gasDoPovoBenefit` — força pagamento `GDP` e desativa seletor de forma de pagamento
+- `PATCH /sales/:id/status` — atualizar status (bloqueado se `backdateApproval` = `PENDING` ou `REJECTED`)
+- `POST /sales/:id/backdate/approve` — aprovar venda retroativa (`canManageSales`)
+- `POST /sales/:id/backdate/reject` — `{ reason }` — rejeitar venda retroativa (`canManageSales`)
+
+Vendas retroativas pendentes **não** baixam estoque nem criam entrega até aprovação. Resposta inclui `saleDate`, `backdateApproval`, `backdateLogs[]`.
 
 ### Deliverers
 
@@ -103,21 +111,36 @@ Helpers de cálculo em `packages/shared/src/delivery-metrics.ts` (`getWaitTimeSe
 
 ### Dashboard
 
-- `GET /dashboard/store?storeId=...&date=...` — resumo da loja no dia
+- `GET /dashboard/master?date=...&dateFrom=...&dateTo=...` — cards por unidade + **resumo consolidado** (`summary`) de todas as lojas no período
+- `GET /dashboard/store?storeId=...&date=...&dateFrom=...&dateTo=...` — resumo da loja no período
+
+Período: dia único (`date`) ou intervalo inclusivo (`dateFrom` + `dateTo`). Fuso operacional: `America/Sao_Paulo`. Agregações usam **`saleDate`** da venda; exclui `backdateApproval` `PENDING` e `REJECTED`.
 
 Inclui o bloco `deliveryMetrics`:
 
 ```ts
 deliveryMetrics: {
-  avgWaitTimeSeconds: number;   // média do dia (entregas já iniciadas)
-  maxWaitTimeSeconds: number;   // maior espera do dia
+  avgWaitTimeSeconds: number | null;
+  maxWaitTimeSeconds: number | null;
+  avgRouteDurationSeconds: number | null;
+  maxRouteDurationSeconds: number | null;
   pendingCount: number;
   inProgressCount: number;
   completedCount: number;
-  slowDeliveries: {             // entregas acima do limiar (> 15 min)
+  slowDeliveries: {
     saleId: string;
+    storeName?: string;       // só no master consolidado
     customerName: string;
-    waitTimeSeconds: number;
+    delivererName: string;
+    waitTimeSeconds: number | null;
+    routeDurationSeconds: number | null;
+  }[];
+  byDeliverer: {
+    delivererId: string;
+    delivererName: string;
+    deliveryCount: number;
+    avgWaitTimeSeconds: number | null;
+    avgRouteDurationSeconds: number | null;
   }[];
 }
 ```
