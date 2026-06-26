@@ -10,7 +10,11 @@ import { Badge, Card, PageHeader } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildStoreHref } from '@/lib/store-nav';
 import type { DelivererPosition } from '@gas-erp/shared';
-import { DELIVERER_STATUS_LABELS, DELIVERY_STATUS_LABELS } from '@gas-erp/shared';
+import {
+  DELIVERER_STATUS_LABELS,
+  DELIVERY_STATUS_LABELS,
+  getDelivererPositionBadge,
+} from '@gas-erp/shared';
 
 const REFRESH_INTERVAL_MS = 20_000;
 
@@ -145,6 +149,7 @@ export default function DelivererMapPage() {
               {positions.map((p) => {
                 const hasCoords = p.latitude !== null && p.longitude !== null;
                 const isSelected = selectedId === p.delivererId;
+                const badge = getDelivererPositionBadge(p);
                 return (
                   <li key={p.delivererId}>
                     <button
@@ -161,18 +166,18 @@ export default function DelivererMapPage() {
                             {DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus}
                           </p>
                         </div>
-                        {hasCoords ? (
-                          <Badge tone={p.stale ? 'default' : 'warning'}>
-                            {p.stale ? 'Desatualizado' : 'Em rota'}
-                          </Badge>
-                        ) : (
-                          <Badge tone="default">Sem GPS</Badge>
-                        )}
+                        <Badge tone={badge.tone}>{badge.label}</Badge>
                       </div>
                       {p.deliveryStatus && (
                         <p className="mt-1 text-xs text-slate-600">
                           Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
                         </p>
+                      )}
+                      {p.customerName && (
+                        <p className="mt-1 text-xs text-slate-600">Cliente: {p.customerName}</p>
+                      )}
+                      {p.deliveryAddress && (
+                        <p className="mt-0.5 text-xs text-slate-500">{p.deliveryAddress}</p>
                       )}
                       {hasCoords && (
                         <p className="mt-1 text-xs text-slate-500">

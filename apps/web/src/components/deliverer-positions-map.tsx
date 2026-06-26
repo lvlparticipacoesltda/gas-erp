@@ -4,7 +4,11 @@ import { useEffect } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
 import type { DelivererPosition } from '@gas-erp/shared';
-import { DELIVERER_STATUS_LABELS, DELIVERY_STATUS_LABELS } from '@gas-erp/shared';
+import {
+  DELIVERER_STATUS_LABELS,
+  DELIVERY_STATUS_LABELS,
+  getDelivererPositionBadge,
+} from '@gas-erp/shared';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_CENTER: L.LatLngExpression = [-23.5505, -46.6333];
@@ -67,6 +71,7 @@ export function DelivererPositionsMap({
       {withCoords.map((p) => {
         const isSelected = selectedId === p.delivererId;
         const color = p.stale ? '#94a3b8' : '#f97316';
+        const badge = getDelivererPositionBadge(p);
         return (
           <CircleMarker
             key={p.delivererId}
@@ -85,13 +90,20 @@ export function DelivererPositionsMap({
             <Popup>
               <div className="min-w-[180px] text-sm">
                 <p className="font-semibold text-slate-900">{p.name}</p>
-                <p className="mt-1 text-slate-600">
+                <p className="mt-1 text-slate-600">{badge.label}</p>
+                <p className="text-slate-600">
                   {DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus}
                 </p>
                 {p.deliveryStatus && (
                   <p className="text-slate-600">
                     Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
                   </p>
+                )}
+                {p.customerName && (
+                  <p className="text-slate-600">Cliente: {p.customerName}</p>
+                )}
+                {p.deliveryAddress && (
+                  <p className="text-slate-500">{p.deliveryAddress}</p>
                 )}
                 <p className="mt-1 text-xs text-slate-500">
                   {p.stale ? 'Última posição (desatualizada): ' : 'Atualizado: '}

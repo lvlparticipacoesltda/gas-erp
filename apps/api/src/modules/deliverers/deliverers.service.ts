@@ -8,6 +8,26 @@ import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { AuditService } from '../../common/audit/audit.service';
 
+function buildDeliveryAddress(sale: {
+  deliveryStreet: string | null;
+  deliveryNumber: string | null;
+  deliveryComplement: string | null;
+  deliveryNeighborhood: string | null;
+  deliveryCity: string | null;
+  deliveryState: string | null;
+  deliveryLandmark: string | null;
+}): string | null {
+  const parts: string[] = [];
+  const streetLine = [sale.deliveryStreet, sale.deliveryNumber].filter(Boolean).join(', ');
+  if (streetLine) parts.push(streetLine);
+  if (sale.deliveryComplement) parts.push(sale.deliveryComplement);
+  if (sale.deliveryNeighborhood) parts.push(sale.deliveryNeighborhood);
+  const cityLine = [sale.deliveryCity, sale.deliveryState].filter(Boolean).join(' - ');
+  if (cityLine) parts.push(cityLine);
+  if (sale.deliveryLandmark) parts.push(`Ref.: ${sale.deliveryLandmark}`);
+  return parts.length ? parts.join(', ') : null;
+}
+
 @Injectable()
 export class DeliverersService {
   constructor(
@@ -64,7 +84,23 @@ export class DeliverersService {
         stores: { include: { store: { select: { id: true, name: true } } } },
         deliveries: {
           where: { status: 'IN_PROGRESS' },
-          select: { id: true, status: true, sale: { select: { storeId: true } } },
+          select: {
+            id: true,
+            status: true,
+            sale: {
+              select: {
+                storeId: true,
+                deliveryStreet: true,
+                deliveryNumber: true,
+                deliveryComplement: true,
+                deliveryNeighborhood: true,
+                deliveryCity: true,
+                deliveryState: true,
+                deliveryLandmark: true,
+                customer: { select: { name: true } },
+              },
+            },
+          },
         },
       },
       orderBy: { user: { name: 'asc' } },
@@ -102,25 +138,42 @@ export class DeliverersService {
     return deliverers.map((deliverer) => {
       const point = pointByDeliverer.get(deliverer.id);
       const activeAtStore = deliverer.deliveries.find((d) => d.sale.storeId === storeId);
-      const activeDelivery = activeAtStore ?? deliverer.deliveries[0];
+      const hasActiveDelivery = !!activeAtStore;
+
+      const delivererStatus = hasActiveDelivery
+        ? 'ON_DELIVERY'
+        : deliverer.status === 'ON_DELIVERY'
+          ? 'AVAILABLE'
+          : deliverer.status;
+
+      const deliveryId = activeAtStore?.id ?? null;
+      const deliveryStatus = activeAtStore?.status ?? null;
+      const customerName = activeAtStore?.sale.customer?.name ?? null;
+      const deliveryAddress = activeAtStore ? buildDeliveryAddress(activeAtStore.sale) : null;
 
       const stores = deliverer.stores.map((s) => ({
         id: s.store.id,
         name: s.store.name,
       }));
 
+      const deliveryFields = {
+        deliveryId,
+        deliveryStatus,
+        customerName,
+        deliveryAddress,
+      };
+
       if (!point) {
         return {
           delivererId: deliverer.id,
           name: deliverer.user.name,
-          delivererStatus: deliverer.status,
+          delivererStatus,
           latitude: null,
           longitude: null,
           updatedAt: null,
           lastSeenAt: null,
           stale: true,
-          deliveryId: activeDelivery?.id ?? null,
-          deliveryStatus: activeDelivery?.status ?? null,
+          ...deliveryFields,
           stores,
         };
       }
@@ -131,14 +184,13 @@ export class DeliverersService {
       return {
         delivererId: deliverer.id,
         name: deliverer.user.name,
-        delivererStatus: deliverer.status,
+        delivererStatus,
         latitude: point.latitude,
         longitude: point.longitude,
         updatedAt: lastSeenAt,
         lastSeenAt,
         stale,
-        deliveryId: activeDelivery?.id ?? point.deliveryId,
-        deliveryStatus: activeDelivery?.status ?? point.deliveryStatus,
+        ...deliveryFields,
         stores,
       };
     });

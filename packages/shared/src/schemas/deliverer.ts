@@ -48,6 +48,8 @@ export const delivererPositionSchema = z.object({
   stale: z.boolean(),
   deliveryId: z.string().nullable().optional(),
   deliveryStatus: z.string().nullable().optional(),
+  customerName: z.string().nullable().optional(),
+  deliveryAddress: z.string().nullable().optional(),
   stores: z.array(delivererPositionStoreSchema),
 });
 

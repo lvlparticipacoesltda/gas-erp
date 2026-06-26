@@ -1,4 +1,4 @@
-import { DELIVERY_STATUS_LABELS, SALE_STATUS_LABELS } from './enums';
+import { DELIVERER_STATUS_LABELS, DELIVERY_STATUS_LABELS, SALE_STATUS_LABELS } from './enums';
 
 export type SaleDisplayTone = 'default' | 'success' | 'warning' | 'danger';
 
@@ -59,6 +59,43 @@ export function getDeliveryDisplayStatus(delivery: {
   sale: { status: string };
 }): SaleDisplayStatus {
   return getSaleDisplayStatus({ status: delivery.sale.status, delivery: { status: delivery.status } });
+}
+
+/** Badge do card/popup no mapa de entregadores. */
+export function getDelivererPositionBadge(position: {
+  delivererStatus: string;
+  deliveryStatus?: string | null;
+  stale: boolean;
+  latitude: number | null;
+  longitude: number | null;
+}): SaleDisplayStatus {
+  if (position.latitude === null && position.longitude === null) {
+    return { key: 'NO_GPS', label: 'Sem GPS', tone: 'default' };
+  }
+  if (position.deliveryStatus === 'IN_PROGRESS') {
+    return {
+      key: 'IN_PROGRESS',
+      label: DELIVERY_STATUS_LABELS.IN_PROGRESS,
+      tone: position.stale ? 'default' : 'warning',
+    };
+  }
+  if (position.deliveryStatus === 'PENDING') {
+    return { key: 'PENDING', label: DELIVERY_STATUS_LABELS.PENDING, tone: 'warning' };
+  }
+  if (position.stale) {
+    return { key: 'STALE', label: 'Desatualizado', tone: 'default' };
+  }
+  if (position.delivererStatus === 'AVAILABLE') {
+    return { key: 'AVAILABLE', label: DELIVERER_STATUS_LABELS.AVAILABLE, tone: 'success' };
+  }
+  if (position.delivererStatus === 'OFFLINE') {
+    return { key: 'OFFLINE', label: DELIVERER_STATUS_LABELS.OFFLINE, tone: 'default' };
+  }
+  return {
+    key: position.delivererStatus,
+    label: DELIVERER_STATUS_LABELS[position.delivererStatus] ?? position.delivererStatus,
+    tone: 'warning',
+  };
 }
 
 export { DELIVERY_STATUS_LABELS };
