@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import { DeliveriesProvider } from '@/lib/deliveries-context';
 import { DelivererAvailabilityProvider } from '@/lib/deliverer-availability-context';
 import { PushNotificationsBridge } from '@/components/PushNotificationsBridge';
+import { NotificationPermissionOnLaunch } from '@/components/NotificationPermissionOnLaunch';
 import { initForegroundPresence, teardownForegroundPresence } from '@/lib/location';
 import { colors } from '@/theme';
 
@@ -39,6 +40,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
+          <NotificationPermissionOnLaunch />
           <AuthenticatedDeliveries>
             <StatusBar style="dark" />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
