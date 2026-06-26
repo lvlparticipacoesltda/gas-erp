@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -101,16 +100,12 @@ export default function ProductsPage() {
   );
 
   if (!ready) {
-    return (
-      <AppShell mode="store">
-        <PageLoader />
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="store">
-      <PageHeader title="Produtos" subtitle="Catálogo e preços por loja" />
+    <>
+    <PageHeader title="Produtos" subtitle="Catálogo e preços por loja" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">{editing ? 'Editar produto' : 'Novo produto'}</h2>
@@ -150,6 +145,6 @@ export default function ProductsPage() {
           </tbody>
         </Table>
       </div>
-    </AppShell>
+    </>
   );
 }

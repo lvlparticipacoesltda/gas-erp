@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { SalesWithSidebar } from '@/components/sales-with-sidebar';
 import { Badge, Button, PageHeader, Select, Table } from '@/components/ui';
@@ -38,18 +37,11 @@ export default function SalesListPage() {
   }, [storeId, statusFilter]);
 
   if (!ready) {
-    return (
-      <AppShell mode="store">
-        <SalesWithSidebar storeId={storeId}>
-          <PageLoader />
-        </SalesWithSidebar>
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="store">
-      <SalesWithSidebar storeId={storeId}>
+    <SalesWithSidebar storeId={storeId}>
         <PageHeader
           title="Histórico de vendas"
           action={<Link href={`/store/${storeId}/sales/new`}><Button>Nova venda</Button></Link>}
@@ -105,6 +97,5 @@ export default function SalesListPage() {
           </tbody>
         </Table>
       </SalesWithSidebar>
-    </AppShell>
   );
 }

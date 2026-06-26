@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -88,16 +87,12 @@ export default function MasterStoresPage() {
   }
 
   if (!ready) {
-    return (
-      <AppShell mode="master">
-        <PageLoader />
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="master">
-      <PageHeader title="Lojas" subtitle="Gerencie as unidades da rede" />
+    <>
+    <PageHeader title="Lojas" subtitle="Gerencie as unidades da rede" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">{editing ? 'Editar loja' : 'Nova loja'}</h2>
@@ -213,6 +208,6 @@ export default function MasterStoresPage() {
           </tbody>
         </Table>
       </div>
-    </AppShell>
+    </>
   );
 }

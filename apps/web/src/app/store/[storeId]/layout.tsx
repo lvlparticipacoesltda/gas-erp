@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
+import { AppShell } from '@/components/app-shell';
 import { getStoredUser } from '@/lib/api';
 import { hasScreenPermission } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
@@ -28,5 +29,5 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     }
   }, [pathname, router, storeId]);
 
-  return children;
+  return <AppShell mode="store">{children}</AppShell>;
 }

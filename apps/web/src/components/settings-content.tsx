@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AppShell } from '@/components/app-shell';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, getStoredUser, getToken, setAuth } from '@/lib/api';
 import type { AuthUser } from '@gas-erp/shared';

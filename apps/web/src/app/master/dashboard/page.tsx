@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Card, PageHeader } from '@/components/ui';
 import { api, getToken, setCurrentStoreId } from '@/lib/api';
@@ -32,12 +31,10 @@ export default function MasterDashboardPage() {
     router.push(`/store/${id}/daily-summary`);
   }
 
+  if (loading) return <PageLoader />;
+
   return (
-    <AppShell mode="master">
-      {loading ? (
-        <PageLoader />
-      ) : (
-        <>
+    <>
       <PageHeader title="Painel Master" subtitle="Visão consolidada de todas as unidades" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.stores.map((s) => (
@@ -73,8 +70,6 @@ export default function MasterDashboardPage() {
           </button>
         ))}
       </div>
-        </>
-      )}
-    </AppShell>
+    </>
   );
 }

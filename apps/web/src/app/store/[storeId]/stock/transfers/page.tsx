@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -70,16 +69,12 @@ export default function StockTransfersPage() {
   }
 
   if (!ready) {
-    return (
-      <AppShell mode="store">
-        <PageLoader />
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="store">
-      <PageHeader title="Transferências de estoque" subtitle="Movimentação entre unidades" />
+    <>
+    <PageHeader title="Transferências de estoque" subtitle="Movimentação entre unidades" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">Nova transferência</h2>
@@ -119,6 +114,6 @@ export default function StockTransfersPage() {
           </tbody>
         </Table>
       </div>
-    </AppShell>
+    </>
   );
 }

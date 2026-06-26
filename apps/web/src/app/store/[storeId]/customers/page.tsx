@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -138,16 +137,12 @@ export default function CustomersPage() {
   );
 
   if (!ready) {
-    return (
-      <AppShell mode="store">
-        <PageLoader />
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="store">
-      <PageHeader title="Clientes" subtitle="Cadastro e busca de clientes da rede" />
+    <>
+    <PageHeader title="Clientes" subtitle="Cadastro e busca de clientes da rede" />
       <div className="mb-4">
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome, telefone ou documento" />
       </div>
@@ -190,6 +185,6 @@ export default function CustomersPage() {
           </tbody>
         </Table>
       </div>
-    </AppShell>
+    </>
   );
 }

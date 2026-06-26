@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -82,16 +81,12 @@ export default function StockPage() {
   }
 
   if (!ready) {
-    return (
-      <AppShell mode="store">
-        <PageLoader />
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="store">
-      <PageHeader title="Estoque" subtitle="Saldos e movimentações da unidade" />
+    <>
+    <PageHeader title="Estoque" subtitle="Saldos e movimentações da unidade" />
 
       <Card className="mb-8">
         <h2 className="mb-4 font-semibold">Ajustar estoque</h2>
@@ -169,6 +164,6 @@ export default function StockPage() {
           ))}
         </tbody>
       </Table>
-    </AppShell>
+    </>
   );
 }

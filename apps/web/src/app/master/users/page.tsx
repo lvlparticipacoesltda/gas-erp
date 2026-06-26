@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -162,16 +161,12 @@ export default function MasterUsersPage() {
   }
 
   if (!ready) {
-    return (
-      <AppShell mode="master">
-        <PageLoader />
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="master">
-      <PageHeader title="Usuários" subtitle="Papéis, lojas e telas permitidas por usuário" />
+    <>
+    <PageHeader title="Usuários" subtitle="Papéis, lojas e telas permitidas por usuário" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">{editing ? 'Editar usuário' : 'Novo usuário'}</h2>
@@ -349,6 +344,6 @@ export default function MasterUsersPage() {
           </tbody>
         </Table>
       </div>
-    </AppShell>
+    </>
   );
 }

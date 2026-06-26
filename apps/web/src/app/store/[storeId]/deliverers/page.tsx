@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AppShell } from '@/components/app-shell';
 import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -56,16 +55,12 @@ export default function DeliverersPage() {
   }, [load]);
 
   if (!ready) {
-    return (
-      <AppShell mode="store">
-        <PageLoader />
-      </AppShell>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <AppShell mode="store">
-      <PageHeader title="Entregadores" subtitle={`${deliveriesCount} entregas ativas hoje`} />
+    <>
+    <PageHeader title="Entregadores" subtitle={`${deliveriesCount} entregas ativas hoje`} />
       <Table>
         <thead className="bg-slate-50 text-left">
           <tr>
@@ -127,7 +122,7 @@ export default function DeliverersPage() {
           }}
         />
       )}
-    </AppShell>
+    </>
   );
 }
 

@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { api, clearAuth, getCurrentStoreId, getStoredUser, getToken, setCurrentStoreId } from '@/lib/api';
 import { buildStoreHref, defaultStorePath, STORE_NAV_ITEMS } from '@/lib/store-nav';
 import { NavLink } from '@/components/ui';
 import { Logo } from '@/components/logo';
-import { BrandLoaderScreen } from '@/components/brand-loader';
+import { PageLoader } from '@/components/brand-loader';
 import { hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
@@ -16,28 +16,59 @@ interface Store {
   code: string;
 }
 
+let cachedUser: AuthUser | null = null;
+let cachedStores: Store[] | null = null;
+let storesRequest: Promise<Store[]> | null = null;
+
+function readSessionUser(): AuthUser | null {
+  if (typeof window === 'undefined') return null;
+  const token = getToken();
+  const stored = getStoredUser<AuthUser>();
+  return token && stored ? stored : null;
+}
+
+function fetchStores(): Promise<Store[]> {
+  if (cachedStores) return Promise.resolve(cachedStores);
+  if (!storesRequest) {
+    const token = getToken();
+    storesRequest = api<Store[]>('/stores', {}, token).then((data) => {
+      cachedStores = data;
+      return data;
+    });
+  }
+  return storesRequest;
+}
+
+export function clearAppShellCache() {
+  cachedUser = null;
+  cachedStores = null;
+  storesRequest = null;
+}
+
 export function AppShell({ children, mode }: { children: React.ReactNode; mode: 'master' | 'store' }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [stores, setStores] = useState<Store[]>([]);
-  const [storeId, setStoreId] = useState<string | null>(null);
+  const storeIdFromPath = pathname.match(/^\/store\/([^/]+)/)?.[1] ?? null;
 
-  useEffect(() => {
-    const token = getToken();
-    const stored = getStoredUser<AuthUser>();
-    if (!token || !stored) {
+  const [user, setUser] = useState<AuthUser | null>(() => cachedUser ?? readSessionUser());
+  const [stores, setStores] = useState<Store[]>(() => cachedStores ?? []);
+  const [storeId, setStoreId] = useState<string | null>(() => storeIdFromPath ?? getCurrentStoreId());
+
+  useLayoutEffect(() => {
+    const stored = readSessionUser();
+    if (!stored) {
       router.replace('/login');
       return;
     }
+    cachedUser = stored;
     setUser(stored);
-    api<Store[]>('/stores', {}, token).then((data) => {
+
+    void fetchStores().then((data) => {
       setStores(data);
       if (mode === 'store') {
-        const fromPath = pathname.match(/^\/store\/([^/]+)/)?.[1];
-        if (fromPath) {
-          setStoreId(fromPath);
-          setCurrentStoreId(fromPath);
+        if (storeIdFromPath) {
+          setStoreId(storeIdFromPath);
+          setCurrentStoreId(storeIdFromPath);
         } else if (getCurrentStoreId() && data.some((s) => s.id === getCurrentStoreId())) {
           setStoreId(getCurrentStoreId());
         } else if (data[0]) {
@@ -46,10 +77,11 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
         }
       }
     });
-  }, [router, mode, pathname]);
+  }, [router, mode, storeIdFromPath]);
 
   function logout() {
     clearAuth();
+    clearAppShellCache();
     router.replace('/login');
   }
 
@@ -59,12 +91,23 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     router.push(defaultStorePath(id, user!));
   }
 
-  if (!user) return <BrandLoaderScreen />;
+  const activeStoreId = storeIdFromPath ?? storeId;
 
-  const storeLinks = storeId
+  if (!user) {
+    return (
+      <div className="min-h-screen">
+        <aside className="hidden border-r border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col" />
+        <main className="min-h-screen p-6 lg:pl-64">
+          <PageLoader />
+        </main>
+      </div>
+    );
+  }
+
+  const storeLinks = activeStoreId
     ? STORE_NAV_ITEMS.filter((item) => hasScreenPermission(user.role, user.permissions, item.screen)).map(
         (item) => ({
-          href: buildStoreHref(storeId, item.segment),
+          href: buildStoreHref(activeStoreId, item.segment),
           label: item.label,
         }),
       )
@@ -82,22 +125,22 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
       ? masterLinks
       : [
           ...storeLinks,
-          ...(storeId ? [{ href: `/store/${storeId}/settings`, label: 'Minha conta' }] : []),
+          ...(activeStoreId ? [{ href: `/store/${activeStoreId}/settings`, label: 'Minha conta' }] : []),
         ];
 
   return (
-    <div className="min-h-screen lg:flex">
-      <aside className="w-full border-r border-slate-200 bg-white lg:min-h-screen lg:w-64">
+    <div className="min-h-screen">
+      <aside className="border-r border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col">
         <div className="border-b border-slate-200 p-4">
           <Logo size="sm" />
           <div className="mt-2 text-xs text-slate-500">{ROLE_LABELS[user.role] ?? user.role}</div>
           <div className="text-sm font-medium">{user.name}</div>
         </div>
-        <div className="p-4">
+        <div className="flex-1 overflow-y-auto p-4">
           {mode === 'store' && stores.length > 0 && (
             <select
               className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={storeId ?? ''}
+              value={activeStoreId ?? ''}
               onChange={(e) => onStoreChange(e.target.value)}
             >
               {stores.map((s) => (
@@ -120,13 +163,13 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
             )}
           </nav>
         </div>
-        <div className="p-4">
-          <button onClick={logout} className="text-sm text-red-600 hover:underline">
+        <div className="border-t border-slate-200 p-4">
+          <button onClick={logout} type="button" className="text-sm text-red-600 hover:underline">
             Sair
           </button>
         </div>
       </aside>
-      <main className="flex-1 p-6">{children}</main>
+      <main className="min-h-screen p-6 lg:pl-64">{children}</main>
     </div>
   );
 }
