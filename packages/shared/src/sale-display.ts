@@ -25,6 +25,15 @@ export function isMobileOriginatedSale(sale: {
   );
 }
 
+/** Venda lançada com data retroativa (aguardando, aprovada ou rejeitada). */
+export function isBackdatedSale(sale: { backdateApproval?: string }): boolean {
+  return (
+    sale.backdateApproval === 'PENDING' ||
+    sale.backdateApproval === 'APPROVED' ||
+    sale.backdateApproval === 'REJECTED'
+  );
+}
+
 export function getSaleAttendantName(sale: {
   attendant?: { name: string } | null;
   createdByDeliverer?: { user: { name: string } } | null;

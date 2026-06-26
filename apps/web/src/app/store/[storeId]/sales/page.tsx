@@ -18,6 +18,7 @@ import {
   getSaleAttendantName,
   getSaleDisplayStatus,
   getWaitTimeSeconds,
+  isBackdatedSale,
   isMobileOriginatedSale,
   SALE_STATUS_LABELS,
   type PaginatedResponse,
@@ -103,20 +104,35 @@ export default function SalesListPage() {
         <div className="w-full max-w-xs">
           <Label>Status</Label>
           <Select
-            value={mobileFilter ? '__mobile_pending__' : statusFilter}
+            value={
+              mobileFilter
+                ? '__mobile_pending__'
+                : backdateFilter
+                  ? '__backdate_pending__'
+                  : statusFilter
+            }
             onChange={(e) => {
               const v = e.target.value;
               if (v === '__mobile_pending__') {
                 setMobileFilter(true);
+                setBackdateFilter(false);
+                setStatusFilter('');
+              } else if (v === '__backdate_pending__') {
+                setBackdateFilter(true);
+                setMobileFilter(false);
                 setStatusFilter('');
               } else {
                 setMobileFilter(false);
+                setBackdateFilter(false);
                 setStatusFilter(v);
               }
             }}
           >
             <option value="">Todos os status</option>
             <option value="__mobile_pending__">Aguardando aprovação (app)</option>
+            {isManager && (
+              <option value="__backdate_pending__">Aguardando aprovação (retroativa)</option>
+            )}
             {Object.entries(SALE_STATUS_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
                 {v}
@@ -169,21 +185,24 @@ export default function SalesListPage() {
               const display = getSaleDisplayStatus(s);
               const attendantName = getSaleAttendantName(s);
               const fromMobile = isMobileOriginatedSale(s);
+              const fromBackdate = isBackdatedSale(s);
               return (
               <tr key={s.id} className="border-t border-slate-100">
                 <td className="p-3">
                   <div>{formatSaleDateTimeLabel(s)}</div>
-                  {fromMobile && (
-                    <div className="mt-1">
-                      <Badge tone="default">App entregador</Badge>
-                    </div>
-                  )}
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {fromMobile && <Badge tone="default">App entregador</Badge>}
+                    {fromBackdate && <Badge tone="default">Data retroativa</Badge>}
+                  </div>
                 </td>
                 <td className="p-3">{s.customer?.name ?? '-'}</td>
                 <td className="p-3">
                   <div>{attendantName ?? '—'}</div>
                   {fromMobile && attendantName && (
                     <div className="mt-0.5 text-xs text-slate-500">via app</div>
+                  )}
+                  {fromBackdate && s.backdateApproval === 'PENDING' && (
+                    <div className="mt-0.5 text-xs text-slate-500">aguardando gerente</div>
                   )}
                 </td>
                 <td className="p-3">{s.deliverer?.user.name ?? '-'}</td>

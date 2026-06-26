@@ -17,9 +17,9 @@ export type BackdateApprovalStatus = (typeof BACKDATE_APPROVAL_STATUSES)[number]
 
 export const BACKDATE_APPROVAL_LABELS: Record<BackdateApprovalStatus, string> = {
   NOT_REQUIRED: 'Data atual',
-  PENDING: 'Aguardando aprovação',
-  APPROVED: 'Aprovada',
-  REJECTED: 'Rejeitada',
+  PENDING: 'Aguardando aprovação (retroativa)',
+  APPROVED: 'Aprovada (retroativa)',
+  REJECTED: 'Rejeitada (retroativa)',
 };
 
 /** Vendas que entram em relatórios e faturamento do dia. */
