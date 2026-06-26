@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
 import type { DelivererPosition } from '@gas-erp/shared';
@@ -62,32 +62,72 @@ function BatteryInfo({
   );
 }
 
-function FitBounds({
+function positionsWithCoords(positions: DelivererPosition[]) {
+  return positions.filter(
+    (p) => p.latitude !== null && p.longitude !== null,
+  ) as Array<DelivererPosition & { latitude: number; longitude: number }>;
+}
+
+/** Ajusta o viewport só na carga inicial; não interfere após o usuário mover/zoomar. */
+function MapViewportController({
   positions,
+  selectedId,
   paddingRight = 80,
 }: {
   positions: DelivererPosition[];
+  selectedId: string | null;
   paddingRight?: number;
 }) {
   const map = useMap();
-  const withCoords = positions.filter(
-    (p) => p.latitude !== null && p.longitude !== null,
-  ) as Array<DelivererPosition & { latitude: number; longitude: number }>;
+  const initialFitDone = useRef(false);
+  const userInteracted = useRef(false);
+  const prevSelectedId = useRef<string | null>(null);
 
   useEffect(() => {
+    const markInteracted = () => {
+      userInteracted.current = true;
+    };
+    map.on('dragstart', markInteracted);
+    map.on('zoomstart', markInteracted);
+    return () => {
+      map.off('dragstart', markInteracted);
+      map.off('zoomstart', markInteracted);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (initialFitDone.current || userInteracted.current) return;
+
+    const withCoords = positionsWithCoords(positions);
     if (withCoords.length === 0) return;
+
     const pad = { top: 64, right: paddingRight, bottom: 64, left: 64 };
     if (withCoords.length === 1) {
       map.setView([withCoords[0].latitude, withCoords[0].longitude], 15);
-      return;
+    } else {
+      const bounds = L.latLngBounds(withCoords.map((p) => [p.latitude, p.longitude]));
+      map.fitBounds(bounds, {
+        paddingTopLeft: L.point(pad.left, pad.top),
+        paddingBottomRight: L.point(pad.right, pad.bottom),
+        maxZoom: 15,
+      });
     }
-    const bounds = L.latLngBounds(withCoords.map((p) => [p.latitude, p.longitude]));
-    map.fitBounds(bounds, {
-      paddingTopLeft: L.point(pad.left, pad.top),
-      paddingBottomRight: L.point(pad.right, pad.bottom),
-      maxZoom: 15,
+    initialFitDone.current = true;
+  }, [map, positions, paddingRight]);
+
+  useEffect(() => {
+    if (selectedId === prevSelectedId.current) return;
+    prevSelectedId.current = selectedId;
+
+    if (!selectedId) return;
+
+    const selected = positionsWithCoords(positions).find((p) => p.delivererId === selectedId);
+    if (!selected) return;
+
+    map.flyTo([selected.latitude, selected.longitude], Math.max(map.getZoom(), 14), {
+      duration: 0.4,
     });
-  }, [map, withCoords, paddingRight]);
+  }, [map, selectedId, positions]);
 
   return null;
 }
@@ -103,9 +143,7 @@ export function DelivererPositionsMap({
   onSelect: (id: string) => void;
   fitPaddingRight?: number;
 }) {
-  const withCoords = positions.filter(
-    (p) => p.latitude !== null && p.longitude !== null,
-  ) as Array<DelivererPosition & { latitude: number; longitude: number }>;
+  const withCoords = positionsWithCoords(positions);
 
   return (
     <MapContainer
@@ -118,7 +156,11 @@ export function DelivererPositionsMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds positions={positions} paddingRight={fitPaddingRight} />
+      <MapViewportController
+        positions={positions}
+        selectedId={selectedId}
+        paddingRight={fitPaddingRight}
+      />
       {withCoords.map((p) => {
         const isSelected = selectedId === p.delivererId;
         const color = markerColor(p);
