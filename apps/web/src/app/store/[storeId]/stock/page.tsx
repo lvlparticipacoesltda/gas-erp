@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
+import { Pagination } from '@/components/pagination';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import type { PaginatedResponse } from '@gas-erp/shared';
 
 interface Movement {
   id: string;
@@ -33,14 +35,25 @@ export default function StockPage() {
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [ready, setReady] = useState(false);
+  const [movementsPage, setMovementsPage] = useState(1);
+  const [movementsTotalPages, setMovementsTotalPages] = useState(1);
+  const [movementsTotal, setMovementsTotal] = useState(0);
+
+  const MOVEMENTS_PAGE_SIZE = 20;
 
   async function load() {
     const [b, m] = await Promise.all([
       api<Balance[]>(`/stock/balances?storeId=${storeId}`, {}, getToken()),
-      api<{ data: Movement[] }>(`/stock/movements?storeId=${storeId}`, {}, getToken()),
+      api<PaginatedResponse<Movement>>(
+        `/stock/movements?storeId=${storeId}&page=${movementsPage}&pageSize=${MOVEMENTS_PAGE_SIZE}`,
+        {},
+        getToken(),
+      ),
     ]);
     setBalances(b);
     setMovements(m.data);
+    setMovementsTotalPages(m.totalPages);
+    setMovementsTotal(m.total);
     if (!adjustForm.productId && b[0]) {
       setAdjustForm((f) => ({ ...f, productId: b[0].product.id }));
     }
@@ -48,7 +61,7 @@ export default function StockPage() {
 
   useEffect(() => {
     load().finally(() => setReady(true));
-  }, [storeId]);
+  }, [storeId, movementsPage]);
 
   async function handleAdjust(e: React.FormEvent) {
     e.preventDefault();
@@ -164,6 +177,13 @@ export default function StockPage() {
           ))}
         </tbody>
       </Table>
+      <Pagination
+        className="mt-4"
+        page={movementsPage}
+        totalPages={movementsTotalPages}
+        total={movementsTotal}
+        onPageChange={setMovementsPage}
+      />
     </>
   );
 }

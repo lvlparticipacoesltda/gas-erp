@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
+import { Pagination } from '@/components/pagination';
 import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import type { PaginatedResponse } from '@gas-erp/shared';
 
 interface Product {
   id: string;
@@ -26,19 +28,31 @@ function parsePrice(value: number | string | undefined): number {
 export default function ProductsPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [products, setProducts] = useState<Product[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
 
+  const PAGE_SIZE = 20;
+
   async function load() {
-    setProducts(await api<Product[]>(`/products?storeId=${storeId}`, {}, getToken()));
+    const res = await api<PaginatedResponse<Product>>(
+      `/products?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}`,
+      {},
+      getToken(),
+    );
+    setProducts(res.data);
+    setTotalPages(res.totalPages);
+    setTotal(res.total);
   }
 
   useEffect(() => {
     load().finally(() => setReady(true));
-  }, [storeId]);
+  }, [storeId, page]);
 
   function startEdit(product: Product) {
     setFormError('');
@@ -147,6 +161,13 @@ export default function ProductsPage() {
             ))}
           </tbody>
         </Table>
+        <Pagination
+          className="mt-4"
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
     </>
   );

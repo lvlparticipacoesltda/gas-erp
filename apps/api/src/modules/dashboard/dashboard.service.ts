@@ -162,51 +162,69 @@ export class DashboardService {
 
     const storeFilter = { storeId: { in: storeIds } };
 
-    const sales = await this.prisma.sale.findMany({
-      where: {
-        ...storeFilter,
-        createdAt: { gte: start, lt: end },
-        status: { not: SaleStatus.CANCELLED },
-      },
-      include: { items: { include: { product: true } }, payments: true },
-    });
+    const saleWhere = {
+      ...storeFilter,
+      createdAt: { gte: start, lt: end },
+      status: { not: SaleStatus.CANCELLED },
+    };
+
+    const [saleAgg, paymentGroups, itemGroups, movements, deliveries] = await Promise.all([
+      this.prisma.sale.aggregate({
+        where: saleWhere,
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+      this.prisma.salePayment.groupBy({
+        by: ['method'],
+        where: { sale: saleWhere },
+        _sum: { amount: true },
+      }),
+      this.prisma.saleItem.groupBy({
+        by: ['productId'],
+        where: { sale: saleWhere },
+        _sum: { quantity: true, total: true },
+      }),
+      this.prisma.stockMovement.count({
+        where: { ...storeFilter, createdAt: { gte: start, lt: end } },
+      }),
+      this.prisma.delivery.findMany({
+        where: { sale: { ...storeFilter, createdAt: { gte: start, lt: end } } },
+        include: {
+          sale: {
+            include: {
+              customer: true,
+              store: { select: { id: true, name: true } },
+            },
+          },
+          deliverer: { include: { user: true } },
+        },
+      }),
+    ]);
+
+    const revenue = toNumber(saleAgg._sum.total);
+    const salesCount = saleAgg._count._all;
 
     const paymentsByMethod: Record<string, number> = {};
-    let revenue = 0;
-    const productsSold: Record<string, { name: string; qty: number; total: number }> = {};
-
-    for (const sale of sales) {
-      revenue += toNumber(sale.total);
-      for (const payment of sale.payments) {
-        const label = PAYMENT_METHOD_LABELS[payment.method] ?? payment.method;
-        paymentsByMethod[label] = (paymentsByMethod[label] ?? 0) + toNumber(payment.amount);
-      }
-      for (const item of sale.items) {
-        const key = item.product.name;
-        if (!productsSold[key]) {
-          productsSold[key] = { name: item.product.name, qty: 0, total: 0 };
-        }
-        productsSold[key].qty += item.quantity;
-        productsSold[key].total += toNumber(item.total);
-      }
+    for (const group of paymentGroups) {
+      const label = PAYMENT_METHOD_LABELS[group.method] ?? group.method;
+      paymentsByMethod[label] = (paymentsByMethod[label] ?? 0) + toNumber(group._sum.amount);
     }
 
-    const movements = await this.prisma.stockMovement.count({
-      where: { ...storeFilter, createdAt: { gte: start, lt: end } },
-    });
-
-    const deliveries = await this.prisma.delivery.findMany({
-      where: { sale: { ...storeFilter, createdAt: { gte: start, lt: end } } },
-      include: {
-        sale: {
-          include: {
-            customer: true,
-            store: { select: { id: true, name: true } },
-          },
-        },
-        deliverer: { include: { user: true } },
-      },
-    });
+    const productIds = itemGroups.map((group) => group.productId);
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const productNameById = new Map(products.map((product) => [product.id, product.name]));
+    const productsSold = itemGroups
+      .map((group) => ({
+        name: productNameById.get(group.productId) ?? 'Produto',
+        qty: group._sum.quantity ?? 0,
+        total: toNumber(group._sum.total),
+      }))
+      .sort((a, b) => b.total - a.total);
 
     const pendingDeliveries = deliveries.filter((d) => d.status === 'PENDING').length;
     const inProgressDeliveries = deliveries.filter((d) => d.status === 'IN_PROGRESS').length;
@@ -289,9 +307,9 @@ export class DashboardService {
       dateTo,
       revenue,
       paymentsByMethod,
-      productsSold: Object.values(productsSold).sort((a, b) => b.total - a.total),
+      productsSold,
       stockMovements: movements,
-      salesCount: sales.length,
+      salesCount,
       deliveries: {
         pending: pendingDeliveries,
         inProgress: inProgressDeliveries,

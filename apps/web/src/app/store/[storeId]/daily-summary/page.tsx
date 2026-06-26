@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { DailySummaryContent, type DailySummaryData } from '@/components/daily-summary-content';
 import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
+import { LoadingOverlay } from '@/components/loading-overlay';
 import { PageHeader } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
@@ -32,7 +33,9 @@ export default function DailySummaryPage() {
       .finally(() => setLoading(false));
   }, [storeId, dateFrom, dateTo]);
 
-  if (loading && !data) return <PageLoader />;
+  const isRefetching = loading && !!data;
+
+  if (loading && !data) return <PageLoader label="Carregando resumo…" />;
 
   return (
     <>
@@ -48,6 +51,7 @@ export default function DailySummaryPage() {
       <DailySummaryDateFilter
         dateFrom={dateFrom}
         dateTo={dateTo}
+        disabled={loading}
         onChange={(from, to) => {
           setDateFrom(from);
           setDateTo(to);
@@ -58,9 +62,11 @@ export default function DailySummaryPage() {
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
 
-      {loading && <p className="mb-4 text-sm text-slate-500">Atualizando...</p>}
-
-      {data && <DailySummaryContent data={data} />}
+      {data && (
+        <LoadingOverlay loading={isRefetching} minHeight="min-h-[40vh]" label="Atualizando resumo…">
+          <DailySummaryContent data={data} />
+        </LoadingOverlay>
+      )}
     </>
   );
 }

@@ -17,6 +17,7 @@ import {
   PAYMENT_METHOD_LABELS,
   SALE_CHANNELS,
   SALE_CHANNEL_LABELS,
+  type PaginatedResponse,
 } from '@gas-erp/shared';
 
 interface Product {
@@ -90,7 +91,7 @@ export default function NewSalePage() {
 
   useEffect(() => {
     Promise.all([
-      api<Product[]>(`/products?storeId=${storeId}`, {}, getToken()),
+      api<PaginatedResponse<Product>>(`/products?storeId=${storeId}&pageSize=100`, {}, getToken()).then((r) => r.data),
       api<Deliverer[]>(`/deliverers?storeId=${storeId}`, {}, getToken()),
     ])
       .then(([p, d]) => {

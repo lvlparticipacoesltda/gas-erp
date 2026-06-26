@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
+import type { PaginatedResponse } from '@gas-erp/shared';
 
 interface Store { id: string; name: string }
 interface Product { id: string; name: string }
@@ -27,7 +28,7 @@ export default function StockTransfersPage() {
   async function load() {
     const [s, p, t] = await Promise.all([
       api<Store[]>('/stores', {}, getToken()),
-      api<Product[]>(`/products?storeId=${storeId}`, {}, getToken()),
+      api<PaginatedResponse<Product>>(`/products?storeId=${storeId}&pageSize=100`, {}, getToken()).then((r) => r.data),
       api<Transfer[]>(`/stock-transfers?storeId=${storeId}`, {}, getToken()),
     ]);
     setStores(s.filter((x) => x.id !== storeId));

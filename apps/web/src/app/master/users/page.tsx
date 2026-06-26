@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { PageLoader } from '@/components/brand-loader';
+import { Pagination } from '@/components/pagination';
 import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
-import { ROLE_LABELS, USER_ROLES } from '@gas-erp/shared';
+import { ROLE_LABELS, USER_ROLES, type PaginatedResponse } from '@gas-erp/shared';
 import {
   effectivePermissions,
   PermissionCheckboxes,
@@ -59,19 +60,26 @@ export default function MasterUsersPage() {
   });
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const PAGE_SIZE = 20;
 
   async function load() {
     const [u, s] = await Promise.all([
-      api<{ data: UserRow[] }>('/users', {}, getToken()),
+      api<PaginatedResponse<UserRow>>(`/users?page=${page}&pageSize=${PAGE_SIZE}`, {}, getToken()),
       api<Store[]>('/stores', {}, getToken()),
     ]);
     setUsers(u.data);
+    setTotalPages(u.totalPages);
+    setTotal(u.total);
     setStores(s);
   }
 
   useEffect(() => {
     load().finally(() => setReady(true));
-  }, []);
+  }, [page]);
 
   function startEdit(user: UserRow) {
     setFormError('');
@@ -343,6 +351,13 @@ export default function MasterUsersPage() {
             ))}
           </tbody>
         </Table>
+        <Pagination
+          className="mt-4"
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
     </>
   );

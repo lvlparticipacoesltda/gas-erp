@@ -1,22 +1,32 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createProductSchema, updateProductSchema, updateProductPriceSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
+import { paginate, paginatedResult } from '../../common/utils/pagination';
 
 @Injectable()
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
-  findAll(user: AuthUser, storeId?: string) {
-    return this.prisma.product.findMany({
-      where: { organizationId: user.organizationId, active: true },
-      include: {
-        storeSettings: storeId ? { where: { storeId } } : true,
-        stockBalances: storeId ? { where: { storeId } } : true,
-      },
-      orderBy: { name: 'asc' },
-    });
+  async findAll(user: AuthUser, storeId?: string, page = 1, pageSize = 20) {
+    const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
+    const where = { organizationId: user.organizationId, active: true };
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        skip,
+        take,
+        include: {
+          storeSettings: storeId ? { where: { storeId } } : true,
+          stockBalances: storeId ? { where: { storeId } } : true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+    return paginatedResult(data, total, p, ps);
   }
 
   async findOne(user: AuthUser, id: string) {

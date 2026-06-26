@@ -24,8 +24,16 @@ export class CustomersController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query('storeId') storeId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    return this.customersService.findOne(user, id, storeId);
+    return this.customersService.findOne(
+      user,
+      id,
+      storeId,
+      Number(page) || 1,
+      Number(pageSize) || 10,
+    );
   }
 
   @Post()

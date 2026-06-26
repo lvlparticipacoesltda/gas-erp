@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { CustomerAddressFields, customerAddressPayload, type CustomerAddressForm } from '@/components/customer-address-fields';
+import { Pagination } from '@/components/pagination';
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
-import { getSaleDisplayStatus } from '@gas-erp/shared';
+import { getSaleDisplayStatus, type PaginatedResponse } from '@gas-erp/shared';
 
 interface CustomerAddress {
   id?: string;
@@ -64,6 +65,9 @@ const emptyForm: CustomerForm = {
   state: 'SP',
 };
 
+const PAGE_SIZE = 20;
+const HISTORY_PAGE_SIZE = 10;
+
 function addressFromCustomer(addr?: CustomerAddress): CustomerAddressForm {
   return {
     zipCode: addr?.zipCode ?? '',
@@ -89,6 +93,9 @@ function CustomerHistoryModal({
   onClose: () => void;
 }) {
   const [sales, setSales] = useState<CustomerSale[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -96,9 +103,17 @@ function CustomerHistoryModal({
     let cancelled = false;
     setLoading(true);
     setError('');
-    api<{ sales: CustomerSale[] }>(`/customers/${customer.id}?storeId=${storeId}`, {}, getToken())
+    api<{ sales: PaginatedResponse<CustomerSale> }>(
+      `/customers/${customer.id}?storeId=${storeId}&page=${page}&pageSize=${HISTORY_PAGE_SIZE}`,
+      {},
+      getToken(),
+    )
       .then((res) => {
-        if (!cancelled) setSales(res.sales);
+        if (!cancelled) {
+          setSales(res.sales.data);
+          setTotalPages(res.sales.totalPages);
+          setTotal(res.sales.total);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Erro ao carregar histórico');
@@ -109,7 +124,7 @@ function CustomerHistoryModal({
     return () => {
       cancelled = true;
     };
-  }, [customer.id, storeId]);
+  }, [customer.id, storeId, page]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
@@ -165,6 +180,15 @@ function CustomerHistoryModal({
               })}
             </ul>
           )}
+          {!loading && !error && total > 0 && (
+            <Pagination
+              className="mt-4"
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+            />
+          )}
         </div>
 
         <div className="border-t border-slate-100 px-6 py-4">
@@ -181,21 +205,47 @@ export default function CustomersPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   async function load() {
-    const res = await api<{ data: Customer[] }>(`/customers?search=${encodeURIComponent(search)}`, {}, getToken());
-    setCustomers(res.data);
+    setLoading(true);
+    try {
+      const res = await api<PaginatedResponse<Customer>>(
+        `/customers?search=${encodeURIComponent(debouncedSearch)}&page=${page}&pageSize=${PAGE_SIZE}`,
+        {},
+        getToken(),
+      );
+      setCustomers(res.data);
+      setTotalPages(res.totalPages);
+      setTotal(res.total);
+    } finally {
+      setLoading(false);
+      setReady(true);
+    }
   }
 
   useEffect(() => {
-    load().finally(() => setReady(true));
-  }, [search]);
+    load();
+  }, [debouncedSearch, page]);
 
   function startEdit(customer: Customer) {
     const addr = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0];
@@ -337,6 +387,7 @@ export default function CustomersPage() {
               </Button>
             ) : null}
           </div>
+          {loading && <p className="px-4 py-2 text-sm text-slate-500">Carregando...</p>}
           <Table>
             <thead className="bg-slate-50 text-left">
               <tr><th className="p-3">Nome</th><th className="p-3">Telefone</th><th className="p-3">Endereço</th><th className="p-3" /></tr>
@@ -366,6 +417,9 @@ export default function CustomersPage() {
               )}
             </tbody>
           </Table>
+          <div className="border-t border-slate-100 px-4 py-3">
+            <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+          </div>
         </Card>
       </div>
 

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { customerAddressSchema, createCustomerSchema, updateCustomerSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
@@ -36,28 +37,46 @@ export class CustomersService {
     return paginatedResult(data, total, p, ps);
   }
 
-  async findOne(user: AuthUser, id: string, storeId?: string) {
+  async findOne(
+    user: AuthUser,
+    id: string,
+    storeId?: string,
+    page = 1,
+    pageSize = 10,
+  ) {
     if (storeId) assertStoreAccess(user, storeId);
 
     const customer = await this.prisma.customer.findFirst({
       where: { id, organizationId: user.organizationId },
-      include: {
-        category: true,
-        addresses: true,
-        sales: {
-          where: storeId ? { storeId } : undefined,
-          take: 50,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            attendant: { select: { name: true } },
-            deliverer: { include: { user: { select: { name: true } } } },
-            items: { include: { product: { select: { name: true } } } },
-          },
-        },
-      },
+      include: { category: true, addresses: true },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
-    return customer;
+
+    const saleWhere = {
+      customerId: id,
+      ...(storeId ? { storeId } : {}),
+      status: { not: SaleStatus.CANCELLED },
+    };
+    const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
+    const [sales, salesTotal] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: saleWhere,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          attendant: { select: { name: true } },
+          deliverer: { include: { user: { select: { name: true } } } },
+          items: { include: { product: { select: { name: true } } } },
+        },
+      }),
+      this.prisma.sale.count({ where: saleWhere }),
+    ]);
+
+    return {
+      ...customer,
+      sales: paginatedResult(sales, salesTotal, p, ps),
+    };
   }
 
   async create(user: AuthUser, input: unknown) {

@@ -10,8 +10,18 @@ export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: AuthUser, @Query('storeId') storeId?: string) {
-    return this.productsService.findAll(user, storeId);
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query('storeId') storeId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.productsService.findAll(
+      user,
+      storeId,
+      Number(page) || 1,
+      Number(pageSize) || 20,
+    );
   }
 
   @Get(':id')
