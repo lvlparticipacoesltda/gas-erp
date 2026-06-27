@@ -57,6 +57,7 @@ export default function NewSalePage() {
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
   const [customerPriceByProduct, setCustomerPriceByProduct] = useState<Record<string, number>>({});
+  const [customerPriceError, setCustomerPriceError] = useState('');
   const [customerPick, setCustomerPick] = useState<CustomerPickerValue>({ kind: 'none' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -133,9 +134,11 @@ export default function NewSalePage() {
   useEffect(() => {
     if (!draft.customerId) {
       setCustomerPriceByProduct({});
+      setCustomerPriceError('');
       return;
     }
     let cancelled = false;
+    setCustomerPriceError('');
     api<Record<string, number>>(
       `/customers/${draft.customerId}/product-prices/map?storeId=${storeId}`,
       {},
@@ -144,8 +147,13 @@ export default function NewSalePage() {
       .then((map) => {
         if (!cancelled) setCustomerPriceByProduct(map);
       })
-      .catch(() => {
-        if (!cancelled) setCustomerPriceByProduct({});
+      .catch((err) => {
+        if (!cancelled) {
+          setCustomerPriceByProduct({});
+          setCustomerPriceError(
+            err instanceof Error ? err.message : 'Não foi possível carregar preços do cliente',
+          );
+        }
       });
     return () => {
       cancelled = true;
@@ -453,6 +461,11 @@ export default function NewSalePage() {
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <h2 className="mb-4 font-semibold">Produtos</h2>
+              {customerPriceError && (
+                <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {customerPriceError}
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 {products.map((p) => {
                   const storePrice = storeProductPrice(p);

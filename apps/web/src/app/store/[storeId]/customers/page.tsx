@@ -346,18 +346,20 @@ export default function CustomersPage() {
             <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
           )}
           {editing ? (
-            <form onSubmit={handleUpdate} className="space-y-3">
-              {identityFields(editForm, setEditForm)}
-              <CustomerAddressFields
-                value={editForm}
-                onChange={(address) => setEditForm({ ...editForm, ...address })}
-              />
+            <>
+              <form onSubmit={handleUpdate} className="space-y-3">
+                {identityFields(editForm, setEditForm)}
+                <CustomerAddressFields
+                  value={editForm}
+                  onChange={(address) => setEditForm({ ...editForm, ...address })}
+                />
+                <div className="flex gap-2 pt-2">
+                  <Button type="submit">Salvar cliente</Button>
+                  <Button type="button" variant="secondary" onClick={() => { setEditing(null); setFormError(''); }}>Cancelar</Button>
+                </div>
+              </form>
               <CustomerProductPricesEditor customerId={editing.id} storeId={storeId} />
-              <div className="flex gap-2 pt-2">
-                <Button type="submit">Salvar</Button>
-                <Button type="button" variant="secondary" onClick={() => { setEditing(null); setFormError(''); }}>Cancelar</Button>
-              </div>
-            </form>
+            </>
           ) : (
             <form onSubmit={handleCreate} className="space-y-3">
               {identityFields(form, setForm)}

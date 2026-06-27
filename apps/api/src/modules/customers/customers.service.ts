@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { customerAddressSchema, createCustomerSchema, updateCustomerSchema, upsertCustomerProductPriceSchema } from '@gas-erp/shared';
@@ -142,6 +142,7 @@ export class CustomersService {
   }
 
   async listProductPrices(user: AuthUser, customerId: string, storeId: string) {
+    if (!storeId) throw new BadRequestException('storeId é obrigatório');
     assertStoreAccess(user, storeId);
     await this.findOne(user, customerId);
 
@@ -181,6 +182,7 @@ export class CustomersService {
     storeId: string,
     input: unknown,
   ) {
+    if (!storeId) throw new BadRequestException('storeId é obrigatório');
     assertStoreAccess(user, storeId);
     await this.findOne(user, customerId);
     const data = upsertCustomerProductPriceSchema.parse(input);

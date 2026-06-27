@@ -64,8 +64,7 @@ export function CustomerProductPricesEditor({ customerId, storeId }: CustomerPro
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleAdd() {
     if (!draft.productId) return;
     setSaving(true);
     setError('');
@@ -176,7 +175,7 @@ export function CustomerProductPricesEditor({ customerId, storeId }: CustomerPro
             <p className="mt-4 text-sm text-slate-500">Nenhum preço especial configurado.</p>
           )}
 
-          <form onSubmit={handleAdd} className="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
             <div>
               <Label>Adicionar produto</Label>
               <Select
@@ -209,10 +208,10 @@ export function CustomerProductPricesEditor({ customerId, storeId }: CustomerPro
                 onChange={(e) => setDraft((prev) => ({ ...prev, price: Number(e.target.value) }))}
               />
             </div>
-            <Button type="submit" disabled={saving || !draft.productId}>
+            <Button type="button" disabled={saving || !draft.productId} onClick={() => void handleAdd()}>
               Adicionar
             </Button>
-          </form>
+          </div>
         </>
       )}
     </div>
@@ -258,7 +257,7 @@ function CustomerPriceRow({
           <Button
             type="button"
             variant="secondary"
-            disabled={disabled || price === row.price}
+            disabled={disabled || Math.abs(price - row.price) < 0.001}
             onClick={() => onSave(price)}
           >
             Salvar
