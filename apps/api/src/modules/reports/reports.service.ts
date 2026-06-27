@@ -1,25 +1,117 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { SaleStatus, PurchaseInvoiceStatus } from '@gas-erp/database';
+import { PaymentMethod, Prisma, SaleStatus, PurchaseInvoiceStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
   COUNTED_MOBILE_APPROVALS,
   DashboardDateQuery,
+  DELIVERY_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
+  SALE_CHANNEL_LABELS,
   SALE_STATUS_LABELS,
   formatDashboardDateRangeLabel,
   formatDateKeyInTimezone,
+  formatWaitTime,
   getRouteDurationSeconds,
+  getSaleAttendantName,
+  getSaleDisplayStatus,
   getWaitTimeSeconds,
   resolveDashboardDateRange,
   toNumber,
   type PurchasesReportResponse,
   type ReportType,
+  type SalesReportFilters,
   type SalesReportResponse,
+  type SalesReportRow,
   type StockReportResponse,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
+
+const salesReportInclude = {
+  customer: { select: { name: true, phone: true } },
+  attendant: { select: { name: true } },
+  deliverer: { include: { user: { select: { name: true } } } },
+  createdByDeliverer: { include: { user: { select: { name: true } } } },
+  items: { include: { product: { select: { name: true } } } },
+  payments: true,
+  delivery: true,
+} satisfies Prisma.SaleInclude;
+
+type SaleForReport = Prisma.SaleGetPayload<{ include: typeof salesReportInclude }>;
+
+function buildDeliveryAddress(sale: {
+  deliveryStreet: string | null;
+  deliveryNumber: string | null;
+  deliveryComplement: string | null;
+  deliveryNeighborhood: string | null;
+  deliveryCity: string | null;
+  deliveryState: string | null;
+  deliveryLandmark: string | null;
+}): string | null {
+  const parts: string[] = [];
+  const streetLine = [sale.deliveryStreet, sale.deliveryNumber].filter(Boolean).join(', ');
+  if (streetLine) parts.push(streetLine);
+  if (sale.deliveryComplement) parts.push(sale.deliveryComplement);
+  if (sale.deliveryNeighborhood) parts.push(sale.deliveryNeighborhood);
+  const cityLine = [sale.deliveryCity, sale.deliveryState].filter(Boolean).join(' - ');
+  if (cityLine) parts.push(cityLine);
+  if (sale.deliveryLandmark) parts.push(`Ref.: ${sale.deliveryLandmark}`);
+  return parts.length ? parts.join(', ') : null;
+}
+
+function formatReportDateTime(iso: Date | string): string {
+  const d = typeof iso === 'string' ? new Date(iso) : iso;
+  return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+function mapSaleToReportRow(sale: SaleForReport): SalesReportRow {
+  const delivery = sale.delivery;
+  const waitTimeSeconds = delivery
+    ? getWaitTimeSeconds(sale.createdAt, delivery.startedAt)
+    : null;
+  const routeDurationSeconds = delivery
+    ? getRouteDurationSeconds(delivery.startedAt, delivery.completedAt)
+    : null;
+  const displayStatus = getSaleDisplayStatus(sale);
+  const paymentSummary = [...new Set(sale.payments.map((p) => PAYMENT_METHOD_LABELS[p.method] ?? p.method))].join(
+    ', ',
+  );
+  const paymentDetails = sale.payments
+    .map((p) => `${PAYMENT_METHOD_LABELS[p.method] ?? p.method}: ${formatCsvMoney(toNumber(p.amount))}`)
+    .join('; ');
+  const itemsSummary = sale.items
+    .map((item) => `${item.quantity}x ${item.product.name}`)
+    .join('; ');
+
+  return {
+    saleId: sale.id,
+    saleDate: formatDateKeyInTimezone(sale.saleDate),
+    createdAt: formatReportDateTime(sale.createdAt),
+    status: sale.status,
+    statusLabel: displayStatus.label,
+    channel: sale.channel,
+    channelLabel: SALE_CHANNEL_LABELS[sale.channel] ?? sale.channel,
+    customerName: sale.customer?.name ?? null,
+    customerPhone: sale.customer?.phone ?? null,
+    attendantName: getSaleAttendantName(sale),
+    delivererName: sale.deliverer?.user.name ?? null,
+    deliveryAddress: buildDeliveryAddress(sale),
+    itemsSummary,
+    deliveryFee: toNumber(sale.deliveryFee),
+    gasDoPovoBenefit: sale.gasDoPovoBenefit,
+    paymentSummary,
+    paymentDetails,
+    total: toNumber(sale.total),
+    deliveryStatus: delivery?.status ?? null,
+    deliveryStatusLabel: delivery ? (DELIVERY_STATUS_LABELS[delivery.status] ?? delivery.status) : null,
+    waitTimeSeconds,
+    waitTimeLabel: formatWaitTime(waitTimeSeconds),
+    routeDurationSeconds,
+    routeDurationLabel: formatWaitTime(routeDurationSeconds),
+    notes: sale.notes,
+  };
+}
 
 @Injectable()
 export class ReportsService {
@@ -41,19 +133,14 @@ export class ReportsService {
     user: AuthUser,
     storeId: string,
     dateQuery: DashboardDateQuery = {},
+    filters: SalesReportFilters = {},
   ): Promise<SalesReportResponse> {
     assertStoreAccess(user, storeId);
     const { start, end, dateFrom, dateTo } = this.resolveRange(dateQuery);
 
-    // Vendas contabilizadas: exclui retroativas PENDING/REJECTED (igual ao dashboard).
-    const countedSaleWhere = {
-      storeId,
-      saleDate: { gte: start, lt: end },
-      backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
-      mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
-    };
+    const countedSaleWhere = this.buildSalesReportWhere(storeId, start, end, filters);
 
-    const [statusGroups, dayGroups, paymentGroups, deliveries] = await Promise.all([
+    const [statusGroups, dayGroups, paymentGroups, deliveries, sales] = await Promise.all([
       this.prisma.sale.groupBy({
         by: ['status'],
         where: countedSaleWhere,
@@ -84,6 +171,11 @@ export class ReportsService {
           sale: { select: { createdAt: true } },
           deliverer: { include: { user: { select: { name: true } } } },
         },
+      }),
+      this.prisma.sale.findMany({
+        where: countedSaleWhere,
+        include: salesReportInclude,
+        orderBy: [{ saleDate: 'desc' }, { createdAt: 'desc' }],
       }),
     ]);
 
@@ -155,6 +247,8 @@ export class ReportsService {
       }))
       .sort((a, b) => b.deliveryCount - a.deliveryCount);
 
+    const rows = sales.map(mapSaleToReportRow);
+
     return {
       date: formatDashboardDateRangeLabel(dateFrom, dateTo),
       dateFrom,
@@ -166,7 +260,44 @@ export class ReportsService {
       byDay,
       byPaymentMethod,
       byDeliverer,
+      rows,
     };
+  }
+
+  private buildSalesReportWhere(
+    storeId: string,
+    start: Date,
+    end: Date,
+    filters: SalesReportFilters,
+  ): Prisma.SaleWhereInput {
+    const where: Prisma.SaleWhereInput = {
+      storeId,
+      saleDate: { gte: start, lt: end },
+      backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+      mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
+    };
+
+    if (filters.status) {
+      where.status = filters.status as SaleStatus;
+    }
+    if (filters.paymentMethod) {
+      where.payments = { some: { method: filters.paymentMethod as PaymentMethod } };
+    }
+    if (filters.customerSearch?.trim()) {
+      const term = filters.customerSearch.trim();
+      where.customer = {
+        OR: [
+          { name: { contains: term, mode: 'insensitive' } },
+          { phone: { contains: term, mode: 'insensitive' } },
+        ],
+      };
+    }
+    if (filters.delivererSearch?.trim()) {
+      const term = filters.delivererSearch.trim();
+      where.deliverer = { user: { name: { contains: term, mode: 'insensitive' } } };
+    }
+
+    return where;
   }
 
   /* ------------------------------ Compras ------------------------------ */
@@ -368,17 +499,57 @@ export class ReportsService {
     type: ReportType,
     storeId: string,
     dateQuery: DashboardDateQuery = {},
+    salesFilters: SalesReportFilters = {},
   ): Promise<{ filename: string; csv: string }> {
     if (type === 'sales') {
-      const report = await this.salesReport(user, storeId, dateQuery);
-      const rows = report.byDay.map((d) => [
-        formatDateKey(d.date),
-        d.count,
-        formatCsvMoney(d.total),
+      const report = await this.salesReport(user, storeId, dateQuery, salesFilters);
+      const headers = [
+        'Data da venda',
+        'Criado em',
+        'ID venda',
+        'Status',
+        'Canal',
+        'Cliente',
+        'Telefone cliente',
+        'Atendente',
+        'Entregador',
+        'Endereço entrega',
+        'Itens',
+        'Taxa entrega',
+        'Gás do Povo',
+        'Formas de pagamento',
+        'Detalhe pagamentos',
+        'Total',
+        'Status entrega',
+        'Tempo espera rota',
+        'Tempo em rota',
+        'Observações',
+      ];
+      const rows = report.rows.map((r) => [
+        formatDateKey(r.saleDate),
+        r.createdAt,
+        r.saleId,
+        r.statusLabel,
+        r.channelLabel,
+        r.customerName ?? '',
+        r.customerPhone ?? '',
+        r.attendantName ?? '',
+        r.delivererName ?? '',
+        r.deliveryAddress ?? '',
+        r.itemsSummary,
+        formatCsvMoney(r.deliveryFee),
+        r.gasDoPovoBenefit ? 'Sim' : 'Não',
+        r.paymentSummary,
+        r.paymentDetails,
+        formatCsvMoney(r.total),
+        r.deliveryStatusLabel ?? '',
+        r.waitTimeLabel ?? '',
+        r.routeDurationLabel ?? '',
+        r.notes ?? '',
       ]);
       return {
         filename: buildFilename('vendas', report.dateFrom, report.dateTo),
-        csv: toCsv(['Data', 'Vendas', 'Faturamento'], rows),
+        csv: toCsv(headers, rows),
       };
     }
 

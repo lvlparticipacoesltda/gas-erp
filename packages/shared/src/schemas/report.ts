@@ -30,8 +30,21 @@ export const reportExportQuerySchema = reportPeriodQuerySchema.extend({
   format: z.enum(REPORT_EXPORT_FORMATS).default('csv'),
 });
 
+export const salesReportFiltersSchema = z.object({
+  status: z.string().optional(),
+  delivererSearch: z.string().optional(),
+  customerSearch: z.string().optional(),
+  paymentMethod: z.string().optional(),
+});
+
+export const salesReportQuerySchema = reportPeriodQuerySchema.merge(salesReportFiltersSchema);
+
+export const salesExportQuerySchema = reportExportQuerySchema.merge(salesReportFiltersSchema);
+
 export type ReportPeriodQuery = z.infer<typeof reportPeriodQuerySchema>;
 export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;
+export type SalesReportQuery = z.infer<typeof salesReportQuerySchema>;
+export type SalesReportFilters = z.infer<typeof salesReportFiltersSchema>;
 
 /** Bloco comum de período presente em todas as respostas de relatório. */
 export interface ReportPeriod {
@@ -70,6 +83,35 @@ export interface SalesReportByDeliverer {
   avgRouteDurationSeconds: number | null;
 }
 
+/** Uma linha do relatório detalhado de vendas (formato planilha). */
+export interface SalesReportRow {
+  saleId: string;
+  saleDate: string;
+  createdAt: string;
+  status: string;
+  statusLabel: string;
+  channel: string;
+  channelLabel: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  attendantName: string | null;
+  delivererName: string | null;
+  deliveryAddress: string | null;
+  itemsSummary: string;
+  deliveryFee: number;
+  gasDoPovoBenefit: boolean;
+  paymentSummary: string;
+  paymentDetails: string;
+  total: number;
+  deliveryStatus: string | null;
+  deliveryStatusLabel: string | null;
+  waitTimeSeconds: number | null;
+  waitTimeLabel: string | null;
+  routeDurationSeconds: number | null;
+  routeDurationLabel: string | null;
+  notes: string | null;
+}
+
 export interface SalesReportResponse extends ReportPeriod {
   totalRevenue: number;
   salesCount: number;
@@ -78,6 +120,7 @@ export interface SalesReportResponse extends ReportPeriod {
   byDay: SalesReportByDay[];
   byPaymentMethod: SalesReportByPaymentMethod[];
   byDeliverer: SalesReportByDeliverer[];
+  rows: SalesReportRow[];
 }
 
 /* ----------------------------- Compras ----------------------------- */

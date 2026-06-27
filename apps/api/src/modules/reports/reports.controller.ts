@@ -24,9 +24,18 @@ export class ReportsController {
     @Query('date') date?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    @Query('status') status?: string,
+    @Query('delivererSearch') delivererSearch?: string,
+    @Query('customerSearch') customerSearch?: string,
+    @Query('paymentMethod') paymentMethod?: string,
   ) {
     this.assertStoreId(storeId);
-    return this.service.salesReport(user, storeId, { date, dateFrom, dateTo });
+    return this.service.salesReport(
+      user,
+      storeId,
+      { date, dateFrom, dateTo },
+      { status, delivererSearch, customerSearch, paymentMethod },
+    );
   }
 
   @Get('purchases')
@@ -63,6 +72,10 @@ export class ReportsController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     @Query('format') format = 'csv',
+    @Query('status') status?: string,
+    @Query('delivererSearch') delivererSearch?: string,
+    @Query('customerSearch') customerSearch?: string,
+    @Query('paymentMethod') paymentMethod?: string,
   ): Promise<string> {
     this.assertStoreId(storeId);
     if (!REPORT_TYPES.includes(type as ReportType)) {
@@ -72,11 +85,14 @@ export class ReportsController {
       throw new BadRequestException('Formato de exportação não suportado (use csv).');
     }
 
-    const { filename, csv } = await this.service.exportCsv(user, type as ReportType, storeId, {
-      date,
-      dateFrom,
-      dateTo,
-    });
+    const salesFilters = { status, delivererSearch, customerSearch, paymentMethod };
+    const { filename, csv } = await this.service.exportCsv(
+      user,
+      type as ReportType,
+      storeId,
+      { date, dateFrom, dateTo },
+      type === 'sales' ? salesFilters : {},
+    );
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

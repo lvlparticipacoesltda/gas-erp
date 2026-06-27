@@ -6,6 +6,7 @@ import { PageLoader } from '@/components/brand-loader';
 import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedList } from '@/components/paginated-list';
+import { SalesReportPanel } from '@/components/sales-report-panel';
 import { Button, Card, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
@@ -16,7 +17,6 @@ import {
   todayDateKey,
   type PurchasesReportResponse,
   type ReportType,
-  type SalesReportResponse,
   type StockReportResponse,
 } from '@gas-erp/shared';
 
@@ -40,32 +40,28 @@ export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState(todayDateKey);
   const [dateTo, setDateTo] = useState(todayDateKey);
 
-  const [sales, setSales] = useState<SalesReportResponse | null>(null);
   const [purchases, setPurchases] = useState<PurchasesReportResponse | null>(null);
   const [stock, setStock] = useState<StockReportResponse | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    if (!storeId) return;
+    if (!storeId || tab === 'sales') return;
     let cancelled = false;
     setLoading(true);
     setError('');
     const query = buildDashboardDateQuery(dateFrom, dateTo);
     const path =
-      tab === 'sales'
-        ? `/reports/sales?storeId=${storeId}&${query}`
-        : tab === 'purchases'
-          ? `/reports/purchases?storeId=${storeId}&${query}`
-          : `/reports/stock?storeId=${storeId}&${query}`;
+      tab === 'purchases'
+        ? `/reports/purchases?storeId=${storeId}&${query}`
+        : `/reports/stock?storeId=${storeId}&${query}`;
 
-    api<SalesReportResponse | PurchasesReportResponse | StockReportResponse>(path, {}, getToken())
+    api<PurchasesReportResponse | StockReportResponse>(path, {}, getToken())
       .then((data) => {
         if (cancelled) return;
-        if (tab === 'sales') setSales(data as SalesReportResponse);
-        else if (tab === 'purchases') setPurchases(data as PurchasesReportResponse);
+        if (tab === 'purchases') setPurchases(data as PurchasesReportResponse);
         else setStock(data as StockReportResponse);
       })
       .catch((err) => {
@@ -82,7 +78,7 @@ export default function ReportsPage() {
   }, [storeId, tab, dateFrom, dateTo]);
 
   const handleExport = useCallback(async () => {
-    if (!storeId) return;
+    if (!storeId || tab === 'sales') return;
     setExporting(true);
     setError('');
     try {
@@ -111,32 +107,30 @@ export default function ReportsPage() {
     }
   }, [storeId, tab, dateFrom, dateTo]);
 
-  const current =
-    tab === 'sales' ? sales : tab === 'purchases' ? purchases : stock;
+  const current = tab === 'purchases' ? purchases : tab === 'stock' ? stock : null;
   const isRefetching = loading && !!current;
+  const showInitialLoader = tab !== 'sales' && loading && !current;
 
-  if (loading && !current) return <PageLoader label="Carregando relatórios…" />;
+  if (showInitialLoader) return <PageLoader label="Carregando relatórios…" />;
 
   return (
     <>
       <PageHeader
         title="Relatórios"
-        subtitle={current?.date ? `Período · ${current.date}` : 'Vendas, compras e estoque'}
-        action={
-          <Button type="button" onClick={handleExport} disabled={exporting || loading}>
-            {exporting ? 'Exportando…' : 'Exportar CSV'}
-          </Button>
+        subtitle={
+          tab === 'sales'
+            ? 'Vendas detalhadas por período'
+            : current?.date
+              ? `Período · ${current.date}`
+              : 'Compras e estoque'
         }
-      />
-
-      <DailySummaryDateFilter
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        disabled={loading}
-        onChange={(from, to) => {
-          setDateFrom(from);
-          setDateTo(to);
-        }}
+        action={
+          tab !== 'sales' ? (
+            <Button type="button" onClick={handleExport} disabled={exporting || loading}>
+              {exporting ? 'Exportando…' : 'Exportar CSV'}
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="mb-6 flex flex-wrap gap-2">
@@ -161,105 +155,24 @@ export default function ReportsPage() {
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
 
-      <LoadingOverlay loading={isRefetching} minHeight="min-h-[40vh]" label="Atualizando relatório…">
-        {tab === 'sales' && sales && <SalesReport data={sales} />}
-        {tab === 'purchases' && purchases && <PurchasesReport data={purchases} />}
-        {tab === 'stock' && stock && <StockReport data={stock} />}
-      </LoadingOverlay>
-    </>
-  );
-}
+      {tab === 'sales' && storeId && <SalesReportPanel storeId={storeId} />}
 
-function SalesReport({ data }: { data: SalesReportResponse }) {
-  return (
-    <>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Card><div className="text-sm text-slate-500">Faturamento</div><div className="text-2xl font-bold">{formatCurrency(data.totalRevenue)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Vendas</div><div className="text-2xl font-bold">{data.salesCount}</div></Card>
-        <Card><div className="text-sm text-slate-500">Ticket médio</div><div className="text-2xl font-bold">{formatCurrency(data.averageTicket)}</div></Card>
-      </div>
-
-      <h2 className="mb-3 mt-8 font-semibold">Por status</h2>
-      {data.byStatus.length === 0 ? (
-        <p className="text-sm text-slate-500">Nenhuma venda no período.</p>
-      ) : (
-        <PaginatedList items={data.byStatus}>
-          {(rows) => (
-            <Table>
-              <thead className="bg-slate-50 text-left"><tr><th className="p-3">Status</th><th className="p-3">Qtd</th><th className="p-3">Total</th></tr></thead>
-              <tbody>
-                {rows.map((s) => (
-                  <tr key={s.status} className="border-t border-slate-100"><td className="p-3">{s.label}</td><td className="p-3">{s.count}</td><td className="p-3">{formatCurrency(s.total)}</td></tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </PaginatedList>
-      )}
-
-      <h2 className="mb-3 mt-8 font-semibold">Por dia</h2>
-      {data.byDay.length === 0 ? (
-        <p className="text-sm text-slate-500">Nenhuma venda no período.</p>
-      ) : (
-        <PaginatedList items={data.byDay}>
-          {(rows) => (
-            <Table>
-              <thead className="bg-slate-50 text-left"><tr><th className="p-3">Data</th><th className="p-3">Vendas</th><th className="p-3">Faturamento</th></tr></thead>
-              <tbody>
-                {rows.map((d) => (
-                  <tr key={d.date} className="border-t border-slate-100"><td className="p-3">{formatDay(d.date)}</td><td className="p-3">{d.count}</td><td className="p-3">{formatCurrency(d.total)}</td></tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </PaginatedList>
-      )}
-
-      <h2 className="mb-3 mt-8 font-semibold">Por forma de pagamento</h2>
-      {data.byPaymentMethod.length === 0 ? (
-        <p className="text-sm text-slate-500">Nenhum pagamento no período.</p>
-      ) : (
-        <PaginatedList items={data.byPaymentMethod}>
-          {(rows) => (
-            <Table>
-              <thead className="bg-slate-50 text-left"><tr><th className="p-3">Forma</th><th className="p-3">Valor</th></tr></thead>
-              <tbody>
-                {rows.map((p) => (
-                  <tr key={p.method} className="border-t border-slate-100"><td className="p-3">{p.label}</td><td className="p-3">{formatCurrency(p.total)}</td></tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </PaginatedList>
-      )}
-
-      {data.byDeliverer.length > 0 && (
+      {tab !== 'sales' && (
         <>
-          <h2 className="mb-3 mt-8 font-semibold">Por entregador</h2>
-          <PaginatedList items={data.byDeliverer}>
-            {(rows) => (
-              <Table>
-                <thead className="bg-slate-50 text-left">
-                  <tr>
-                    <th className="p-3">Entregador</th>
-                    <th className="p-3">Entregas</th>
-                    <th className="p-3">Média até a rota</th>
-                    <th className="p-3">Média em rota</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((d) => (
-                    <tr key={d.delivererId} className="border-t border-slate-100">
-                      <td className="p-3">{d.delivererName}</td>
-                      <td className="p-3">{d.deliveryCount}</td>
-                      <td className="p-3">{formatWaitTime(d.avgWaitTimeSeconds)}</td>
-                      <td className="p-3">{formatWaitTime(d.avgRouteDurationSeconds)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            )}
-          </PaginatedList>
+          <DailySummaryDateFilter
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            disabled={loading}
+            onChange={(from, to) => {
+              setDateFrom(from);
+              setDateTo(to);
+            }}
+          />
+
+          <LoadingOverlay loading={isRefetching} minHeight="min-h-[40vh]" label="Atualizando relatório…">
+            {tab === 'purchases' && purchases && <PurchasesReport data={purchases} />}
+            {tab === 'stock' && stock && <StockReport data={stock} />}
+          </LoadingOverlay>
         </>
       )}
     </>
