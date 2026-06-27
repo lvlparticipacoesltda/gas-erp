@@ -1,5 +1,8 @@
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { GasCylinderIcon } from '@/components/brand/gas-cylinder-icon';
+
+const WORDMARK_WIDTH = { sm: 132, md: 200, lg: 280 } as const;
+const MARK_SIZE = { sm: 32, md: 48, lg: 64 } as const;
 
 export function Logo({
   className,
@@ -14,49 +17,45 @@ export function Logo({
   onDark?: boolean;
   tagline?: string;
 }) {
-  const iconSizes = { sm: 'h-8 w-8', md: 'h-12 w-12', lg: 'h-16 w-16' };
-  const titleSizes = { sm: 'text-base', md: 'text-xl', lg: 'text-2xl' };
-  const subSizes = { sm: 'text-[0.5em]', md: 'text-[0.55em]', lg: 'text-[0.5em]' };
-
   if (variant === 'icon') {
-    return <GasCylinderIcon variant="app" className={cn(iconSizes[size], className)} />;
+    const mark = MARK_SIZE[size];
+    return (
+      <Image
+        src="/brand/gas-cylinder-mark.png"
+        alt="Gás do Povo"
+        width={mark}
+        height={mark}
+        className={cn('object-contain', className)}
+      />
+    );
   }
 
-  const gasColor = onDark ? 'text-white' : 'text-coal';
-  const povoColor = 'text-brand';
-
-  const wordmark = (
-    <div className={cn(variant === 'stacked' && 'text-center')}>
-      <div className={cn('font-extrabold lowercase leading-none tracking-tight', titleSizes[size], gasColor)}>
-        gás
-      </div>
-      <div
-        className={cn(
-          'mt-0.5 font-extrabold uppercase tracking-[0.18em]',
-          subSizes[size],
-          povoColor,
-        )}
-      >
-        DO POVO
-      </div>
-      {tagline ? (
-        <div className={cn('mt-1 text-xs font-normal normal-case tracking-normal', onDark ? 'text-white/60' : 'text-slate-500')}>
-          {tagline}
-        </div>
-      ) : null}
-    </div>
-  );
+  const wordmarkSrc =
+    variant === 'stacked' || onDark ? '/brand/logo-login-dark.png' : '/brand/logo-wordmark.png';
+  const width = WORDMARK_WIDTH[size];
 
   return (
     <div
       className={cn(
-        'flex items-center gap-3',
-        variant === 'stacked' && 'flex-col gap-2 text-center',
+        'flex flex-col gap-2',
+        variant === 'stacked' ? 'items-center text-center' : 'items-start',
         className,
       )}
     >
-      <GasCylinderIcon variant="mark" className={iconSizes[size]} />
-      {wordmark}
+      <Image
+        src={wordmarkSrc}
+        alt="Gás do Povo"
+        width={width}
+        height={Math.round(width * 0.45)}
+        className="h-auto max-w-full object-contain"
+        style={{ width, height: 'auto' }}
+        priority
+      />
+      {tagline ? (
+        <p className={cn('text-xs font-normal', onDark ? 'text-white/70' : 'text-slate-500')}>
+          {tagline}
+        </p>
+      ) : null}
     </div>
   );
 }

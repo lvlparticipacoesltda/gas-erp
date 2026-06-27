@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rasteriza SVGs da marca para PNGs do app mobile (via resvg)."""
+"""Gera PNGs da marca a partir dos arquivos-fonte em scripts/brand/."""
 
 from __future__ import annotations
 
@@ -10,40 +10,46 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BRAND_DIR = Path(__file__).resolve().parent
 MOBILE_ASSETS = ROOT / "apps" / "mobile" / "assets"
-WEB_PUBLIC = ROOT / "apps/web/public"
+WEB_PUBLIC = ROOT / "apps" / "web" / "public"
+WEB_BRAND = WEB_PUBLIC / "brand"
 
-EXPORTS: list[tuple[Path, Path, int | None]] = [
-    (BRAND_DIR / "app-icon.svg", MOBILE_ASSETS / "icon.png", 1024),
-    (BRAND_DIR / "app-icon.svg", MOBILE_ASSETS / "adaptive-icon.png", 1024),
-    (BRAND_DIR / "app-icon.svg", MOBILE_ASSETS / "favicon.png", 48),
-    (BRAND_DIR / "logo-login-dark.svg", MOBILE_ASSETS / "logo-login.png", 960),
-    (BRAND_DIR / "app-icon.svg", WEB_PUBLIC / "icon.png", 512),
+# (arquivo-fonte, destino, largura máxima em px; None = copiar sem redimensionar)
+EXPORTS: list[tuple[str, Path, int | None]] = [
+    ("app-icon.png", MOBILE_ASSETS / "icon.png", 1024),
+    ("app-icon.png", MOBILE_ASSETS / "adaptive-icon.png", 1024),
+    ("app-icon.png", MOBILE_ASSETS / "favicon.png", 48),
+    ("app-icon.png", WEB_PUBLIC / "icon.png", 512),
+    ("app-icon.png", ROOT / "apps" / "web" / "src" / "app" / "icon.png", 512),
+    ("logo-login-dark.png", MOBILE_ASSETS / "logo-login.png", 960),
+    ("logo-login-dark.png", WEB_BRAND / "logo-login-dark.png", 960),
+    ("splash.png", MOBILE_ASSETS / "splash.png", 1284),
+    ("gas-cylinder-mark.png", WEB_BRAND / "gas-cylinder-mark.png", 512),
+    ("Logo Gas do Povo.pdf.png", WEB_BRAND / "logo-wordmark.png", 960),
 ]
 
 
-def resvg_bin() -> list[str]:
-    if shutil.which("resvg"):
-        return ["resvg"]
-    return ["npx", "--yes", "@resvg/resvg-js-cli"]
-
-
-def render(svg: Path, out: Path, width: int) -> None:
-    out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [*resvg_bin(), "--fit-width", str(width), str(svg), str(out)]
-    subprocess.run(cmd, check=True, cwd=ROOT)
-
-
-def splash_from_icon() -> None:
-    render(BRAND_DIR / "splash.svg", MOBILE_ASSETS / "splash.png", 1284)
+def resize_png(src: Path, dest: Path, max_width: int | None) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if max_width is None:
+        shutil.copy2(src, dest)
+        return
+    subprocess.run(
+        ["sips", "-Z", str(max_width), str(src), "--out", str(dest)],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def main() -> None:
-    for svg, out, width in EXPORTS:
-        render(svg, out, width)
-        print(f"  {out.relative_to(ROOT)}")
-    splash_from_icon()
-    print(f"  {MOBILE_ASSETS.relative_to(ROOT)}/splash.png")
-    print("OK — assets da marca gerados.")
+    for filename, dest, width in EXPORTS:
+        src = BRAND_DIR / filename
+        if not src.is_file():
+            raise SystemExit(f"Arquivo-fonte ausente: {src}")
+        resize_png(src, dest, width)
+        print(f"  {dest.relative_to(ROOT)}")
+
+    print("OK — assets da marca gerados a partir dos PNGs.")
 
 
 if __name__ == "__main__":
