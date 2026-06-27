@@ -113,6 +113,17 @@ Mensagens úteis:
 
 ---
 
+## Som customizado de rota
+
+O app usa `assets/sounds/rota_entrega.wav` para **nova rota** e **lembrete de aceite**. Cancelamentos usam o som padrão do sistema.
+
+- Canal Android (rota): `deliveries-route`
+- Canal Android (cancelamento): `deliveries`
+- Alterar o som exige **novo build APK** (`eas build`), não basta OTA
+- Quem já tinha o app instalado pode precisar reinstalar para o Android aplicar o novo canal/som
+
+---
+
 ## Resumo
 
 | Sintoma | Causa provável |

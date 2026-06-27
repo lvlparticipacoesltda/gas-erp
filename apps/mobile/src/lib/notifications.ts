@@ -4,7 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { DELIVERY_PUSH_CHANNEL_ID, DELIVERY_PUSH_SOUND } from '@gas-erp/shared';
+import { DELIVERY_PUSH_CHANNEL_ID, DELIVERY_PUSH_DEFAULT_CHANNEL_ID, DELIVERY_PUSH_SOUND } from '@gas-erp/shared';
 import { syncDelivererAvailabilityFromServer } from './deliverer-availability-context';
 import { api } from './api';
 import { getToken } from './storage';
@@ -59,6 +59,11 @@ async function ensureAndroidChannel() {
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#FB5E13',
     sound: DELIVERY_PUSH_SOUND,
+  });
+  await Notifications.setNotificationChannelAsync(DELIVERY_PUSH_DEFAULT_CHANNEL_ID, {
+    name: 'Avisos de entrega',
+    importance: Notifications.AndroidImportance.DEFAULT,
+    sound: 'default',
   });
 }
 

@@ -50,7 +50,8 @@
         {
           "icon": "./assets/icon.png",
           "color": "#FB5E13",
-          "defaultChannel": "deliveries"
+          "defaultChannel": "deliveries-route",
+          "sounds": ["./assets/sounds/rota_entrega.wav"]
         }
       ],
       [

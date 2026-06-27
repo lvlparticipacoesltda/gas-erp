@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DELIVERY_PUSH_CHANNEL_ID, DELIVERY_PUSH_SOUND } from '@gas-erp/shared';
+import { DELIVERY_PUSH_CHANNEL_ID, DELIVERY_PUSH_DEFAULT_CHANNEL_ID, DELIVERY_PUSH_SOUND } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type SaleAddress = {
@@ -43,19 +43,31 @@ export class PushService {
     const address = formatAddress(delivery.sale);
     const body = address ? `${customer} · ${address}` : customer;
 
-    await this.sendToDeliverer(delivererId, {
-      title: 'Nova entrega aguardando',
-      body,
-      data: { type: 'NEW_DELIVERY', deliveryId },
-    }, 'NEW_DELIVERY');
+    await this.sendToDeliverer(
+      delivererId,
+      {
+        title: 'Nova entrega aguardando',
+        body,
+        data: { type: 'NEW_DELIVERY', deliveryId },
+      },
+      'NEW_DELIVERY',
+      undefined,
+      { sound: DELIVERY_PUSH_SOUND, channelId: DELIVERY_PUSH_CHANNEL_ID },
+    );
   }
 
   async notifyDeliveryCancelled(delivererId: string, deliveryId: string): Promise<void> {
-    await this.sendToDeliverer(delivererId, {
-      title: 'Entrega cancelada',
-      body: 'Uma entrega atribuída a você foi cancelada pela loja.',
-      data: { type: 'DELIVERY_CANCELLED', deliveryId },
-    }, 'DELIVERY_CANCELLED');
+    await this.sendToDeliverer(
+      delivererId,
+      {
+        title: 'Entrega cancelada',
+        body: 'Uma entrega atribuída a você foi cancelada pela loja.',
+        data: { type: 'DELIVERY_CANCELLED', deliveryId },
+      },
+      'DELIVERY_CANCELLED',
+      undefined,
+      { sound: 'default', channelId: DELIVERY_PUSH_DEFAULT_CHANNEL_ID },
+    );
   }
 
   /** Lembrete periódico enquanto a rota segue aguardando aceite. Retorna true se enviou. */
@@ -88,6 +100,8 @@ export class PushService {
         data: { type: 'PENDING_DELIVERY_REMINDER', deliveryId },
       },
       'PENDING_DELIVERY_REMINDER',
+      undefined,
+      { sound: DELIVERY_PUSH_SOUND, channelId: DELIVERY_PUSH_CHANNEL_ID },
     );
     return result === 'sent';
   }
@@ -97,6 +111,10 @@ export class PushService {
     message: { title: string; body: string; data: Record<string, string> },
     eventType: string,
     knownToken?: string,
+    pushOptions: { sound: string; channelId: string } = {
+      sound: DELIVERY_PUSH_SOUND,
+      channelId: DELIVERY_PUSH_CHANNEL_ID,
+    },
   ): Promise<'sent' | 'invalid' | 'skipped'> {
     const token =
       knownToken ??
@@ -114,7 +132,7 @@ export class PushService {
       return 'skipped';
     }
 
-    const ok = await this.sendExpoPush(token, message, eventType, delivererId);
+    const ok = await this.sendExpoPush(token, message, eventType, delivererId, pushOptions);
     if (ok === 'invalid') {
       this.logger.warn(`Push ${eventType}: token inválido removido do entregador ${delivererId}`);
       await this.prisma.deliverer.update({
@@ -131,6 +149,7 @@ export class PushService {
     message: { title: string; body: string; data: Record<string, string> },
     eventType: string,
     delivererId: string,
+    pushOptions: { sound: string; channelId: string },
   ): Promise<'sent' | 'invalid' | 'skipped'> {
     try {
       const res = await fetch('https://exp.host/--/api/v2/push/send', {
@@ -145,8 +164,8 @@ export class PushService {
           title: message.title,
           body: message.body,
           data: message.data,
-          sound: DELIVERY_PUSH_SOUND,
-          channelId: DELIVERY_PUSH_CHANNEL_ID,
+          sound: pushOptions.sound,
+          channelId: pushOptions.channelId,
           priority: 'high',
         }),
       });
