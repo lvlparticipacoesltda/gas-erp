@@ -8,7 +8,6 @@ import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { AuditService } from '../../common/audit/audit.service';
-import { PushService } from '../../common/push/push.service';
 
 function buildDeliveryAddress(sale: {
   deliveryStreet: string | null;
@@ -37,7 +36,6 @@ export class DeliverersService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
-    private push: PushService,
   ) {}
 
   private readonly include = {
@@ -54,11 +52,25 @@ export class DeliverersService {
         ? { stores: { some: { store: { organizationId: user.organizationId } } } }
         : { stores: { some: { storeId: { in: user.storeIds } } } };
 
-    return this.prisma.deliverer.findMany({
-      where,
-      include: this.include,
-      orderBy: { user: { name: 'asc' } },
-    });
+    return this.prisma.deliverer
+      .findMany({
+        where,
+        include: {
+          ...this.include,
+          _count: {
+            select: {
+              deliveries: { where: { status: 'PENDING' } },
+            },
+          },
+        },
+        orderBy: { user: { name: 'asc' } },
+      })
+      .then((rows) =>
+        rows.map(({ _count, ...deliverer }) => ({
+          ...deliverer,
+          pendingDeliveryCount: _count.deliveries,
+        })),
+      );
   }
 
   async getPositions(user: AuthUser, storeId: string) {
@@ -470,8 +482,6 @@ export class DeliverersService {
       }
     }
 
-    const previousStatus = deliverer.status;
-
     const updated = await this.prisma.$transaction(async (tx) => {
       if (hasUserUpdate) {
         await tx.user.update({
@@ -526,14 +536,6 @@ export class DeliverersService {
       phone: data.phone,
       passwordChanged: !!passwordHash,
     });
-
-    if (nextStatus && nextStatus !== previousStatus) {
-      if (nextStatus === 'OFFLINE') {
-        void this.push.notifyAvailabilityChanged(id, false).catch(() => undefined);
-      } else if (nextStatus === 'AVAILABLE' && previousStatus === 'OFFLINE') {
-        void this.push.notifyAvailabilityChanged(id, true).catch(() => undefined);
-      }
-    }
 
     return updated;
   }

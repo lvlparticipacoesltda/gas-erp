@@ -13,6 +13,7 @@ import {
   canApproveMobileSales,
   resolveSaleBackdateInput,
   toNumber,
+  isDelivererAssignableForSale,
 } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -831,17 +832,7 @@ export class SalesService {
     }
 
     if (data.delivererId) {
-      const deliverer = await this.prisma.deliverer.findFirst({
-        where: {
-          id: data.delivererId,
-          stores: {
-            some: { storeId: data.storeId, store: { organizationId: user.organizationId } },
-          },
-        },
-      });
-      if (!deliverer) {
-        throw new BadRequestException('Entregador não atende esta unidade.');
-      }
+      await this.assertDelivererAssignable(data.delivererId, data.storeId, user.organizationId);
     }
 
     if (data.fulfillmentType === 'DELIVERY' && data.customerId) {
@@ -938,6 +929,10 @@ export class SalesService {
       throw new BadRequestException('Informe o motivo do cancelamento.');
     }
 
+    if (data.delivererId && nextStatus === SaleStatus.IN_DELIVERY) {
+      await this.assertDelivererAssignable(data.delivererId, sale.storeId, user.organizationId);
+    }
+
     const result = await this.prisma.$transaction(async (tx) => {
       if (data.status === 'CANCELLED') {
         for (const item of sale.items) {
@@ -982,7 +977,11 @@ export class SalesService {
       if (data.status === 'IN_DELIVERY' && data.delivererId) {
         const delivery = await tx.delivery.upsert({
           where: { saleId: id },
-          update: { delivererId: data.delivererId, status: DeliveryStatus.PENDING },
+          update: {
+            delivererId: data.delivererId,
+            status: DeliveryStatus.PENDING,
+            pendingReminderSentAt: null,
+          },
           create: {
             saleId: id,
             delivererId: data.delivererId,
@@ -1045,5 +1044,40 @@ export class SalesService {
     }
 
     return result.updated;
+  }
+
+  private async assertDelivererAssignable(
+    delivererId: string,
+    storeId: string,
+    organizationId: string,
+  ) {
+    const deliverer = await this.prisma.deliverer.findFirst({
+      where: {
+        id: delivererId,
+        stores: {
+          some: { storeId, store: { organizationId } },
+        },
+      },
+      include: {
+        user: { select: { active: true } },
+        _count: {
+          select: { deliveries: { where: { status: DeliveryStatus.PENDING } } },
+        },
+      },
+    });
+    if (!deliverer) {
+      throw new BadRequestException('Entregador não atende esta unidade.');
+    }
+
+    const { assignable, reason } = isDelivererAssignableForSale({
+      status: deliverer.status,
+      user: deliverer.user,
+      pendingDeliveryCount: deliverer._count.deliveries,
+    });
+    if (!assignable) {
+      throw new BadRequestException(
+        reason ? `Entregador indisponível: ${reason}.` : 'Entregador indisponível.',
+      );
+    }
   }
 }

@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import { DELIVERY_PUSH_CHANNEL_ID, DELIVERY_PUSH_SOUND } from '@gas-erp/shared';
 import { syncDelivererAvailabilityFromServer } from './deliverer-availability-context';
 import { api } from './api';
 import { getToken } from './storage';
@@ -52,12 +53,12 @@ export function waitForNotificationPermissionFlow(): Promise<boolean> {
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync('deliveries', {
+  await Notifications.setNotificationChannelAsync(DELIVERY_PUSH_CHANNEL_ID, {
     name: 'Entregas',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#FB5E13',
-    sound: 'default',
+    sound: DELIVERY_PUSH_SOUND,
   });
 }
 
@@ -200,21 +201,12 @@ export function usePushNotifications(onRefresh: () => void | Promise<void>) {
   onRefreshRef.current = onRefresh;
 
   useEffect(() => {
-    const received = Notifications.addNotificationReceivedListener((event) => {
-      const data = event.notification.request.content.data as Record<string, unknown>;
-      if (data?.type === 'AVAILABILITY_CHANGED') {
-        void syncDelivererAvailabilityFromServer().catch(() => undefined);
-      }
+    const received = Notifications.addNotificationReceivedListener(() => {
       void Promise.resolve(onRefreshRef.current());
     });
 
     const response = Notifications.addNotificationResponseReceivedListener((event) => {
       const data = event.notification.request.content.data as Record<string, unknown>;
-      if (data?.type === 'AVAILABILITY_CHANGED') {
-        void syncDelivererAvailabilityFromServer().catch(() => undefined);
-        void Promise.resolve(onRefreshRef.current());
-        return;
-      }
       const deliveryId = getDeliveryIdFromNotification(data);
       if (deliveryId) {
         router.push(`/delivery/${deliveryId}`);

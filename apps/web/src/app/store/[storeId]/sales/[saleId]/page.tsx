@@ -23,6 +23,7 @@ import {
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
   getWaitTimeSeconds,
+  isDelivererAssignableForSale,
 } from '@gas-erp/shared';
 
 interface SaleDetail {
@@ -78,7 +79,12 @@ interface SaleDetail {
   }[];
 }
 
-interface Deliverer { id: string; user: { name: string } }
+interface Deliverer {
+  id: string;
+  status: string;
+  pendingDeliveryCount?: number;
+  user: { name: string; active?: boolean };
+}
 
 export default function SaleDetailPage() {
   const { storeId, saleId } = useParams<{ storeId: string; saleId: string }>();
@@ -229,6 +235,10 @@ export default function SaleDetailPage() {
       ? ['CANCELLED']
       : SALE_STATUSES.filter((s) => s !== 'DRAFT' && s !== 'PORTARIA');
   const statusSelectValue = editableStatuses.includes(status) ? status : '';
+
+  const assignableDeliverers = deliverers.filter(
+    (d) => isDelivererAssignableForSale(d).assignable || d.id === sale.deliverer?.id,
+  );
 
   return (
     <>
@@ -467,10 +477,15 @@ export default function SaleDetailPage() {
                     <Label>Entregador</Label>
                     <Select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}>
                       <option value="">Selecione...</option>
-                      {deliverers.map((d) => (
+                      {assignableDeliverers.map((d) => (
                         <option key={d.id} value={d.id}>{d.user.name}</option>
                       ))}
                     </Select>
+                    {assignableDeliverers.length === 0 && (
+                      <p className="mt-2 text-sm text-amber-800">
+                        Nenhum entregador disponível para nova atribuição.
+                      </p>
+                    )}
                   </div>
                 )}
 

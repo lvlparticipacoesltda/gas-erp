@@ -19,6 +19,7 @@ import {
   canManageSales,
   isPastBusinessDay,
   todayBusinessDateKey,
+  isDelivererAssignableForSale,
   type PaginatedResponse,
 } from '@gas-erp/shared';
 
@@ -27,7 +28,12 @@ interface Product {
   name: string;
   storeSettings?: { price: number | string; deliveryFee?: number | string }[];
 }
-interface Deliverer { id: string; user: { name: string } }
+interface Deliverer {
+  id: string;
+  status: string;
+  pendingDeliveryCount?: number;
+  user: { name: string; active?: boolean };
+}
 
 type Step = 1 | 2 | 3;
 
@@ -194,6 +200,10 @@ export default function NewSalePage() {
     ? parsePrice(selectedProduct?.storeSettings?.[0]?.deliveryFee)
     : 0;
   const total = itemsSubtotal + deliveryFee;
+
+  const assignableDeliverers = deliverers.filter(
+    (d) => isDelivererAssignableForSale(d).assignable,
+  );
 
   function goNext() {
     setError('');
@@ -550,21 +560,27 @@ export default function NewSalePage() {
                 </div>
 
                 <h3 className="mb-3 font-medium">Escolha o entregador</h3>
-                <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {deliverers.map((d) => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => setDraft({ ...draft, delivererId: d.id })}
-                      className={`rounded-xl border p-3 text-left ${
-                        draft.delivererId === d.id ? 'border-orange-500 bg-orange-50' : 'border-slate-200'
-                      }`}
-                    >
-                      <span className="text-lg">🛵</span>
-                      <div className="mt-1 font-medium">{d.user.name}</div>
-                    </button>
-                  ))}
-                </div>
+                {assignableDeliverers.length === 0 ? (
+                  <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Nenhum entregador disponível no momento. Verifique o mapa de entregadores.
+                  </p>
+                ) : (
+                  <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {assignableDeliverers.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, delivererId: d.id })}
+                        className={`rounded-xl border p-3 text-left ${
+                          draft.delivererId === d.id ? 'border-orange-500 bg-orange-50' : 'border-slate-200'
+                        }`}
+                      >
+                        <span className="text-lg">🛵</span>
+                        <div className="mt-1 font-medium">{d.user.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 

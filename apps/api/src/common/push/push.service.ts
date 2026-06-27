@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { DELIVERY_PUSH_CHANNEL_ID, DELIVERY_PUSH_SOUND } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type SaleAddress = {
@@ -57,31 +58,38 @@ export class PushService {
     }, 'DELIVERY_CANCELLED');
   }
 
-  async notifyAvailabilityChanged(delivererId: string, available: boolean): Promise<void> {
-    const deliverer = await this.prisma.deliverer.findUnique({
-      where: { id: delivererId },
-      select: { expoPushToken: true },
+  /** Lembrete periódico enquanto a rota segue aguardando aceite. Retorna true se enviou. */
+  async notifyPendingDeliveryReminder(
+    delivererId: string,
+    deliveryId: string,
+  ): Promise<boolean> {
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: {
+        deliverer: { select: { expoPushToken: true } },
+        sale: { include: { customer: { select: { name: true } } } },
+      },
     });
-    if (!deliverer?.expoPushToken) {
-      // App consulta /deliverers/me a cada 30s — push aqui é complementar.
-      this.logger.debug(
-        `Push AVAILABILITY_CHANGED omitido: entregador ${delivererId} sem expoPushToken`,
-      );
-      return;
+    if (!delivery || delivery.status !== 'PENDING' || delivery.delivererId !== delivererId) {
+      return false;
     }
 
-    await this.sendToDeliverer(
+    const customer = delivery.sale.customer?.name ?? 'Cliente';
+    const address = formatAddress(delivery.sale);
+    const body = address
+      ? `${customer} · ${address}`
+      : 'Você ainda não aceitou esta rota.';
+
+    const result = await this.sendToDeliverer(
       delivererId,
       {
-        title: available ? 'Você está disponível' : 'Você está indisponível',
-        body: available
-          ? 'A loja reativou seu status. Sua localização voltará a aparecer no mapa.'
-          : 'A loja pausou seu status. O compartilhamento de localização foi interrompido.',
-        data: { type: 'AVAILABILITY_CHANGED', available: available ? 'true' : 'false' },
+        title: 'Rota aguardando aceite',
+        body,
+        data: { type: 'PENDING_DELIVERY_REMINDER', deliveryId },
       },
-      'AVAILABILITY_CHANGED',
-      deliverer.expoPushToken,
+      'PENDING_DELIVERY_REMINDER',
     );
+    return result === 'sent';
   }
 
   private async sendToDeliverer(
@@ -89,7 +97,7 @@ export class PushService {
     message: { title: string; body: string; data: Record<string, string> },
     eventType: string,
     knownToken?: string,
-  ): Promise<void> {
+  ): Promise<'sent' | 'invalid' | 'skipped'> {
     const token =
       knownToken ??
       (
@@ -103,7 +111,7 @@ export class PushService {
       this.logger.warn(
         `Push ${eventType} ignorado: entregador ${delivererId} sem expoPushToken registrado`,
       );
-      return;
+      return 'skipped';
     }
 
     const ok = await this.sendExpoPush(token, message, eventType, delivererId);
@@ -114,6 +122,7 @@ export class PushService {
         data: { expoPushToken: null, pushTokenUpdatedAt: null },
       });
     }
+    return ok;
   }
 
   /** Retorna 'sent' | 'invalid' | 'skipped'. */
@@ -136,8 +145,8 @@ export class PushService {
           title: message.title,
           body: message.body,
           data: message.data,
-          sound: 'default',
-          channelId: 'deliveries',
+          sound: DELIVERY_PUSH_SOUND,
+          channelId: DELIVERY_PUSH_CHANNEL_ID,
           priority: 'high',
         }),
       });

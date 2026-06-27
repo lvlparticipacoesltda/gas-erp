@@ -555,14 +555,15 @@ model SaleStatusLog {
 }
 
 model Delivery {
-  id          String         @id @default(cuid())
-  saleId      String         @unique
-  delivererId String
-  status      DeliveryStatus @default(PENDING)
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id                    String         @id @default(cuid())
+  saleId                String         @unique
+  delivererId           String
+  status                DeliveryStatus @default(PENDING)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  pendingReminderSentAt DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
   sale            Sale                    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   deliverer       Deliverer               @relation(fields: [delivererId], references: [id])

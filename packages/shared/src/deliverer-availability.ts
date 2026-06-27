@@ -11,3 +11,24 @@ export function getDelivererAvailabilityLock(position: {
   }
   return { locked: false, reason: null };
 }
+
+/** Entregador pode receber nova rota na tela de vendas. */
+export function isDelivererAssignableForSale(deliverer: {
+  status: string;
+  user?: { active?: boolean };
+  pendingDeliveryCount?: number;
+}): { assignable: boolean; reason: string | null } {
+  if (deliverer.user?.active === false) {
+    return { assignable: false, reason: 'Inativo' };
+  }
+  if (deliverer.status === 'OFFLINE') {
+    return { assignable: false, reason: 'Indisponível' };
+  }
+  if (deliverer.status === 'ON_DELIVERY') {
+    return { assignable: false, reason: 'Em rota' };
+  }
+  if ((deliverer.pendingDeliveryCount ?? 0) > 0) {
+    return { assignable: false, reason: 'Aguardando aceite de rota' };
+  }
+  return { assignable: true, reason: null };
+}
