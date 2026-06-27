@@ -240,7 +240,7 @@ export default function CustomersPage() {
     setLoading(true);
     try {
       const res = await api<PaginatedResponse<Customer>>(
-        `/customers?search=${encodeURIComponent(debouncedSearch)}&page=${page}&pageSize=${PAGE_SIZE}`,
+        `/customers?storeId=${storeId}&search=${encodeURIComponent(debouncedSearch)}&page=${page}&pageSize=${PAGE_SIZE}`,
         {},
         getToken(),
       );
@@ -276,6 +276,7 @@ export default function CustomersPage() {
       await api('/customers', {
         method: 'POST',
         body: JSON.stringify({
+          storeId,
           name: form.name,
           phone: form.phone,
           document: form.document,
@@ -294,7 +295,7 @@ export default function CustomersPage() {
     if (!editing) return;
     setFormError('');
     try {
-      await api(`/customers/${editing.id}`, {
+      await api(`/customers/${editing.id}?storeId=${storeId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           name: editForm.name,
@@ -337,7 +338,7 @@ export default function CustomersPage() {
 
   return (
     <>
-      <PageHeader title="Clientes" subtitle="Cadastro e busca de clientes da rede" />
+      <PageHeader title="Clientes" subtitle="Cadastro e busca de clientes desta unidade" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

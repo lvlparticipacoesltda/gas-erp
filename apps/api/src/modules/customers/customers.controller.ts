@@ -12,11 +12,12 @@ export class CustomersController {
   @Get()
   findAll(
     @CurrentUser() user: AuthUser,
+    @Query('storeId') storeId: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.customersService.findAll(user, search, Number(page) || 1, Number(pageSize) || 20);
+    return this.customersService.findAll(user, storeId, search, Number(page) || 1, Number(pageSize) || 20);
   }
 
   @Get(':id/product-prices/map')
@@ -80,12 +81,22 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
-    return this.customersService.update(user, id, body);
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('storeId') storeId: string | undefined,
+    @Body() body: unknown,
+  ) {
+    return this.customersService.update(user, id, storeId, body);
   }
 
   @Post(':id/addresses')
-  addAddress(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
-    return this.customersService.addAddress(user, id, body);
+  addAddress(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('storeId') storeId: string | undefined,
+    @Body() body: unknown,
+  ) {
+    return this.customersService.addAddress(user, id, storeId, body);
   }
 }

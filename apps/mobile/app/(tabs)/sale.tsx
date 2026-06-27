@@ -184,14 +184,14 @@ export default function NewSaleScreen() {
 
   const searchCustomers = useCallback(async (query: string) => {
     const term = query.trim();
-    if (!term) {
+    if (!term || !storeId) {
       setCustomers([]);
       return;
     }
     setSearchingCustomers(true);
     try {
       const res = await api<PaginatedResponse<Customer>>(
-        `/customers?search=${encodeURIComponent(term)}&pageSize=10`,
+        `/customers?storeId=${storeId}&search=${encodeURIComponent(term)}&pageSize=10`,
       );
       setCustomers(res.data);
     } catch {
@@ -199,7 +199,7 @@ export default function NewSaleScreen() {
     } finally {
       setSearchingCustomers(false);
     }
-  }, []);
+  }, [storeId]);
 
   useEffect(() => {
     if (selectedCustomer) return;
@@ -328,6 +328,7 @@ export default function NewSaleScreen() {
       const created = await api<Customer>('/customers', {
         method: 'POST',
         body: {
+          storeId,
           name: newCustomer.name.trim(),
           phone: newCustomer.phone.trim() || undefined,
           addresses: [

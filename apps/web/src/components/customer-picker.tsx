@@ -86,10 +86,12 @@ const emptyQuickAddress: CustomerAddressForm = {
 };
 
 function QuickCustomerRegister({
+  storeId,
   defaultName,
   onCreated,
   onCancel,
 }: {
+  storeId: string;
   defaultName?: string;
   onCreated: (customer: SaleCustomer) => void;
   onCancel: () => void;
@@ -114,6 +116,7 @@ function QuickCustomerRegister({
         {
           method: 'POST',
           body: JSON.stringify({
+            storeId,
             name: name.trim(),
             phone: phone.trim() || undefined,
             addresses: [customerAddressPayload(address)],
@@ -161,7 +164,7 @@ function QuickCustomerRegister({
 }
 
 export function CustomerPicker({
-  storeId: _storeId,
+  storeId,
   value,
   onChange,
 }: {
@@ -196,7 +199,7 @@ export function CustomerPicker({
     let cancelled = false;
     setLoading(true);
     api<{ data: SaleCustomer[] }>(
-      `/customers?search=${encodeURIComponent(debouncedSearch)}&pageSize=15`,
+      `/customers?storeId=${encodeURIComponent(storeId)}&search=${encodeURIComponent(debouncedSearch)}&pageSize=15`,
       {},
       getToken(),
     )
@@ -216,7 +219,7 @@ export function CustomerPicker({
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch]);
+  }, [debouncedSearch, storeId]);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -475,6 +478,7 @@ export function CustomerPicker({
       {registerOpen && (
         <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-md ring-1 ring-slate-100">
           <QuickCustomerRegister
+            storeId={storeId}
             defaultName={search.trim() || debouncedSearch}
             onCreated={selectCustomer}
             onCancel={() => setRegisterOpen(false)}

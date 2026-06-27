@@ -10,10 +10,27 @@ import { paginate, paginatedResult } from '../../common/utils/pagination';
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(user: AuthUser, search?: string, page = 1, pageSize = 20) {
+  private async getCustomerInOrg(user: AuthUser, id: string, storeId?: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: {
+        id,
+        organizationId: user.organizationId,
+        ...(storeId ? { storeId } : {}),
+      },
+      include: { category: true, addresses: true },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    return customer;
+  }
+
+  async findAll(user: AuthUser, storeId: string, search?: string, page = 1, pageSize = 20) {
+    if (!storeId) throw new BadRequestException('storeId é obrigatório');
+    assertStoreAccess(user, storeId);
+
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
     const where = {
       organizationId: user.organizationId,
+      storeId,
       ...(search
         ? {
             OR: [
@@ -45,16 +62,11 @@ export class CustomersService {
     pageSize = 10,
   ) {
     if (storeId) assertStoreAccess(user, storeId);
-
-    const customer = await this.prisma.customer.findFirst({
-      where: { id, organizationId: user.organizationId },
-      include: { category: true, addresses: true },
-    });
-    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    const customer = await this.getCustomerInOrg(user, id, storeId);
 
     const saleWhere = {
       customerId: id,
-      ...(storeId ? { storeId } : {}),
+      storeId: storeId ?? customer.storeId,
       status: { not: SaleStatus.CANCELLED },
     };
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
@@ -81,9 +93,17 @@ export class CustomersService {
 
   async create(user: AuthUser, input: unknown) {
     const data = createCustomerSchema.parse(input);
+    assertStoreAccess(user, data.storeId);
+
+    const store = await this.prisma.store.findFirst({
+      where: { id: data.storeId, organizationId: user.organizationId },
+    });
+    if (!store) throw new BadRequestException('Loja não encontrada');
+
     return this.prisma.customer.create({
       data: {
         organizationId: user.organizationId,
+        storeId: data.storeId,
         name: data.name,
         email: data.email || null,
         phone: data.phone,
@@ -98,13 +118,15 @@ export class CustomersService {
     });
   }
 
-  async update(user: AuthUser, id: string, input: unknown) {
-    const customer = await this.findOne(user, id);
+  async update(user: AuthUser, id: string, storeId: string | undefined, input: unknown) {
+    const customer = await this.getCustomerInOrg(user, id, storeId);
+    if (storeId) assertStoreAccess(user, storeId);
+
     const data = updateCustomerSchema.parse(input);
     const { addresses, ...customerData } = data;
 
     await this.prisma.customer.update({
-      where: { id },
+      where: { id: customer.id },
       data: {
         ...(customerData.name !== undefined ? { name: customerData.name } : {}),
         ...(customerData.email !== undefined ? { email: customerData.email || null } : {}),
@@ -130,11 +152,11 @@ export class CustomersService {
       }
     }
 
-    return this.findOne(user, id);
+    return this.findOne(user, id, storeId ?? customer.storeId);
   }
 
-  async addAddress(user: AuthUser, customerId: string, input: unknown) {
-    await this.findOne(user, customerId);
+  async addAddress(user: AuthUser, customerId: string, storeId: string | undefined, input: unknown) {
+    await this.getCustomerInOrg(user, customerId, storeId);
     const data = customerAddressSchema.parse(input);
     return this.prisma.customerAddress.create({
       data: { ...data, customerId },
@@ -144,7 +166,7 @@ export class CustomersService {
   async listProductPrices(user: AuthUser, customerId: string, storeId: string) {
     if (!storeId) throw new BadRequestException('storeId é obrigatório');
     assertStoreAccess(user, storeId);
-    await this.findOne(user, customerId);
+    await this.getCustomerInOrg(user, customerId, storeId);
 
     const rows = await this.prisma.customerProductPrice.findMany({
       where: { customerId, storeId },
@@ -184,7 +206,7 @@ export class CustomersService {
   ) {
     if (!storeId) throw new BadRequestException('storeId é obrigatório');
     assertStoreAccess(user, storeId);
-    await this.findOne(user, customerId);
+    await this.getCustomerInOrg(user, customerId, storeId);
     const data = upsertCustomerProductPriceSchema.parse(input);
 
     const product = await this.prisma.product.findFirst({
@@ -233,7 +255,7 @@ export class CustomersService {
     productId: string,
   ) {
     assertStoreAccess(user, storeId);
-    await this.findOne(user, customerId);
+    await this.getCustomerInOrg(user, customerId, storeId);
 
     const existing = await this.prisma.customerProductPrice.findUnique({
       where: {
@@ -246,9 +268,9 @@ export class CustomersService {
     return { ok: true };
   }
 
-  /** Mapa productId → preço para uso na nova venda. */
   async productPriceMap(user: AuthUser, customerId: string, storeId: string) {
     assertStoreAccess(user, storeId);
+    await this.getCustomerInOrg(user, customerId, storeId);
     const rows = await this.listProductPrices(user, customerId, storeId);
     return Object.fromEntries(rows.map((row) => [row.productId, row.price]));
   }

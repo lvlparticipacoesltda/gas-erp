@@ -574,10 +574,11 @@ export class SalesService {
         where: {
           id: data.customerId,
           organizationId: user.organizationId,
+          storeId: data.storeId,
         },
       });
       if (!customer) {
-        throw new BadRequestException('Cliente não encontrado.');
+        throw new BadRequestException('Cliente não encontrado nesta loja.');
       }
     }
 
@@ -858,10 +859,11 @@ export class SalesService {
         where: {
           id: data.customerId,
           organizationId: user.organizationId,
+          storeId: data.storeId,
         },
       });
       if (!customer) {
-        throw new BadRequestException('Cliente não encontrado.');
+        throw new BadRequestException('Cliente não encontrado nesta loja.');
       }
     }
 

@@ -144,6 +144,7 @@ async function main() {
     create: {
       id: 'seed-customer-1',
       organizationId: org.id,
+      storeId: stores[0].id,
       categoryId: category.id,
       name: 'Maria Silva',
       phone: '13999990001',

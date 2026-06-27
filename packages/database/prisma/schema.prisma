@@ -156,6 +156,7 @@ model Store {
   purchaseInvoices    PurchaseInvoice[]
   paymentMethods      StorePaymentMethod[]
   customerProductPrices CustomerProductPrice[]
+  customers           Customer[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -245,6 +246,7 @@ model CustomerCategory {
 model Customer {
   id             String   @id @default(cuid())
   organizationId String
+  storeId        String
   categoryId     String?
   name           String
   email          String?
@@ -256,14 +258,16 @@ model Customer {
   updatedAt      DateTime @updatedAt
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
   category     CustomerCategory?  @relation(fields: [categoryId], references: [id])
   addresses    CustomerAddress[]
   sales        Sale[]
   productPrices CustomerProductPrice[]
 
   @@index([organizationId])
+  @@index([storeId])
+  @@index([storeId, name])
   @@index([phone])
-  @@index([name])
 }
 
 model CustomerAddress {
