@@ -8,9 +8,11 @@ const TICK_MS = 30_000;
 export function RouteElapsed({
   startedAt,
   className = 'mt-1 text-xs font-semibold text-amber-700',
+  inline = false,
 }: {
   startedAt: string | null | undefined;
   className?: string;
+  inline?: boolean;
 }) {
   const [now, setNow] = useState(() => new Date());
 
@@ -25,5 +27,9 @@ export function RouteElapsed({
   const label = formatActiveRouteLabel(startedAt, now);
   if (!label) return null;
 
-  return <p className={className}>⏱ {label}</p>;
+  const text = `⏱ ${label}`;
+  if (inline) {
+    return <span className={className}>{text}</span>;
+  }
+  return <p className={className}>{text}</p>;
 }

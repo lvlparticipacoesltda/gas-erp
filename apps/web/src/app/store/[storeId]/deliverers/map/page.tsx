@@ -6,18 +6,11 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { MapPin, RefreshCw } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
-import { Badge } from '@/components/ui';
+import { DelivererMapCard, DelivererOfflineCard } from '@/components/deliverer-map-card';
 import { api, getStoredUser, getToken } from '@/lib/api';
-import { RouteElapsed } from '@/components/route-elapsed';
-import { PendingDeliveriesInfo } from '@/components/pending-deliveries-info';
 import { buildStoreHref } from '@/lib/store-nav';
 import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
-import {
-  canToggleDelivererAvailability,
-  DELIVERER_STATUS_LABELS,
-  DELIVERY_STATUS_LABELS,
-  getDelivererPositionBadge,
-} from '@gas-erp/shared';
+import { canToggleDelivererAvailability } from '@gas-erp/shared';
 
 const REFRESH_INTERVAL_MS = 15_000;
 
@@ -39,80 +32,6 @@ const DelivererPositionsMap = dynamic(
     ),
   },
 );
-
-function BatteryInfo({
-  level,
-  charging,
-}: {
-  level?: number | null;
-  charging?: boolean | null;
-}) {
-  if (level == null) return null;
-  return (
-    <p className="mt-1 text-xs text-slate-500">
-      🔋 {level}%{charging ? ' · carregando' : ''}
-    </p>
-  );
-}
-
-function positionStatusLabel(p: DelivererPosition): string {
-  if (p.stale) return `Desatualizado · ${formatTime(p.lastSeenAt)}`;
-  if (p.isLive) return 'Ao vivo';
-  return `Última posição · ${formatTime(p.lastSeenAt)}`;
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return 'Sem registro';
-  return new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
-function AvailabilityToggle({
-  available,
-  locked,
-  saving,
-  onToggle,
-}: {
-  available: boolean;
-  locked: boolean;
-  saving: boolean;
-  onToggle: (next: boolean) => void;
-}) {
-  if (locked) {
-    return (
-      <p className="mt-2 text-xs text-slate-500">
-        Disponibilidade bloqueada enquanto houver entrega em rota.
-      </p>
-    );
-  }
-
-  return (
-    <div
-      className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <span className="text-xs font-medium text-slate-700">Disponibilidade</span>
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => onToggle(!available)}
-        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
-          available
-            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-            : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-        }`}
-        aria-pressed={available}
-      >
-        {saving ? 'Salvando…' : available ? 'Disponível' : 'Indisponível'}
-      </button>
-    </div>
-  );
-}
 
 export default function DelivererMapPage() {
   const { storeId } = useParams<{ storeId: string }>();
@@ -225,7 +144,6 @@ export default function DelivererMapPage() {
 
   return (
     <div className="-m-6 flex h-[calc(100vh-3rem)] min-h-0 flex-col lg:h-[calc(100vh)] lg:flex-row">
-      {/* Mapa em tela cheia (área à esquerda) */}
       <div className="relative min-h-[45vh] flex-1 lg:min-h-0">
         <DelivererPositionsMap
           positions={positions}
@@ -235,7 +153,6 @@ export default function DelivererMapPage() {
         />
       </div>
 
-      {/* Painel lateral direito */}
       <aside className="flex h-[min(55vh,520px)] w-full shrink-0 flex-col border-t border-slate-200 bg-white shadow-xl lg:h-full lg:w-[min(100%,400px)] lg:max-w-md lg:border-l lg:border-t-0">
         <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
           <div className="flex items-start justify-between gap-3">
@@ -301,69 +218,18 @@ export default function DelivererMapPage() {
               <p className="text-xs text-slate-400">Atualização automática a cada 15 segundos.</p>
             </li>
           )}
-          {positions.map((p) => {
-            const hasCoords = p.latitude !== null && p.longitude !== null;
-            const isSelected = selectedId === p.delivererId;
-            const badge = getDelivererPositionBadge(p);
-            const availabilityLocked = p.delivererStatus === 'ON_DELIVERY';
-            return (
-              <li key={p.delivererId}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(p.delivererId)}
-                  className={`w-full px-4 py-3 text-left transition-colors ${
-                    isSelected ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : 'hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-900">{p.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus}
-                      </p>
-                    </div>
-                    <Badge tone={badge.tone}>{badge.label}</Badge>
-                  </div>
-                  {p.deliveryStatus === 'IN_PROGRESS' && (
-                    <>
-                      <p className="mt-1.5 text-xs text-slate-600">
-                        Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
-                      </p>
-                      <RouteElapsed startedAt={p.routeStartedAt} />
-                      {p.customerName && (
-                        <p className="mt-1 text-xs text-slate-600">Cliente: {p.customerName}</p>
-                      )}
-                      {p.deliveryAddress && (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{p.deliveryAddress}</p>
-                      )}
-                    </>
-                  )}
-                  {(p.pendingDeliveries?.length ?? 0) > 0 && (
-                    <div className="mt-2">
-                      <PendingDeliveriesInfo pendingDeliveries={p.pendingDeliveries!} />
-                    </div>
-                  )}
-                  {hasCoords && (
-                    <p className="mt-1 text-xs text-slate-500">{positionStatusLabel(p)}</p>
-                  )}
-                  <BatteryInfo level={p.batteryLevel} charging={p.batteryCharging} />
-                  {p.stores.length > 1 && (
-                    <p className="mt-1 text-xs text-slate-400">
-                      Unidades: {p.stores.map((s) => s.name).join(', ')}
-                    </p>
-                  )}
-                  {canToggleAvailability && (
-                    <AvailabilityToggle
-                      available={p.status !== 'OFFLINE'}
-                      locked={availabilityLocked}
-                      saving={savingId === p.delivererId}
-                      onToggle={(next) => setAvailability(p.delivererId, next)}
-                    />
-                  )}
-                </button>
-              </li>
-            );
-          })}
+          {positions.map((p) => (
+            <li key={p.delivererId}>
+              <DelivererMapCard
+                position={p}
+                isSelected={selectedId === p.delivererId}
+                onSelect={() => setSelectedId(p.delivererId)}
+                canToggleAvailability={canToggleAvailability}
+                saving={savingId === p.delivererId}
+                onToggleAvailability={(next) => setAvailability(p.delivererId, next)}
+              />
+            </li>
+          ))}
         </ul>
 
         {canToggleAvailability && offlineDeliverers.length > 0 && (
@@ -373,14 +239,11 @@ export default function DelivererMapPage() {
             </h2>
             <ul className="max-h-40 divide-y divide-slate-100 overflow-y-auto">
               {offlineDeliverers.map((d) => (
-                <li key={d.id} className="px-4 py-3">
-                  <p className="font-medium text-slate-900">{d.user.name}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">Não exibido no mapa</p>
-                  <AvailabilityToggle
-                    available={false}
-                    locked={false}
+                <li key={d.id}>
+                  <DelivererOfflineCard
+                    name={d.user.name}
                     saving={savingId === d.id}
-                    onToggle={(next) => setAvailability(d.id, next)}
+                    onToggleAvailability={(next) => setAvailability(d.id, next)}
                   />
                 </li>
               ))}
