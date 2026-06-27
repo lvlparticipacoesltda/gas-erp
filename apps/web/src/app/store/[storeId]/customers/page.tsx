@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { BrandLoader, PageLoader } from '@/components/brand-loader';
 import { CustomerAddressFields, customerAddressPayload, type CustomerAddressForm } from '@/components/customer-address-fields';
+import { CustomerProductPricesEditor } from '@/components/customer-product-prices-editor';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { Pagination } from '@/components/pagination';
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
@@ -351,6 +352,7 @@ export default function CustomersPage() {
                 value={editForm}
                 onChange={(address) => setEditForm({ ...editForm, ...address })}
               />
+              <CustomerProductPricesEditor customerId={editing.id} storeId={storeId} />
               <div className="flex gap-2 pt-2">
                 <Button type="submit">Salvar</Button>
                 <Button type="button" variant="secondary" onClick={() => { setEditing(null); setFormError(''); }}>Cancelar</Button>

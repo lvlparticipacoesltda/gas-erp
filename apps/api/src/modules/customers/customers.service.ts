@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { customerAddressSchema, createCustomerSchema, updateCustomerSchema } from '@gas-erp/shared';
-import { AuthUser } from '@gas-erp/shared';
+import { customerAddressSchema, createCustomerSchema, updateCustomerSchema, upsertCustomerProductPriceSchema } from '@gas-erp/shared';
+import { AuthUser, toNumber } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 
@@ -139,5 +139,115 @@ export class CustomersService {
     return this.prisma.customerAddress.create({
       data: { ...data, customerId },
     });
+  }
+
+  async listProductPrices(user: AuthUser, customerId: string, storeId: string) {
+    assertStoreAccess(user, storeId);
+    await this.findOne(user, customerId);
+
+    const rows = await this.prisma.customerProductPrice.findMany({
+      where: { customerId, storeId },
+      include: {
+        product: { select: { id: true, name: true, sku: true } },
+      },
+      orderBy: { product: { name: 'asc' } },
+    });
+
+    const productIds = rows.map((row) => row.productId);
+    const storeSettings = productIds.length
+      ? await this.prisma.productStoreSetting.findMany({
+          where: { storeId, productId: { in: productIds } },
+          select: { productId: true, price: true },
+        })
+      : [];
+    const defaultPriceByProduct = new Map(
+      storeSettings.map((setting) => [setting.productId, toNumber(setting.price)]),
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      productId: row.productId,
+      productName: row.product.name,
+      productSku: row.product.sku,
+      storeId: row.storeId,
+      price: toNumber(row.price),
+      defaultStorePrice: defaultPriceByProduct.get(row.productId) ?? null,
+    }));
+  }
+
+  async upsertProductPrice(
+    user: AuthUser,
+    customerId: string,
+    storeId: string,
+    input: unknown,
+  ) {
+    assertStoreAccess(user, storeId);
+    await this.findOne(user, customerId);
+    const data = upsertCustomerProductPriceSchema.parse(input);
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: data.productId, organizationId: user.organizationId, active: true },
+    });
+    if (!product) throw new NotFoundException('Produto não encontrado');
+
+    const row = await this.prisma.customerProductPrice.upsert({
+      where: {
+        customerId_productId_storeId: {
+          customerId,
+          productId: data.productId,
+          storeId,
+        },
+      },
+      update: { price: data.price },
+      create: {
+        customerId,
+        productId: data.productId,
+        storeId,
+        price: data.price,
+      },
+      include: { product: { select: { id: true, name: true, sku: true } } },
+    });
+
+    const storeSetting = await this.prisma.productStoreSetting.findUnique({
+      where: { productId_storeId: { productId: data.productId, storeId } },
+      select: { price: true },
+    });
+
+    return {
+      id: row.id,
+      productId: row.productId,
+      productName: row.product.name,
+      productSku: row.product.sku,
+      storeId: row.storeId,
+      price: toNumber(row.price),
+      defaultStorePrice: storeSetting ? toNumber(storeSetting.price) : null,
+    };
+  }
+
+  async deleteProductPrice(
+    user: AuthUser,
+    customerId: string,
+    storeId: string,
+    productId: string,
+  ) {
+    assertStoreAccess(user, storeId);
+    await this.findOne(user, customerId);
+
+    const existing = await this.prisma.customerProductPrice.findUnique({
+      where: {
+        customerId_productId_storeId: { customerId, productId, storeId },
+      },
+    });
+    if (!existing) throw new NotFoundException('Preço especial não encontrado');
+
+    await this.prisma.customerProductPrice.delete({ where: { id: existing.id } });
+    return { ok: true };
+  }
+
+  /** Mapa productId → preço para uso na nova venda. */
+  async productPriceMap(user: AuthUser, customerId: string, storeId: string) {
+    assertStoreAccess(user, storeId);
+    const rows = await this.listProductPrices(user, customerId, storeId);
+    return Object.fromEntries(rows.map((row) => [row.productId, row.price]));
   }
 }

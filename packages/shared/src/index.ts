@@ -4,6 +4,7 @@ export * from './schemas/auth';
 export * from './schemas/store';
 export * from './schemas/user';
 export * from './schemas/customer';
+export * from './schemas/customer-product-price';
 export { customerAddressSchema } from './schemas/customer';
 export * from './schemas/product';
 export * from './schemas/supplier';

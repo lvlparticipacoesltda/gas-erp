@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { JwtAuthGuard } from '../../common/guards';
 import { CurrentUser } from '../../common/decorators';
@@ -17,6 +17,44 @@ export class CustomersController {
     @Query('pageSize') pageSize?: string,
   ) {
     return this.customersService.findAll(user, search, Number(page) || 1, Number(pageSize) || 20);
+  }
+
+  @Get(':id/product-prices/map')
+  productPriceMap(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('storeId') storeId: string,
+  ) {
+    return this.customersService.productPriceMap(user, id, storeId);
+  }
+
+  @Get(':id/product-prices')
+  listProductPrices(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('storeId') storeId: string,
+  ) {
+    return this.customersService.listProductPrices(user, id, storeId);
+  }
+
+  @Put(':id/product-prices')
+  upsertProductPrice(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('storeId') storeId: string,
+    @Body() body: unknown,
+  ) {
+    return this.customersService.upsertProductPrice(user, id, storeId, body);
+  }
+
+  @Delete(':id/product-prices/:productId')
+  deleteProductPrice(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('productId') productId: string,
+    @Query('storeId') storeId: string,
+  ) {
+    return this.customersService.deleteProductPrice(user, id, storeId, productId);
   }
 
   @Get(':id')

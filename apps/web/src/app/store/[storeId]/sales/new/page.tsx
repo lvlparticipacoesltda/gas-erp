@@ -56,6 +56,7 @@ export default function NewSalePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
+  const [customerPriceByProduct, setCustomerPriceByProduct] = useState<Record<string, number>>({});
   const [customerPick, setCustomerPick] = useState<CustomerPickerValue>({ kind: 'none' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -128,6 +129,46 @@ export default function NewSalePage() {
       })
       .finally(() => setReady(true));
   }, [storeId]);
+
+  useEffect(() => {
+    if (!draft.customerId) {
+      setCustomerPriceByProduct({});
+      return;
+    }
+    let cancelled = false;
+    api<Record<string, number>>(
+      `/customers/${draft.customerId}/product-prices/map?storeId=${storeId}`,
+      {},
+      getToken(),
+    )
+      .then((map) => {
+        if (!cancelled) setCustomerPriceByProduct(map);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerPriceByProduct({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.customerId, storeId]);
+
+  function storeProductPrice(product?: Product): number {
+    return parsePrice(product?.storeSettings?.[0]?.price);
+  }
+
+  function resolveProductUnitPrice(productId: string): number {
+    const custom = customerPriceByProduct[productId];
+    if (custom != null) return custom;
+    const product = products.find((p) => p.id === productId);
+    return storeProductPrice(product);
+  }
+
+  useEffect(() => {
+    if (!draft.productId) return;
+    const unitPrice = resolveProductUnitPrice(draft.productId);
+    setDraft((d) => (d.unitPrice === unitPrice ? d : { ...d, unitPrice }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recalc when customer prices or catalog load
+  }, [customerPriceByProduct, draft.productId, products]);
 
   const gdpPaymentMethod = paymentMethods.find((m) => m.systemCode === 'GDP')
     ?? null;
@@ -204,11 +245,10 @@ export default function NewSalePage() {
   }
 
   function selectProduct(id: string) {
-    const product = products.find((p) => p.id === id);
     setDraft((d) => ({
       ...d,
       productId: id,
-      unitPrice: parsePrice(product?.storeSettings?.[0]?.price),
+      unitPrice: resolveProductUnitPrice(id),
     }));
   }
 
@@ -414,7 +454,11 @@ export default function NewSalePage() {
             <Card className="lg:col-span-2">
               <h2 className="mb-4 font-semibold">Produtos</h2>
               <div className="grid gap-3 sm:grid-cols-2">
-                {products.map((p) => (
+                {products.map((p) => {
+                  const storePrice = storeProductPrice(p);
+                  const customerPrice = customerPriceByProduct[p.id];
+                  const displayPrice = customerPrice ?? storePrice;
+                  return (
                   <button
                     key={p.id}
                     type="button"
@@ -425,10 +469,20 @@ export default function NewSalePage() {
                   >
                     <div className="font-medium">{p.name}</div>
                     <div className="mt-1 text-sm text-brand-dark">
-                      {formatCurrency(parsePrice(p.storeSettings?.[0]?.price))}
+                      {customerPrice != null ? (
+                        <>
+                          <span className="text-slate-400 line-through">{formatCurrency(storePrice)}</span>
+                          {' '}
+                          {formatCurrency(displayPrice)}
+                          <span className="ml-1 text-xs text-brand">preço cliente</span>
+                        </>
+                      ) : (
+                        formatCurrency(displayPrice)
+                      )}
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
 
               {selectedProduct && (
