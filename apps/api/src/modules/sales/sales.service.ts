@@ -1060,9 +1060,6 @@ export class SalesService {
       },
       include: {
         user: { select: { active: true } },
-        _count: {
-          select: { deliveries: { where: { status: DeliveryStatus.PENDING } } },
-        },
       },
     });
     if (!deliverer) {
@@ -1072,7 +1069,6 @@ export class SalesService {
     const { assignable, reason } = isDelivererAssignableForSale({
       status: deliverer.status,
       user: deliverer.user,
-      pendingDeliveryCount: deliverer._count.deliveries,
     });
     if (!assignable) {
       throw new BadRequestException(

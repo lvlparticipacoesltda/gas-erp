@@ -24,11 +24,5 @@ export function isDelivererAssignableForSale(deliverer: {
   if (deliverer.status === 'OFFLINE') {
     return { assignable: false, reason: 'Indisponível' };
   }
-  if (deliverer.status === 'ON_DELIVERY') {
-    return { assignable: false, reason: 'Em rota' };
-  }
-  if ((deliverer.pendingDeliveryCount ?? 0) > 0) {
-    return { assignable: false, reason: 'Aguardando aceite de rota' };
-  }
   return { assignable: true, reason: null };
 }

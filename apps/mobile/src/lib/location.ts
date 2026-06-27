@@ -146,21 +146,14 @@ async function getActiveDeliveryMode(): Promise<boolean> {
   return !!deliveryId;
 }
 
-/** Garante que o task de background está ativo durante rota; para presença usa só foreground. */
+/** Garante que o task de background está ativo durante rota ou presença (disponível). */
 async function ensureBackgroundTaskRunning(): Promise<void> {
   const token = await getToken();
-  if (!token) return;
+  if (!token || presenceSharingPaused) return;
 
   const onDelivery = await getActiveDeliveryMode();
-  if (!onDelivery) {
-    if (await isTrackingActive()) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
-    }
-    return;
-  }
-
   if (!(await isTrackingActive())) {
-    await ensureLocationUpdates(true).catch(() => undefined);
+    await ensureLocationUpdates(onDelivery).catch(() => undefined);
   }
 }
 
@@ -178,8 +171,7 @@ function handleAppStateChange(state: AppStateStatus): void {
 
   void (async () => {
     await sendPresenceNow();
-    const onDelivery = await getActiveDeliveryMode();
-    if (onDelivery) {
+    if (!presenceSharingPaused) {
       await ensureBackgroundTaskRunning();
     } else if (await isTrackingActive()) {
       await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
@@ -333,13 +325,17 @@ function buildTrackingOptions(
   };
 
   if (Platform.OS === 'android') {
-    if (onDelivery) {
-      base.foregroundService = {
-        notificationTitle: 'Entrega em andamento',
-        notificationBody: 'Compartilhando sua localização com a loja durante a rota.',
-        notificationColor: '#F97316',
-      };
-    }
+    base.foregroundService = onDelivery
+      ? {
+          notificationTitle: 'Entrega em andamento',
+          notificationBody: 'Compartilhando sua localização com a loja durante a rota.',
+          notificationColor: '#F97316',
+        }
+      : {
+          notificationTitle: 'Compartilhando localização',
+          notificationBody: 'Compartilhando localização com a loja',
+          notificationColor: '#F97316',
+        };
   } else if (backgroundGranted) {
     base.showsBackgroundLocationIndicator = true;
   }
@@ -433,9 +429,12 @@ export async function startPresenceTracking(): Promise<PermissionResult> {
   if (AppState.currentState === 'active') {
     startForegroundPresenceLoop();
   }
-  const fg = await Location.getForegroundPermissionsAsync();
   const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
-  return { foreground: fg.status === 'granted', background: bg?.status === 'granted' };
+  if (bg?.status === 'granted') {
+    return ensureLocationUpdates(false);
+  }
+  const fg = await Location.getForegroundPermissionsAsync();
+  return { foreground: fg.status === 'granted', background: false };
 }
 
 /**
@@ -467,18 +466,12 @@ export async function stopAllTracking(): Promise<void> {
   }
 }
 
-/** Reinicia rastreamento em background somente durante rota ativa. */
+/** Reinicia rastreamento em background durante rota ou presença (disponível). */
 async function ensurePresenceTrackingFresh(): Promise<void> {
   if (presenceSharingPaused) return;
   const onDelivery = await getActiveDeliveryMode();
-  if (!onDelivery) {
-    if (await isTrackingActive()) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
-    }
-    return;
-  }
   if (!(await isTrackingActive())) {
-    await ensureLocationUpdates(true).catch(() => undefined);
+    await ensureLocationUpdates(onDelivery).catch(() => undefined);
   }
 }
 

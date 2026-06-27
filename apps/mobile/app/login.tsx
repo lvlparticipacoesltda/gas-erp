@@ -103,9 +103,9 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.navy },
+  safe: { flex: 1, backgroundColor: colors.surface },
   flex: { flex: 1 },
-  center: { flex: 1, backgroundColor: colors.navy, justifyContent: 'center' },
+  center: { flex: 1, backgroundColor: colors.surface, justifyContent: 'center' },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.xxl },
   brand: { alignItems: 'center', gap: spacing.sm },
   form: {
