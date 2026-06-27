@@ -163,14 +163,15 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
     <div className="space-y-6">
       <Card className="p-5">
         <h2 className="mb-4 text-lg font-semibold text-slate-900">Relatório de vendas</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
+          <div className="min-w-0">
             <Label>
               Data <span className="text-red-500">*</span>
             </Label>
-            <div className="mt-1 flex gap-2">
+            <div className="mt-1 flex min-w-0 gap-1.5">
               <Input
                 type="date"
+                className="min-w-0 flex-1"
                 value={draft.dateFrom}
                 max={draft.dateTo}
                 onChange={(e) =>
@@ -183,6 +184,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               />
               <Input
                 type="date"
+                className="min-w-0 flex-1"
                 value={draft.dateTo}
                 min={draft.dateFrom}
                 max={todayDateKey()}
@@ -196,7 +198,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               />
             </div>
           </div>
-          <div>
+          <div className="min-w-0">
             <Label>Status</Label>
             <Select
               className="mt-1 w-full"
@@ -211,7 +213,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               ))}
             </Select>
           </div>
-          <div>
+          <div className="min-w-0">
             <Label>Entregador</Label>
             <Input
               className="mt-1"
@@ -220,7 +222,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               onChange={(e) => setDraft((prev) => ({ ...prev, delivererSearch: e.target.value }))}
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <Label>Cliente</Label>
             <Input
               className="mt-1"
@@ -229,7 +231,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               onChange={(e) => setDraft((prev) => ({ ...prev, customerSearch: e.target.value }))}
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <Label>Forma de pagamento</Label>
             <Select
               className="mt-1 w-full"
