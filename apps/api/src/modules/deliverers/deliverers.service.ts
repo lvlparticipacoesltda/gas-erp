@@ -3,7 +3,7 @@ import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@gas-erp/database';
 import { DeliveryStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS } from '@gas-erp/shared';
+import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS, canManageDeliverers, canToggleDelivererAvailability } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
@@ -379,6 +379,29 @@ export class DeliverersService {
 
   async update(user: AuthUser, id: string, input: unknown) {
     const data = updateDelivererSchema.parse(input);
+    const canManage = canManageDeliverers(user.role);
+    const canToggleAvailability = canToggleDelivererAvailability(user.role, user.permissions);
+
+    if (!canManage && !canToggleAvailability) {
+      throw new ForbiddenException('Sem permissão para alterar entregadores');
+    }
+
+    if (!canManage && canToggleAvailability) {
+      const restricted =
+        data.storeIds !== undefined
+        || data.active !== undefined
+        || data.name !== undefined
+        || data.email !== undefined
+        || data.phone !== undefined
+        || data.password !== undefined;
+      if (restricted) {
+        throw new ForbiddenException('Atendentes só podem alterar a disponibilidade do entregador');
+      }
+      if (data.status === undefined) {
+        throw new BadRequestException('Informe o status (disponível ou indisponível)');
+      }
+    }
+
     const deliverer = await this.prisma.deliverer.findUnique({
       where: { id },
       include: { stores: { include: { store: true } } },
@@ -517,7 +540,15 @@ export class DeliverersService {
       throw new ForbiddenException('Apenas entregadores podem registrar push token');
     }
 
-    const { token } = registerPushTokenSchema.parse(input);
+    const parsed = registerPushTokenSchema.safeParse(input);
+    if (!parsed.success) {
+      this.logger.warn(
+        `Push token rejeitado (usuário ${user.id}): ${parsed.error.issues.map((i) => i.message).join('; ')}`,
+      );
+      throw new BadRequestException('Token Expo Push inválido');
+    }
+
+    const { token } = parsed.data;
     const deliverer = await this.prisma.deliverer.findUnique({ where: { userId: user.id } });
     if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
 

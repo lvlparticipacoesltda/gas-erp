@@ -56,7 +56,7 @@ export class DeliverersController {
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('ORG_MASTER', 'PLATFORM_ADMIN', 'STORE_MANAGER')
+  @Roles('ORG_MASTER', 'PLATFORM_ADMIN', 'STORE_MANAGER', 'ATTENDANT')
   update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     return this.service.update(user, id, body);
   }

@@ -13,7 +13,7 @@ import { PendingDeliveriesInfo } from '@/components/pending-deliveries-info';
 import { buildStoreHref } from '@/lib/store-nav';
 import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
 import {
-  canManageDeliverers,
+  canToggleDelivererAvailability,
   DELIVERER_STATUS_LABELS,
   DELIVERY_STATUS_LABELS,
   getDelivererPositionBadge,
@@ -122,9 +122,9 @@ export default function DelivererMapPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [canManage] = useState(() => {
+  const [canToggleAvailability] = useState(() => {
     const user = getStoredUser<AuthUser>();
-    return user ? canManageDeliverers(user.role) : false;
+    return user ? canToggleDelivererAvailability(user.role, user.permissions) : false;
   });
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -147,10 +147,10 @@ export default function DelivererMapPage() {
 
   const loadAll = useCallback(async () => {
     await load();
-    if (canManage) {
+    if (canToggleAvailability) {
       await loadOffline().catch(() => setOfflineDeliverers([]));
     }
-  }, [load, loadOffline, canManage]);
+  }, [load, loadOffline, canToggleAvailability]);
 
   useEffect(() => {
     loadAll()
@@ -360,7 +360,7 @@ export default function DelivererMapPage() {
                       Unidades: {p.stores.map((s) => s.name).join(', ')}
                     </p>
                   )}
-                  {canManage && (
+                  {canToggleAvailability && (
                     <AvailabilityToggle
                       available={p.status !== 'OFFLINE'}
                       locked={availabilityLocked}
@@ -374,7 +374,7 @@ export default function DelivererMapPage() {
           })}
         </ul>
 
-        {canManage && offlineDeliverers.length > 0 && (
+        {canToggleAvailability && offlineDeliverers.length > 0 && (
           <div className="shrink-0 border-t border-slate-200">
             <h2 className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
               Indisponíveis ({offlineDeliverers.length})

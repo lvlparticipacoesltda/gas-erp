@@ -38,7 +38,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, StoreScreenKey[]> = {
   PLATFORM_ADMIN: ALL_STORE_SCREENS,
   ORG_MASTER: ALL_STORE_SCREENS,
   STORE_MANAGER: ALL_STORE_SCREENS,
-  ATTENDANT: ['store.daily-summary', 'store.sales', 'store.sales.new', 'store.customers'],
+  ATTENDANT: ['store.daily-summary', 'store.sales', 'store.sales.new', 'store.customers', 'store.deliverers.map'],
   FINANCE: [
     'store.daily-summary',
     'store.sales',
@@ -76,6 +76,15 @@ export function canApproveMobileSales(role: string): boolean {
 }
 
 export const canManageDeliverers = canManageSales;
+
+/** Disponível / indisponível no mapa — gerente ou quem tem tela do mapa (ex.: atendente). */
+export function canToggleDelivererAvailability(
+  role: string,
+  permissions?: string[] | null,
+): boolean {
+  if (canManageDeliverers(role)) return true;
+  return hasScreenPermission(role, permissions, 'store.deliverers.map');
+}
 
 export function resolveUserPermissions(role: string, custom?: string[] | null): string[] {
   if (custom && custom.length > 0) {

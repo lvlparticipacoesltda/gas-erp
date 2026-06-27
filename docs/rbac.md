@@ -52,7 +52,7 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 | Papel | Telas padrão |
 |-------|----------------|
 | STORE_MANAGER | Todas |
-| ATTENDANT | dashboard, sales, sales.new, customers |
+| ATTENDANT | dashboard, sales, sales.new, customers, **deliverers.map** (disponibilidade no mapa) |
 | FINANCE | dashboard, sales, daily-summary, customers |
 | DELIVERER | dashboard |
 
@@ -66,6 +66,7 @@ Configuração: **Master → Usuários → Editar → Telas permitidas** (`permi
 | Cancelar venda finalizada (Portaria/Entregue) | `canManageSales` |
 | Iniciar rota de entrega (`IN_PROGRESS`) | Apenas o entregador dono (app mobile) |
 | Concluir entrega (`DELIVERED`) | Entregador dono ou equipe da loja |
+| Marcar entregador disponível / indisponível (mapa) | Gerente, master ou atendente com `store.deliverers.map` |
 
 Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canManageDeliverers`, `hasScreenPermission`.
 
