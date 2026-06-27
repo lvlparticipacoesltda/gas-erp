@@ -26,6 +26,7 @@ export class ReportsController {
     @Query('dateTo') dateTo?: string,
     @Query('status') status?: string,
     @Query('delivererSearch') delivererSearch?: string,
+    @Query('delivererId') delivererId?: string,
     @Query('customerSearch') customerSearch?: string,
     @Query('paymentMethod') paymentMethod?: string,
   ) {
@@ -34,7 +35,7 @@ export class ReportsController {
       user,
       storeId,
       { date, dateFrom, dateTo },
-      { status, delivererSearch, customerSearch, paymentMethod },
+      { status, delivererSearch, delivererId, customerSearch, paymentMethod },
     );
   }
 
@@ -74,6 +75,7 @@ export class ReportsController {
     @Query('format') format = 'csv',
     @Query('status') status?: string,
     @Query('delivererSearch') delivererSearch?: string,
+    @Query('delivererId') delivererId?: string,
     @Query('customerSearch') customerSearch?: string,
     @Query('paymentMethod') paymentMethod?: string,
   ): Promise<string> {
@@ -85,7 +87,7 @@ export class ReportsController {
       throw new BadRequestException('Formato de exportação não suportado (use csv).');
     }
 
-    const salesFilters = { status, delivererSearch, customerSearch, paymentMethod };
+    const salesFilters = { status, delivererSearch, delivererId, customerSearch, paymentMethod };
     const { filename, csv } = await this.service.exportCsv(
       user,
       type as ReportType,

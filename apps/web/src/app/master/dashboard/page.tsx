@@ -18,7 +18,10 @@ interface StoreStat {
   salesCount: number;
   salesTotal: number;
   activeDeliveries: number;
-  lowStockItems: number;
+  totalCost?: number;
+  grossProfit?: number;
+  totalProcessingFees?: number;
+  netProfit?: number;
 }
 
 export default function MasterDashboardPage() {
@@ -47,6 +50,8 @@ export default function MasterDashboardPage() {
   const isRange = dateFrom !== dateTo;
   const salesLabel = isRange ? 'Vendas no período' : 'Vendas hoje';
   const revenueLabel = isRange ? 'Faturamento no período' : 'Faturamento';
+  const showFinancial = data?.summary?.totalCost != null && data?.summary?.grossProfit != null;
+  const showNetFinancial = showFinancial && data?.summary?.netRevenue != null;
 
   if (loading && !data) return <PageLoader label="Carregando visão geral…" />;
 
@@ -88,7 +93,6 @@ export default function MasterDashboardPage() {
               >
                 <Card className="cursor-pointer hover:border-brand-light hover:shadow-md">
                   <div className="text-lg font-semibold">{s.store.name}</div>
-                  <div className="text-sm text-slate-500">{s.store.city} · {s.store.code}</div>
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <div className="text-slate-500">{salesLabel}</div>
@@ -102,10 +106,30 @@ export default function MasterDashboardPage() {
                       <div className="text-slate-500">Entregas ativas</div>
                       <div className="font-semibold">{s.activeDeliveries}</div>
                     </div>
-                    <div>
-                      <div className="text-slate-500">Estoque baixo</div>
-                      <div className="font-semibold">{s.lowStockItems}</div>
-                    </div>
+                    {showFinancial && (
+                      <>
+                        <div>
+                          <div className="text-slate-500">CMV</div>
+                          <div className="font-semibold">{formatCurrency(s.totalCost ?? 0)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Lucro bruto</div>
+                          <div className="font-semibold">{formatCurrency(s.grossProfit ?? 0)}</div>
+                        </div>
+                        {showNetFinancial && (
+                          <>
+                            <div>
+                              <div className="text-slate-500">Taxas pagamento</div>
+                              <div className="font-semibold">{formatCurrency(s.totalProcessingFees ?? 0)}</div>
+                            </div>
+                            <div>
+                              <div className="text-slate-500">Lucro líquido</div>
+                              <div className="font-semibold">{formatCurrency(s.netProfit ?? 0)}</div>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="mt-3 text-sm font-medium text-brand">Abrir loja →</div>
                 </Card>

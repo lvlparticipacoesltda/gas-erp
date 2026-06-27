@@ -10,6 +10,10 @@ import {
   canViewFinancialMargins,
   computeGrossMarginPercent,
   computeGrossProfit,
+  computeNetMarginPercent,
+  computeNetProfit,
+  computeNetRevenue,
+  computeSaleCogs,
   formatDashboardDateRangeLabel,
   getRouteDurationSeconds,
   getWaitTimeSeconds,
@@ -28,8 +32,26 @@ type DashboardPayload = {
   totalCost?: number;
   grossProfit?: number;
   grossMarginPercent?: number | null;
-  paymentsByMethod: Record<string, number>;
-  productsSold: { name: string; qty: number; total: number }[];
+  totalProcessingFees?: number;
+  netRevenue?: number;
+  netProfit?: number;
+  netMarginPercent?: number | null;
+  paymentsByMethod: {
+    label: string;
+    revenue: number;
+    processingFees?: number;
+    netRevenue?: number;
+    totalCost?: number;
+    grossProfit?: number;
+    netProfit?: number;
+  }[];
+  productsSold: {
+    name: string;
+    qty: number;
+    total: number;
+    totalCost?: number;
+    grossProfit?: number;
+  }[];
   stockMovements: number;
   salesCount: number;
   deliveries: {
@@ -77,18 +99,22 @@ export class DashboardService {
 
     const storeIds = stores.map((store) => store.id);
 
+    const showFinancial = canViewFinancialMargins(user.role);
+    const storeSaleWhere = (storeId: string) => ({
+      storeId,
+      saleDate: { gte: start, lt: end },
+      backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+      mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
+      status: { not: SaleStatus.CANCELLED },
+    });
+
     const [storeStats, summary] = await Promise.all([
       Promise.all(
         stores.map(async (store) => {
-          const [salesInPeriod, activeDeliveries, lowStock] = await Promise.all([
+          const saleWhere = storeSaleWhere(store.id);
+          const [salesInPeriod, activeDeliveries, saleItems] = await Promise.all([
             this.prisma.sale.aggregate({
-              where: {
-                storeId: store.id,
-                saleDate: { gte: start, lt: end },
-                backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
-                mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
-                status: { not: SaleStatus.CANCELLED },
-              },
+              where: saleWhere,
               _sum: { total: true },
               _count: { _all: true },
             }),
@@ -98,16 +124,42 @@ export class DashboardService {
                 status: { in: ['PENDING', 'IN_PROGRESS'] },
               },
             }),
-            this.prisma.stockBalance.count({
-              where: { storeId: store.id, available: { lte: 10 } },
-            }),
+            showFinancial
+              ? this.prisma.saleItem.findMany({
+                  where: { sale: saleWhere },
+                  select: { quantity: true, unitCost: true },
+                })
+              : Promise.resolve([]),
           ]);
+
+          const salesTotal = toNumber(salesInPeriod._sum.total);
+          const financialSummary = showFinancial
+            ? await (async () => {
+                const totalCost = computeSaleCogs(saleItems);
+                const grossProfit = computeGrossProfit(salesTotal, totalCost);
+                const feeAgg = await this.prisma.salePayment.aggregate({
+                  where: { sale: saleWhere },
+                  _sum: { processingFee: true },
+                });
+                const totalProcessingFees = toNumber(feeAgg._sum.processingFee);
+                const netRevenue = computeNetRevenue(salesTotal, totalProcessingFees);
+                const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
+                return {
+                  totalCost,
+                  grossProfit,
+                  totalProcessingFees,
+                  netRevenue,
+                  netProfit,
+                };
+              })()
+            : {};
+
           return {
             store,
             salesCount: salesInPeriod._count._all,
-            salesTotal: toNumber(salesInPeriod._sum.total),
+            salesTotal,
             activeDeliveries,
-            lowStockItems: lowStock,
+            ...financialSummary,
           };
         }),
       ),
@@ -139,7 +191,7 @@ export class DashboardService {
       dateFrom,
       dateTo,
       revenue: 0,
-      paymentsByMethod: {},
+      paymentsByMethod: [] as DashboardPayload['paymentsByMethod'],
       productsSold: [],
       stockMovements: 0,
       salesCount: 0,
@@ -181,16 +233,23 @@ export class DashboardService {
       status: { not: SaleStatus.CANCELLED },
     };
 
-    const [saleAgg, paymentGroups, itemGroups, movements, deliveries, saleItemsForCost] = await Promise.all([
+    const showFinancial = canViewFinancialMargins(user.role);
+
+    const [saleAgg, paymentRows, itemGroups, movements, deliveries, saleItemsDetail, salesForPaymentAlloc] =
+      await Promise.all([
       this.prisma.sale.aggregate({
         where: saleWhere,
         _sum: { total: true },
         _count: { _all: true },
       }),
-      this.prisma.salePayment.groupBy({
-        by: ['method'],
+      this.prisma.salePayment.findMany({
         where: { sale: saleWhere },
-        _sum: { amount: true },
+        select: {
+          amount: true,
+          processingFee: true,
+          method: true,
+          storePaymentMethod: { select: { label: true } },
+        },
       }),
       this.prisma.saleItem.groupBy({
         by: ['productId'],
@@ -219,10 +278,27 @@ export class DashboardService {
           deliverer: { include: { user: true } },
         },
       }),
-      canViewFinancialMargins(user.role)
+      showFinancial
         ? this.prisma.saleItem.findMany({
             where: { sale: saleWhere },
-            select: { quantity: true, unitCost: true },
+            select: { productId: true, quantity: true, total: true, unitCost: true },
+          })
+        : Promise.resolve([]),
+      showFinancial
+        ? this.prisma.sale.findMany({
+            where: saleWhere,
+            select: {
+              total: true,
+              payments: {
+                select: {
+                  method: true,
+                  amount: true,
+                  processingFee: true,
+                  storePaymentMethod: { select: { label: true } },
+                },
+              },
+              items: { select: { quantity: true, unitCost: true } },
+            },
           })
         : Promise.resolve([]),
     ]);
@@ -230,13 +306,70 @@ export class DashboardService {
     const revenue = toNumber(saleAgg._sum.total);
     const salesCount = saleAgg._count._all;
 
-    const paymentsByMethod: Record<string, number> = {};
-    for (const group of paymentGroups) {
-      const label = PAYMENT_METHOD_LABELS[group.method] ?? group.method;
-      paymentsByMethod[label] = (paymentsByMethod[label] ?? 0) + toNumber(group._sum.amount);
+    type PaymentMethodStats = {
+      revenue: number;
+      processingFees: number;
+      totalCost: number;
+    };
+    const paymentStatsByLabel = new Map<string, PaymentMethodStats>();
+
+    const paymentLabel = (payment: {
+      method: string;
+      storePaymentMethod?: { label: string } | null;
+    }) => payment.storePaymentMethod?.label ?? PAYMENT_METHOD_LABELS[payment.method] ?? payment.method;
+
+    for (const payment of paymentRows) {
+      const label = paymentLabel(payment);
+      const acc = paymentStatsByLabel.get(label) ?? { revenue: 0, processingFees: 0, totalCost: 0 };
+      acc.revenue += toNumber(payment.amount);
+      acc.processingFees += toNumber(payment.processingFee);
+      paymentStatsByLabel.set(label, acc);
     }
 
-    const productIds = itemGroups.map((group) => group.productId);
+    if (showFinancial) {
+      for (const sale of salesForPaymentAlloc) {
+        const saleTotal = toNumber(sale.total);
+        const cogs = computeSaleCogs(sale.items);
+        for (const payment of sale.payments) {
+          const label = paymentLabel(payment);
+          const amount = toNumber(payment.amount);
+          const allocatedCost = saleTotal > 0 ? (amount / saleTotal) * cogs : 0;
+          const acc = paymentStatsByLabel.get(label) ?? { revenue: 0, processingFees: 0, totalCost: 0 };
+          acc.totalCost += allocatedCost;
+          paymentStatsByLabel.set(label, acc);
+        }
+      }
+    }
+
+    const paymentsByMethod = Array.from(paymentStatsByLabel.entries())
+      .map(([label, stats]) => {
+        const grossProfit = showFinancial
+          ? computeGrossProfit(stats.revenue, stats.totalCost)
+          : undefined;
+        const netRevenue = computeNetRevenue(stats.revenue, stats.processingFees);
+        const netProfit =
+          grossProfit != null
+            ? computeNetProfit(grossProfit, stats.processingFees)
+            : undefined;
+        return {
+          label,
+          revenue: stats.revenue,
+          ...(showFinancial
+            ? {
+                processingFees: stats.processingFees,
+                netRevenue,
+                totalCost: stats.totalCost,
+                grossProfit,
+                netProfit,
+              }
+            : {}),
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+
+    const productIds = showFinancial
+      ? [...new Set(saleItemsDetail.map((item) => item.productId))]
+      : itemGroups.map((group) => group.productId);
     const products = productIds.length
       ? await this.prisma.product.findMany({
           where: { id: { in: productIds } },
@@ -244,13 +377,34 @@ export class DashboardService {
         })
       : [];
     const productNameById = new Map(products.map((product) => [product.id, product.name]));
-    const productsSold = itemGroups
-      .map((group) => ({
-        name: productNameById.get(group.productId) ?? 'Produto',
-        qty: group._sum.quantity ?? 0,
-        total: toNumber(group._sum.total),
-      }))
-      .sort((a, b) => b.total - a.total);
+
+    const productsSold = showFinancial
+      ? (() => {
+          const byProduct = new Map<string, { qty: number; total: number; totalCost: number }>();
+          for (const item of saleItemsDetail) {
+            const acc = byProduct.get(item.productId) ?? { qty: 0, total: 0, totalCost: 0 };
+            acc.qty += item.quantity;
+            acc.total += toNumber(item.total);
+            acc.totalCost += item.quantity * toNumber(item.unitCost);
+            byProduct.set(item.productId, acc);
+          }
+          return Array.from(byProduct.entries())
+            .map(([productId, stats]) => ({
+              name: productNameById.get(productId) ?? 'Produto',
+              qty: stats.qty,
+              total: stats.total,
+              totalCost: stats.totalCost,
+              grossProfit: computeGrossProfit(stats.total, stats.totalCost),
+            }))
+            .sort((a, b) => b.total - a.total);
+        })()
+      : itemGroups
+          .map((group) => ({
+            name: productNameById.get(group.productId) ?? 'Produto',
+            qty: group._sum.quantity ?? 0,
+            total: toNumber(group._sum.total),
+          }))
+          .sort((a, b) => b.total - a.total);
 
     const pendingDeliveries = deliveries.filter((d) => d.status === 'PENDING').length;
     const inProgressDeliveries = deliveries.filter((d) => d.status === 'IN_PROGRESS').length;
@@ -327,17 +481,24 @@ export class DashboardService {
       }))
       .sort((a, b) => a.delivererName.localeCompare(b.delivererName, 'pt-BR'));
 
-    const financialSummary = canViewFinancialMargins(user.role)
+    const financialSummary = showFinancial
       ? (() => {
-          const totalCost = saleItemsForCost.reduce(
-            (sum, item) => sum + item.quantity * toNumber(item.unitCost),
+          const totalCost = computeSaleCogs(saleItemsDetail);
+          const grossProfit = computeGrossProfit(revenue, totalCost);
+          const totalProcessingFees = paymentRows.reduce(
+            (sum, payment) => sum + toNumber(payment.processingFee),
             0,
           );
-          const grossProfit = computeGrossProfit(revenue, totalCost);
+          const netRevenue = computeNetRevenue(revenue, totalProcessingFees);
+          const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
           return {
             totalCost,
             grossProfit,
             grossMarginPercent: computeGrossMarginPercent(revenue, grossProfit),
+            totalProcessingFees,
+            netRevenue,
+            netProfit,
+            netMarginPercent: computeNetMarginPercent(netRevenue, netProfit),
           };
         })()
       : {};

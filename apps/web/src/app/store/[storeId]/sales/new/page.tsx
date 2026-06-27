@@ -12,7 +12,6 @@ import { formatCurrency } from '@/lib/utils';
 import { parsePrice } from '@/lib/sale-utils';
 import { cn } from '@/lib/utils';
 import {
-  PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
   SALE_CHANNELS,
   SALE_CHANNEL_LABELS,
@@ -22,6 +21,13 @@ import {
   isDelivererAssignableForSale,
   type PaginatedResponse,
 } from '@gas-erp/shared';
+
+interface StorePaymentMethodOption {
+  id: string;
+  label: string;
+  systemCode: string | null;
+  enabled: boolean;
+}
 
 interface Product {
   id: string;
@@ -37,8 +43,6 @@ interface Deliverer {
 
 type Step = 1 | 2 | 3;
 
-const REGULAR_PAYMENT_METHODS = PAYMENT_METHODS.filter((m) => m !== 'GDP');
-
 const STEPS = [
   { n: 1, label: 'Cliente' },
   { n: 2, label: 'Produto' },
@@ -51,6 +55,7 @@ export default function NewSalePage() {
   const [step, setStep] = useState<Step>(1);
   const [products, setProducts] = useState<Product[]>([]);
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
   const [customerPick, setCustomerPick] = useState<CustomerPickerValue>({ kind: 'none' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -65,7 +70,7 @@ export default function NewSalePage() {
     quantity: 1,
     unitPrice: 0,
     channel: 'PHONE',
-    paymentMethod: 'PIX',
+    storePaymentMethodId: '',
     fulfillmentType: 'DELIVERY' as 'PICKUP' | 'DELIVERY',
     delivererId: '',
     notes: '',
@@ -107,13 +112,28 @@ export default function NewSalePage() {
     Promise.all([
       api<PaginatedResponse<Product>>(`/products?storeId=${storeId}&pageSize=100`, {}, getToken()).then((r) => r.data),
       api<Deliverer[]>(`/deliverers?storeId=${storeId}`, {}, getToken()),
+      api<StorePaymentMethodOption[]>(`/stores/${storeId}/payment-methods?activeOnly=true`, {}, getToken()),
     ])
-      .then(([p, d]) => {
+      .then(([p, d, methods]) => {
         setProducts(p);
         setDeliverers(d);
+        setPaymentMethods(methods);
+        const regular = methods.filter((m) => m.systemCode !== 'GDP');
+        if (regular[0]) {
+          setDraft((current) => ({
+            ...current,
+            storePaymentMethodId: current.storePaymentMethodId || regular[0].id,
+          }));
+        }
       })
       .finally(() => setReady(true));
   }, [storeId]);
+
+  const gdpPaymentMethod = paymentMethods.find((m) => m.systemCode === 'GDP')
+    ?? null;
+  const regularPaymentMethods = paymentMethods.filter((m) => m.systemCode !== 'GDP');
+  const selectedPaymentMethod =
+    regularPaymentMethods.find((m) => m.id === draft.storePaymentMethodId) ?? regularPaymentMethods[0];
 
   function applyCustomerPick(value: CustomerPickerValue) {
     setCustomerPick(value);
@@ -271,8 +291,12 @@ export default function NewSalePage() {
             unitPrice: draft.unitPrice,
           }],
           payments: draft.gasDoPovoBenefit
-            ? [{ method: 'GDP', amount: total }]
-            : [{ method: draft.paymentMethod, amount: total }],
+            ? gdpPaymentMethod
+              ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: total }]
+              : [{ method: 'GDP', amount: total }]
+            : selectedPaymentMethod
+              ? [{ storePaymentMethodId: selectedPaymentMethod.id, amount: total }]
+              : [{ method: 'CASH', amount: total }],
         }),
       }, getToken());
       router.push(`/store/${storeId}/sales`);
@@ -467,14 +491,18 @@ export default function NewSalePage() {
                   <p className="mt-2 rounded-lg border border-brand bg-brand-muted px-3 py-2 text-sm text-brand-dark">
                     Pagamento registrado como <strong>GDP</strong> (Benefício Gás do Povo)
                   </p>
+                ) : regularPaymentMethods.length === 0 ? (
+                  <p className="mt-2 text-sm text-amber-800">
+                    Nenhuma forma de pagamento ativa. Configure em Formas de pagamento.
+                  </p>
                 ) : (
                   <Select
                     className="mt-2"
-                    value={draft.paymentMethod}
-                    onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })}
+                    value={draft.storePaymentMethodId}
+                    onChange={(e) => setDraft({ ...draft, storePaymentMethodId: e.target.value })}
                   >
-                    {REGULAR_PAYMENT_METHODS.map((m) => (
-                      <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
+                    {regularPaymentMethods.map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
                     ))}
                   </Select>
                 )}
@@ -498,7 +526,7 @@ export default function NewSalePage() {
                 Pagamento:{' '}
                 {draft.gasDoPovoBenefit
                   ? PAYMENT_METHOD_LABELS.GDP
-                  : (PAYMENT_METHOD_LABELS[draft.paymentMethod] ?? draft.paymentMethod)}
+                  : (selectedPaymentMethod?.label ?? '—')}
               </p>
               <p className="mt-4 text-xl font-bold text-slate-900">{formatCurrency(total)}</p>
               <div className="mt-6 flex gap-2">

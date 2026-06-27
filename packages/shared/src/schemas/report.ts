@@ -33,6 +33,7 @@ export const reportExportQuerySchema = reportPeriodQuerySchema.extend({
 export const salesReportFiltersSchema = z.object({
   status: z.string().optional(),
   delivererSearch: z.string().optional(),
+  delivererId: z.string().optional(),
   customerSearch: z.string().optional(),
   paymentMethod: z.string().optional(),
 });
@@ -73,6 +74,10 @@ export interface SalesReportByPaymentMethod {
   method: string;
   label: string;
   total: number;
+  processingFees?: number;
+  netRevenue?: number;
+  grossProfit?: number;
+  netProfit?: number;
 }
 
 export interface SalesReportByDeliverer {
@@ -114,6 +119,10 @@ export interface SalesReportRow {
   totalCost?: number;
   grossProfit?: number;
   grossMarginPercent?: number | null;
+  totalProcessingFees?: number;
+  netRevenue?: number;
+  netProfit?: number;
+  netMarginPercent?: number | null;
 }
 
 export interface SalesReportResponse extends ReportPeriod {
@@ -125,6 +134,10 @@ export interface SalesReportResponse extends ReportPeriod {
   /** Lucro bruto total do período (perfis financeiros). */
   grossProfit?: number;
   grossMarginPercent?: number | null;
+  totalProcessingFees?: number;
+  netRevenue?: number;
+  netProfit?: number;
+  netMarginPercent?: number | null;
   byStatus: SalesReportByStatus[];
   byDay: SalesReportByDay[];
   byPaymentMethod: SalesReportByPaymentMethod[];

@@ -9,10 +9,15 @@ export const saleItemSchema = z.object({
   discount: z.number().nonnegative().optional(),
 });
 
-export const salePaymentSchema = z.object({
-  method: z.enum(PAYMENT_METHODS),
-  amount: z.number().nonnegative(),
-});
+export const salePaymentSchema = z
+  .object({
+    method: z.enum(PAYMENT_METHODS).optional(),
+    storePaymentMethodId: z.string().min(1).optional(),
+    amount: z.number().nonnegative(),
+  })
+  .refine((data) => Boolean(data.method || data.storePaymentMethodId), {
+    message: 'Informe a forma de pagamento.',
+  });
 
 export const createSaleSchema = z.object({
   storeId: z.string(),
@@ -36,7 +41,7 @@ export const createSaleSchema = z.object({
 }).superRefine((data, ctx) => {
   const benefit = data.gasDoPovoBenefit ?? false;
   const payments = data.payments ?? [];
-  if (benefit && payments.some((p) => p.method !== 'GDP')) {
+  if (benefit && payments.some((p) => p.method && p.method !== 'GDP')) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Com benefício Gás do Povo, o pagamento deve ser GDP.',

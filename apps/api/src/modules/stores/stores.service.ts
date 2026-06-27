@@ -3,12 +3,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { createStoreSchema, updateStoreSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { AuditService } from '../../common/audit/audit.service';
+import { StorePaymentMethodsService } from './store-payment-methods.service';
 
 @Injectable()
 export class StoresService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private paymentMethods: StorePaymentMethodsService,
   ) {}
 
   findAll(user: AuthUser) {
@@ -39,6 +41,7 @@ export class StoresService {
     const store = await this.prisma.store.create({
       data: { ...data, organizationId: user.organizationId },
     });
+    await this.paymentMethods.seedForStore(store.id, store.organizationId);
     await this.audit.log(user, 'CREATE', 'Store', store.id, data as Record<string, unknown>);
     return store;
   }

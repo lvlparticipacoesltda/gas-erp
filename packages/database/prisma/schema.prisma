@@ -58,6 +58,13 @@ enum PaymentMethod {
   OTHER
 }
 
+enum PaymentFeeMode {
+  NONE
+  PERCENT
+  FIXED
+  PERCENT_AND_FIXED
+}
+
 enum StockMovementType {
   IN
   OUT
@@ -122,6 +129,7 @@ model Organization {
   products            Product[]
   suppliers           Supplier[]
   auditLogs           AuditLog[]
+  storePaymentMethods StorePaymentMethod[]
 }
 
 model Store {
@@ -146,8 +154,33 @@ model Store {
   sales               Sale[]
   delivererStores     DelivererStore[]
   purchaseInvoices    PurchaseInvoice[]
+  paymentMethods      StorePaymentMethod[]
 
   @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+model StorePaymentMethod {
+  id             String         @id @default(cuid())
+  storeId        String
+  organizationId String
+  systemCode     String?
+  label          String
+  isCustom       Boolean        @default(false)
+  enabled        Boolean        @default(true)
+  sortOrder      Int            @default(0)
+  feeMode        PaymentFeeMode @default(NONE)
+  feePercent     Decimal        @db.Decimal(5, 2) @default(0)
+  feeFixed       Decimal        @db.Decimal(12, 2) @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payments     SalePayment[]
+
+  @@unique([storeId, systemCode])
+  @@index([storeId])
   @@index([organizationId])
 }
 
@@ -531,15 +564,19 @@ model SaleItem {
 }
 
 model SalePayment {
-  id        String        @id @default(cuid())
-  saleId    String
-  method    PaymentMethod
-  amount    Decimal       @db.Decimal(12, 2)
-  createdAt DateTime      @default(now())
+  id                   String         @id @default(cuid())
+  saleId               String
+  method               PaymentMethod
+  amount               Decimal        @db.Decimal(12, 2)
+  storePaymentMethodId String?
+  processingFee        Decimal        @db.Decimal(12, 2) @default(0)
+  createdAt            DateTime       @default(now())
 
-  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  sale               Sale                @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  storePaymentMethod StorePaymentMethod? @relation(fields: [storePaymentMethodId], references: [id])
 
   @@index([saleId])
+  @@index([storePaymentMethodId])
 }
 
 model SaleStatusLog {

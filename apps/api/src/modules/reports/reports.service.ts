@@ -22,6 +22,9 @@ import {
   canViewFinancialMargins,
   computeGrossMarginPercent,
   computeGrossProfit,
+  computeNetMarginPercent,
+  computeNetProfit,
+  computeNetRevenue,
   computeSaleCogs,
   type PurchasesReportResponse,
   type ReportType,
@@ -38,7 +41,7 @@ const salesReportInclude = {
   deliverer: { include: { user: { select: { name: true } } } },
   createdByDeliverer: { include: { user: { select: { name: true } } } },
   items: { include: { product: { select: { name: true } } } },
-  payments: true,
+  payments: { include: { storePaymentMethod: { select: { label: true } } } },
   delivery: true,
 } satisfies Prisma.SaleInclude;
 
@@ -69,7 +72,14 @@ function formatReportDateTime(iso: Date | string): string {
   return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
-function mapSaleToReportRow(sale: SaleForReport): SalesReportRow {
+function paymentDisplayLabel(payment: {
+  method: string;
+  storePaymentMethod?: { label: string } | null;
+}): string {
+  return payment.storePaymentMethod?.label ?? PAYMENT_METHOD_LABELS[payment.method] ?? payment.method;
+}
+
+function mapSaleToReportRow(sale: SaleForReport, showFinancial: boolean): SalesReportRow {
   const delivery = sale.delivery;
   const waitTimeSeconds = delivery
     ? getWaitTimeSeconds(sale.createdAt, delivery.startedAt)
@@ -78,11 +88,9 @@ function mapSaleToReportRow(sale: SaleForReport): SalesReportRow {
     ? getRouteDurationSeconds(delivery.startedAt, delivery.completedAt)
     : null;
   const displayStatus = getSaleDisplayStatus(sale);
-  const paymentSummary = [...new Set(sale.payments.map((p) => PAYMENT_METHOD_LABELS[p.method] ?? p.method))].join(
-    ', ',
-  );
+  const paymentSummary = [...new Set(sale.payments.map((p) => paymentDisplayLabel(p)))].join(', ');
   const paymentDetails = sale.payments
-    .map((p) => `${PAYMENT_METHOD_LABELS[p.method] ?? p.method}: ${formatCsvMoney(toNumber(p.amount))}`)
+    .map((p) => `${paymentDisplayLabel(p)}: ${formatCsvMoney(toNumber(p.amount))}`)
     .join('; ');
   const itemsSummary = sale.items
     .map((item) => `${item.quantity}x ${item.product.name}`)
@@ -90,6 +98,12 @@ function mapSaleToReportRow(sale: SaleForReport): SalesReportRow {
   const total = toNumber(sale.total);
   const totalCost = computeSaleCogs(sale.items);
   const grossProfit = computeGrossProfit(total, totalCost);
+  const totalProcessingFees = sale.payments.reduce(
+    (sum, payment) => sum + toNumber(payment.processingFee),
+    0,
+  );
+  const netRevenue = computeNetRevenue(total, totalProcessingFees);
+  const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
 
   return {
     saleId: sale.id,
@@ -110,9 +124,17 @@ function mapSaleToReportRow(sale: SaleForReport): SalesReportRow {
     paymentSummary,
     paymentDetails,
     total,
-    totalCost,
-    grossProfit,
-    grossMarginPercent: computeGrossMarginPercent(total, grossProfit),
+    ...(showFinancial
+      ? {
+          totalCost,
+          grossProfit,
+          grossMarginPercent: computeGrossMarginPercent(total, grossProfit),
+          totalProcessingFees,
+          netRevenue,
+          netProfit,
+          netMarginPercent: computeNetMarginPercent(netRevenue, netProfit),
+        }
+      : {}),
     deliveryStatus: delivery?.status ?? null,
     deliveryStatusLabel: delivery ? (DELIVERY_STATUS_LABELS[delivery.status] ?? delivery.status) : null,
     waitTimeSeconds,
@@ -150,7 +172,7 @@ export class ReportsService {
 
     const countedSaleWhere = this.buildSalesReportWhere(storeId, start, end, filters);
 
-    const [statusGroups, dayGroups, paymentGroups, deliveries, sales] = await Promise.all([
+    const [statusGroups, dayGroups, paymentRows, deliveries, sales] = await Promise.all([
       this.prisma.sale.groupBy({
         by: ['status'],
         where: countedSaleWhere,
@@ -163,10 +185,14 @@ export class ReportsService {
         _sum: { total: true },
         _count: { _all: true },
       }),
-      this.prisma.salePayment.groupBy({
-        by: ['method'],
+      this.prisma.salePayment.findMany({
         where: { sale: { ...countedSaleWhere, status: { not: SaleStatus.CANCELLED } } },
-        _sum: { amount: true },
+        select: {
+          method: true,
+          amount: true,
+          processingFee: true,
+          storePaymentMethod: { select: { label: true, systemCode: true } },
+        },
       }),
       this.prisma.delivery.findMany({
         where: {
@@ -218,12 +244,67 @@ export class ReportsService {
       .map(([date, value]) => ({ date, count: value.count, total: value.total }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const byPaymentMethod = paymentGroups
-      .map((group) => ({
-        method: group.method,
-        label: PAYMENT_METHOD_LABELS[group.method] ?? group.method,
-        total: toNumber(group._sum.amount),
-      }))
+    const showFinancial = canViewFinancialMargins(user.role);
+
+    type PaymentAgg = {
+      method: string;
+      label: string;
+      total: number;
+      processingFees: number;
+      totalCost: number;
+    };
+    const paymentAggByLabel = new Map<string, PaymentAgg>();
+    for (const payment of paymentRows) {
+      const label = paymentDisplayLabel(payment);
+      const method = payment.storePaymentMethod?.systemCode ?? payment.method;
+      const acc = paymentAggByLabel.get(label) ?? {
+        method,
+        label,
+        total: 0,
+        processingFees: 0,
+        totalCost: 0,
+      };
+      acc.total += toNumber(payment.amount);
+      acc.processingFees += toNumber(payment.processingFee);
+      paymentAggByLabel.set(label, acc);
+    }
+
+    if (showFinancial) {
+      for (const sale of sales.filter((row) => row.status !== SaleStatus.CANCELLED)) {
+        const saleTotal = toNumber(sale.total);
+        const cogs = computeSaleCogs(sale.items);
+        for (const payment of sale.payments) {
+          const label = paymentDisplayLabel(payment);
+          const acc = paymentAggByLabel.get(label);
+          if (!acc) continue;
+          const amount = toNumber(payment.amount);
+          acc.totalCost += saleTotal > 0 ? (amount / saleTotal) * cogs : 0;
+        }
+      }
+    }
+
+    const byPaymentMethod = Array.from(paymentAggByLabel.values())
+      .map((entry) => {
+        const grossProfit = showFinancial
+          ? computeGrossProfit(entry.total, entry.totalCost)
+          : undefined;
+        const netRevenue = computeNetRevenue(entry.total, entry.processingFees);
+        const netProfit =
+          grossProfit != null ? computeNetProfit(grossProfit, entry.processingFees) : undefined;
+        return {
+          method: entry.method,
+          label: entry.label,
+          total: entry.total,
+          ...(showFinancial
+            ? {
+                processingFees: entry.processingFees,
+                netRevenue,
+                grossProfit,
+                netProfit,
+              }
+            : {}),
+        };
+      })
       .sort((a, b) => b.total - a.total);
 
     const delivererStats = new Map<
@@ -257,8 +338,7 @@ export class ReportsService {
       }))
       .sort((a, b) => b.deliveryCount - a.deliveryCount);
 
-    const showFinancial = canViewFinancialMargins(user.role);
-    let rows = sales.map(mapSaleToReportRow);
+    let rows = sales.map((sale) => mapSaleToReportRow(sale, showFinancial));
 
     const nonCancelledSales = sales.filter((sale) => sale.status !== SaleStatus.CANCELLED);
     const financialSummary = showFinancial
@@ -268,16 +348,39 @@ export class ReportsService {
             0,
           );
           const grossProfit = computeGrossProfit(totalRevenue, totalCost);
+          const totalProcessingFees = nonCancelledSales.reduce(
+            (sum, sale) =>
+              sum +
+              sale.payments.reduce((feeSum, payment) => feeSum + toNumber(payment.processingFee), 0),
+            0,
+          );
+          const netRevenue = computeNetRevenue(totalRevenue, totalProcessingFees);
+          const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
           return {
             totalCost,
             grossProfit,
             grossMarginPercent: computeGrossMarginPercent(totalRevenue, grossProfit),
+            totalProcessingFees,
+            netRevenue,
+            netProfit,
+            netMarginPercent: computeNetMarginPercent(netRevenue, netProfit),
           };
         })()
       : {};
 
     if (!showFinancial) {
-      rows = rows.map(({ totalCost: _c, grossProfit: _p, grossMarginPercent: _m, ...row }) => row);
+      rows = rows.map(
+        ({
+          totalCost: _c,
+          grossProfit: _p,
+          grossMarginPercent: _m,
+          totalProcessingFees: _f,
+          netRevenue: _nr,
+          netProfit: _np,
+          netMarginPercent: _nm,
+          ...row
+        }) => row,
+      );
     }
 
     return {
@@ -313,7 +416,14 @@ export class ReportsService {
       where.status = filters.status as SaleStatus;
     }
     if (filters.paymentMethod) {
-      where.payments = { some: { method: filters.paymentMethod as PaymentMethod } };
+      where.payments = {
+        some: {
+          OR: [
+            { method: filters.paymentMethod as PaymentMethod },
+            { storePaymentMethod: { systemCode: filters.paymentMethod } },
+          ],
+        },
+      };
     }
     if (filters.customerSearch?.trim()) {
       const term = filters.customerSearch.trim();
@@ -324,7 +434,9 @@ export class ReportsService {
         ],
       };
     }
-    if (filters.delivererSearch?.trim()) {
+    if (filters.delivererId) {
+      where.delivererId = filters.delivererId;
+    } else if (filters.delivererSearch?.trim()) {
       const term = filters.delivererSearch.trim();
       where.deliverer = { user: { name: { contains: term, mode: 'insensitive' } } };
     }
@@ -553,7 +665,17 @@ export class ReportsService {
         'Formas de pagamento',
         'Detalhe pagamentos',
         'Total',
-        ...(showFinancial ? ['CMV', 'Lucro bruto', 'Margem %'] : []),
+        ...(showFinancial
+          ? [
+              'CMV',
+              'Lucro bruto',
+              'Margem bruta %',
+              'Taxas pagamento',
+              'Faturamento líquido',
+              'Lucro líquido',
+              'Margem líquida %',
+            ]
+          : []),
         'Status entrega',
         'Tempo espera rota',
         'Tempo em rota',
@@ -581,6 +703,10 @@ export class ReportsService {
               formatCsvMoney(r.totalCost ?? 0),
               formatCsvMoney(r.grossProfit ?? 0),
               r.grossMarginPercent != null ? `${r.grossMarginPercent}%` : '',
+              formatCsvMoney(r.totalProcessingFees ?? 0),
+              formatCsvMoney(r.netRevenue ?? 0),
+              formatCsvMoney(r.netProfit ?? 0),
+              r.netMarginPercent != null ? `${r.netMarginPercent}%` : '',
             ]
           : []),
         r.deliveryStatusLabel ?? '',

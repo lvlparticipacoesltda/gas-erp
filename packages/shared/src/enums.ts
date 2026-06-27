@@ -27,6 +27,8 @@ export const PAYMENT_METHODS = [
   'OTHER',
 ] as const;
 
+export const PAYMENT_FEE_MODES = ['NONE', 'PERCENT', 'FIXED', 'PERCENT_AND_FIXED'] as const;
+
 export const SALE_CHANNELS = ['PHONE', 'WHATSAPP', 'APP', 'IN_STORE'] as const;
 
 export const FULFILLMENT_TYPES = ['PICKUP', 'DELIVERY'] as const;
@@ -67,6 +69,13 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CUSTOMER_CREDIT: 'Crédito de Cliente',
   GDP: 'GDP (Gás do Povo)',
   OTHER: 'Outro',
+};
+
+export const PAYMENT_FEE_MODE_LABELS: Record<string, string> = {
+  NONE: 'Sem taxa',
+  PERCENT: 'Percentual',
+  FIXED: 'Valor fixo',
+  PERCENT_AND_FIXED: 'Percentual + fixo',
 };
 
 export const SALE_STATUS_LABELS: Record<string, string> = {

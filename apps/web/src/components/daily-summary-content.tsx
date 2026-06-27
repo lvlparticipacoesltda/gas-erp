@@ -13,9 +13,27 @@ export interface DailySummaryData {
   totalCost?: number;
   grossProfit?: number;
   grossMarginPercent?: number | null;
+  totalProcessingFees?: number;
+  netRevenue?: number;
+  netProfit?: number;
+  netMarginPercent?: number | null;
   salesCount: number;
-  paymentsByMethod: Record<string, number>;
-  productsSold: { name: string; qty: number; total: number }[];
+  paymentsByMethod: {
+    label: string;
+    revenue: number;
+    processingFees?: number;
+    netRevenue?: number;
+    totalCost?: number;
+    grossProfit?: number;
+    netProfit?: number;
+  }[];
+  productsSold: {
+    name: string;
+    qty: number;
+    total: number;
+    totalCost?: number;
+    grossProfit?: number;
+  }[];
   deliveries: { pending: number; inProgress: number; completed: number };
   deliveryMetrics?: {
     avgWaitTimeSeconds: number | null;
@@ -52,8 +70,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
   const showStoreColumn =
     showStoreInSlowDeliveries ??
     (metrics?.slowDeliveries.some((d) => d.storeName) ?? false);
-  const paymentEntries = Object.entries(data.paymentsByMethod);
+  const paymentEntries = data.paymentsByMethod;
   const showFinancial = data.totalCost != null && data.grossProfit != null;
+  const showNetFinancial = showFinancial && data.netRevenue != null && data.netProfit != null;
 
   return (
     <>
@@ -64,6 +83,14 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             <Card><div className="text-sm text-slate-500">CMV {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.totalCost!)}</div></Card>
             <Card><div className="text-sm text-slate-500">Lucro bruto {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.grossProfit!)}</div></Card>
             <Card><div className="text-sm text-slate-500">Margem bruta {periodLabel}</div><div className="text-2xl font-bold">{data.grossMarginPercent != null ? `${data.grossMarginPercent}%` : '—'}</div></Card>
+          </>
+        )}
+        {showNetFinancial && (
+          <>
+            <Card><div className="text-sm text-slate-500">Taxas pagamento {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.totalProcessingFees ?? 0)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Faturamento líquido {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.netRevenue!)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Lucro líquido {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.netProfit!)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Margem líquida {periodLabel}</div><div className="text-2xl font-bold">{data.netMarginPercent != null ? `${data.netMarginPercent}%` : '—'}</div></Card>
           </>
         )}
         <Card><div className="text-sm text-slate-500">Vendas</div><div className="text-2xl font-bold">{data.salesCount}</div></Card>
@@ -145,10 +172,38 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
         <PaginatedList items={paymentEntries}>
           {(rows) => (
             <Table>
-              <thead className="bg-slate-50 text-left"><tr><th className="p-3">Forma</th><th className="p-3">Valor</th></tr></thead>
+              <thead className="bg-slate-50 text-left">
+                <tr>
+                  <th className="p-3">Forma</th>
+                  <th className="p-3">Bruto</th>
+                  {showFinancial && <th className="p-3">Taxa</th>}
+                  {showFinancial && <th className="p-3">Líquido</th>}
+                  {showFinancial && <th className="p-3">CMV</th>}
+                  {showFinancial && <th className="p-3">Lucro bruto</th>}
+                  {showFinancial && <th className="p-3">Lucro líquido</th>}
+                </tr>
+              </thead>
               <tbody>
-                {rows.map(([method, value]) => (
-                  <tr key={method} className="border-t border-slate-100"><td className="p-3">{method}</td><td className="p-3">{formatCurrency(value)}</td></tr>
+                {rows.map((entry) => (
+                  <tr key={entry.label} className="border-t border-slate-100">
+                    <td className="p-3">{entry.label}</td>
+                    <td className="p-3">{formatCurrency(entry.revenue)}</td>
+                    {showFinancial && (
+                      <td className="p-3">{formatCurrency(entry.processingFees ?? 0)}</td>
+                    )}
+                    {showFinancial && (
+                      <td className="p-3">{formatCurrency(entry.netRevenue ?? entry.revenue)}</td>
+                    )}
+                    {showFinancial && (
+                      <td className="p-3">{formatCurrency(entry.totalCost ?? 0)}</td>
+                    )}
+                    {showFinancial && (
+                      <td className="p-3">{formatCurrency(entry.grossProfit ?? 0)}</td>
+                    )}
+                    {showFinancial && (
+                      <td className="p-3">{formatCurrency(entry.netProfit ?? entry.grossProfit ?? 0)}</td>
+                    )}
+                  </tr>
                 ))}
               </tbody>
             </Table>
@@ -163,10 +218,28 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
         <PaginatedList items={data.productsSold}>
           {(rows) => (
             <Table>
-              <thead className="bg-slate-50 text-left"><tr><th className="p-3">Produto</th><th className="p-3">Qtd</th><th className="p-3">Total</th></tr></thead>
+              <thead className="bg-slate-50 text-left">
+                <tr>
+                  <th className="p-3">Produto</th>
+                  <th className="p-3">Qtd</th>
+                  <th className="p-3">Total</th>
+                  {showFinancial && <th className="p-3">CMV</th>}
+                  {showFinancial && <th className="p-3">Lucro bruto</th>}
+                </tr>
+              </thead>
               <tbody>
                 {rows.map((p) => (
-                  <tr key={p.name} className="border-t border-slate-100"><td className="p-3">{p.name}</td><td className="p-3">{p.qty}</td><td className="p-3">{formatCurrency(p.total)}</td></tr>
+                  <tr key={p.name} className="border-t border-slate-100">
+                    <td className="p-3">{p.name}</td>
+                    <td className="p-3">{p.qty}</td>
+                    <td className="p-3">{formatCurrency(p.total)}</td>
+                    {showFinancial && (
+                      <td className="p-3">{formatCurrency(p.totalCost ?? 0)}</td>
+                    )}
+                    {showFinancial && (
+                      <td className="p-3">{formatCurrency(p.grossProfit ?? 0)}</td>
+                    )}
+                  </tr>
                 ))}
               </tbody>
             </Table>

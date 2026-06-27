@@ -21,6 +21,7 @@ import { StockService } from '../stock/stock.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { PushService } from '../../common/push/push.service';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
+import { StorePaymentMethodsService } from '../stores/store-payment-methods.service';
 import type { Prisma } from '@gas-erp/database';
 
 @Injectable()
@@ -30,6 +31,7 @@ export class SalesService {
     private stockService: StockService,
     private audit: AuditService,
     private push: PushService,
+    private paymentMethods: StorePaymentMethodsService,
   ) {}
 
   private saleInclude = {
@@ -129,7 +131,13 @@ export class SalesService {
       );
     }
 
-    const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
+      data.storeId,
+      payments,
+      gasDoPovoBenefit,
+    );
+
+    const paidTotal = resolvedPayments.reduce((sum, payment) => sum + payment.amount, 0);
     if (total > 0 && paidTotal < total - 0.009) {
       throw new BadRequestException(
         'Informe o valor do pagamento. Verifique o preço unitário do produto.',
@@ -203,7 +211,7 @@ export class SalesService {
             total: item.quantity * item.unitPrice - (item.discount ?? 0),
           })),
         },
-        payments: { create: payments },
+        payments: { create: resolvedPayments },
         statusLogs: {
           create: isPendingBackdate
             ? [{ status: SaleStatus.CONFIRMED, userId: user.id, notes: 'Aguardando aprovação de data retroativa' }]
@@ -307,7 +315,13 @@ export class SalesService {
       ? data.payments
       : [{ method: 'CASH' as const, amount: total }];
 
-    const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
+      data.storeId,
+      payments,
+      false,
+    );
+
+    const paidTotal = resolvedPayments.reduce((sum, payment) => sum + payment.amount, 0);
     if (total > 0 && paidTotal < total - 0.009) {
       throw new BadRequestException(
         'Informe o valor do pagamento. Verifique o preço unitário do produto.',
@@ -347,7 +361,7 @@ export class SalesService {
             total: item.quantity * item.unitPrice - (item.discount ?? 0),
           })),
         },
-        payments: { create: payments },
+        payments: { create: resolvedPayments },
         statusLogs: {
           create: [{
             status: SaleStatus.DRAFT,
