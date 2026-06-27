@@ -130,7 +130,7 @@ function QuickCustomerRegister({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit} className="ui-panel-enter space-y-3">
       <p className="text-sm font-semibold text-slate-900">Cadastro rápido</p>
       <div>
         <Label>Nome</Label>
@@ -143,10 +143,16 @@ function QuickCustomerRegister({
       <CustomerAddressFields value={address} onChange={setAddress} />
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <div className="flex gap-2 pt-1">
-        <Button type="submit" disabled={saving}>
+        <Button type="submit" disabled={saving} className="transition-transform active:scale-[0.98]">
           {saving ? 'Salvando…' : 'Cadastrar e selecionar'}
         </Button>
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onCancel}
+          disabled={saving}
+          className="transition-colors hover:border-slate-300 hover:bg-slate-100 active:scale-[0.98]"
+        >
           Cancelar
         </Button>
       </div>
@@ -287,7 +293,7 @@ export function CustomerPicker({
     const { customer } = value;
     const phone = formatPhoneDisplay(customer.phone);
     return (
-      <div className="rounded-xl border border-brand/30 bg-brand-muted/40 p-4">
+      <div className="ui-panel-enter rounded-xl border border-brand/30 bg-brand-muted/40 p-4">
         <div className="flex items-start gap-3">
           <CustomerAvatar name={customer.name} className="h-11 w-11 text-sm" />
           <div className="min-w-0 flex-1">
@@ -363,7 +369,7 @@ export function CustomerPicker({
         <div
           id={`${listId}-listbox`}
           role="listbox"
-          className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+          className="ui-dropdown-enter absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
         >
           {loading && <ListSkeleton />}
 
@@ -446,11 +452,11 @@ export function CustomerPicker({
       )}
 
       {!registerOpen && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
           <button
             type="button"
             onClick={() => openRegister(search.trim() || undefined)}
-            className="font-medium text-brand hover:underline"
+            className="inline-flex items-center rounded-lg border border-brand/25 bg-brand-muted/60 px-3 py-1.5 font-medium text-brand-dark transition-all hover:border-brand/40 hover:bg-brand-muted hover:shadow-sm active:scale-[0.98]"
           >
             + Cadastrar novo cliente
           </button>
@@ -458,7 +464,7 @@ export function CustomerPicker({
             <button
               type="button"
               onClick={selectAnonymous}
-              className="text-slate-500 underline-offset-2 hover:text-brand hover:underline"
+              className="rounded-lg px-2 py-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-brand active:scale-[0.98]"
             >
               Venda sem cadastro
             </button>
@@ -467,7 +473,7 @@ export function CustomerPicker({
       )}
 
       {registerOpen && (
-        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-md ring-1 ring-slate-100">
           <QuickCustomerRegister
             defaultName={search.trim() || debouncedSearch}
             onCreated={selectCustomer}

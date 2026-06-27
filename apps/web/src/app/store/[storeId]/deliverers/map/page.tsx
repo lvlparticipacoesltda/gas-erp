@@ -233,16 +233,6 @@ export default function DelivererMapPage() {
           onSelect={setSelectedId}
           fitPaddingRight={400}
         />
-
-        {withPosition.length === 0 && (
-          <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4">
-            <div className="rounded-lg border border-slate-200 bg-white/95 px-4 py-2 text-center text-sm text-slate-600 shadow-md backdrop-blur-sm">
-              {positions.length === 0
-                ? 'Nenhum entregador disponível no mapa. Peça ao entregador para permitir localização "o tempo todo" no app.'
-                : 'Nenhuma posição GPS no momento — entregadores sem sinal ou indisponíveis.'}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Painel lateral direito */}
@@ -304,9 +294,11 @@ export default function DelivererMapPage() {
             <li className="flex flex-col items-center gap-2 px-4 py-10 text-center">
               <MapPin className="h-8 w-8 text-slate-300" />
               <p className="text-sm font-medium text-slate-600">Nenhum entregador no mapa</p>
-              <p className="text-xs text-slate-400">
-                Atualização automática a cada 15 segundos.
+              <p className="max-w-xs text-xs leading-relaxed text-slate-500">
+                Entregadores indisponíveis ou sem GPS ativo. Peça para abrir o app, permitir
+                localização &quot;o tempo todo&quot; e estar marcado como disponível no painel.
               </p>
+              <p className="text-xs text-slate-400">Atualização automática a cada 15 segundos.</p>
             </li>
           )}
           {positions.map((p) => {
