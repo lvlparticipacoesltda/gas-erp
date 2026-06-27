@@ -163,6 +163,7 @@ export class SalesService {
     const channel = isPickup ? 'IN_STORE' : (data.channel ?? 'PHONE');
     const now = new Date();
     const managerAutoApproved = backdate.backdateApproval === 'APPROVED';
+    const unitCostByProduct = await this.resolveItemUnitCosts(data.storeId, data.items);
 
     const created = await this.prisma.sale.create({
       data: {
@@ -197,6 +198,7 @@ export class SalesService {
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
+            unitCost: unitCostByProduct.get(item.productId) ?? 0,
             discount: item.discount ?? 0,
             total: item.quantity * item.unitPrice - (item.discount ?? 0),
           })),
@@ -314,6 +316,8 @@ export class SalesService {
 
     await this.validateMobileSaleReferences(user, data);
 
+    const unitCostByProduct = await this.resolveItemUnitCosts(data.storeId, data.items);
+
     const sale = await this.prisma.sale.create({
       data: {
         storeId: data.storeId,
@@ -338,6 +342,7 @@ export class SalesService {
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
+            unitCost: unitCostByProduct.get(item.productId) ?? 0,
             discount: item.discount ?? 0,
             total: item.quantity * item.unitPrice - (item.discount ?? 0),
           })),
@@ -802,6 +807,21 @@ export class SalesService {
     });
 
     return settings.reduce((sum, setting) => sum + toNumber(setting.deliveryFee), 0);
+  }
+
+  private async resolveItemUnitCosts(
+    storeId: string,
+    items: { productId: string }[],
+  ): Promise<Map<string, number>> {
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    if (productIds.length === 0) return new Map();
+
+    const settings = await this.prisma.productStoreSetting.findMany({
+      where: { storeId, productId: { in: productIds } },
+      select: { productId: true, supplierCost: true },
+    });
+
+    return new Map(settings.map((setting) => [setting.productId, toNumber(setting.supplierCost)]));
   }
 
   private async validateSaleReferences(user: AuthUser, data: CreateSaleInput) {

@@ -77,6 +77,16 @@ export function canApproveMobileSales(role: string): boolean {
 
 export const canManageDeliverers = canManageSales;
 
+/** Margem / custo fornecedor — master, gerente e financeiro. */
+export function canViewFinancialMargins(role: string): boolean {
+  return (
+    role === 'ORG_MASTER'
+    || role === 'STORE_MANAGER'
+    || role === 'FINANCE'
+    || role === 'PLATFORM_ADMIN'
+  );
+}
+
 /** Disponível / indisponível no mapa — gerente ou quem tem tela do mapa (ex.: atendente). */
 export function canToggleDelivererAvailability(
   role: string,

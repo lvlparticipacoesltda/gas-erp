@@ -19,6 +19,10 @@ import {
   getWaitTimeSeconds,
   resolveDashboardDateRange,
   toNumber,
+  canViewFinancialMargins,
+  computeGrossMarginPercent,
+  computeGrossProfit,
+  computeSaleCogs,
   type PurchasesReportResponse,
   type ReportType,
   type SalesReportFilters,
@@ -83,6 +87,9 @@ function mapSaleToReportRow(sale: SaleForReport): SalesReportRow {
   const itemsSummary = sale.items
     .map((item) => `${item.quantity}x ${item.product.name}`)
     .join('; ');
+  const total = toNumber(sale.total);
+  const totalCost = computeSaleCogs(sale.items);
+  const grossProfit = computeGrossProfit(total, totalCost);
 
   return {
     saleId: sale.id,
@@ -102,7 +109,10 @@ function mapSaleToReportRow(sale: SaleForReport): SalesReportRow {
     gasDoPovoBenefit: sale.gasDoPovoBenefit,
     paymentSummary,
     paymentDetails,
-    total: toNumber(sale.total),
+    total,
+    totalCost,
+    grossProfit,
+    grossMarginPercent: computeGrossMarginPercent(total, grossProfit),
     deliveryStatus: delivery?.status ?? null,
     deliveryStatusLabel: delivery ? (DELIVERY_STATUS_LABELS[delivery.status] ?? delivery.status) : null,
     waitTimeSeconds,
@@ -247,7 +257,28 @@ export class ReportsService {
       }))
       .sort((a, b) => b.deliveryCount - a.deliveryCount);
 
-    const rows = sales.map(mapSaleToReportRow);
+    const showFinancial = canViewFinancialMargins(user.role);
+    let rows = sales.map(mapSaleToReportRow);
+
+    const nonCancelledSales = sales.filter((sale) => sale.status !== SaleStatus.CANCELLED);
+    const financialSummary = showFinancial
+      ? (() => {
+          const totalCost = nonCancelledSales.reduce(
+            (sum, sale) => sum + computeSaleCogs(sale.items),
+            0,
+          );
+          const grossProfit = computeGrossProfit(totalRevenue, totalCost);
+          return {
+            totalCost,
+            grossProfit,
+            grossMarginPercent: computeGrossMarginPercent(totalRevenue, grossProfit),
+          };
+        })()
+      : {};
+
+    if (!showFinancial) {
+      rows = rows.map(({ totalCost: _c, grossProfit: _p, grossMarginPercent: _m, ...row }) => row);
+    }
 
     return {
       date: formatDashboardDateRangeLabel(dateFrom, dateTo),
@@ -256,6 +287,7 @@ export class ReportsService {
       totalRevenue,
       salesCount,
       averageTicket,
+      ...financialSummary,
       byStatus,
       byDay,
       byPaymentMethod,
@@ -503,6 +535,7 @@ export class ReportsService {
   ): Promise<{ filename: string; csv: string }> {
     if (type === 'sales') {
       const report = await this.salesReport(user, storeId, dateQuery, salesFilters);
+      const showFinancial = canViewFinancialMargins(user.role);
       const headers = [
         'Data da venda',
         'Criado em',
@@ -520,6 +553,7 @@ export class ReportsService {
         'Formas de pagamento',
         'Detalhe pagamentos',
         'Total',
+        ...(showFinancial ? ['CMV', 'Lucro bruto', 'Margem %'] : []),
         'Status entrega',
         'Tempo espera rota',
         'Tempo em rota',
@@ -542,6 +576,13 @@ export class ReportsService {
         r.paymentSummary,
         r.paymentDetails,
         formatCsvMoney(r.total),
+        ...(showFinancial
+          ? [
+              formatCsvMoney(r.totalCost ?? 0),
+              formatCsvMoney(r.grossProfit ?? 0),
+              r.grossMarginPercent != null ? `${r.grossMarginPercent}%` : '',
+            ]
+          : []),
         r.deliveryStatusLabel ?? '',
         r.waitTimeLabel ?? '',
         r.routeDurationLabel ?? '',

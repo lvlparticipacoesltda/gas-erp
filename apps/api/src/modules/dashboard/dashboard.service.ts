@@ -7,6 +7,9 @@ import {
   COUNTED_MOBILE_APPROVALS,
   DashboardDateQuery,
   PAYMENT_METHOD_LABELS,
+  canViewFinancialMargins,
+  computeGrossMarginPercent,
+  computeGrossProfit,
   formatDashboardDateRangeLabel,
   getRouteDurationSeconds,
   getWaitTimeSeconds,
@@ -22,6 +25,9 @@ type DashboardPayload = {
   dateFrom: string;
   dateTo: string;
   revenue: number;
+  totalCost?: number;
+  grossProfit?: number;
+  grossMarginPercent?: number | null;
   paymentsByMethod: Record<string, number>;
   productsSold: { name: string; qty: number; total: number }[];
   stockMovements: number;
@@ -105,7 +111,7 @@ export class DashboardService {
           };
         }),
       ),
-      this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true),
+      this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true, user),
     ]);
 
     return { stores: storeStats, date: dateLabel, dateFrom, dateTo, summary };
@@ -114,7 +120,7 @@ export class DashboardService {
   async storeDashboard(user: AuthUser, storeId: string, dateQuery: DashboardDateQuery = {}) {
     assertStoreAccess(user, storeId);
     const { start, end, dateFrom, dateTo } = this.resolveRange(dateQuery);
-    return this.computeDashboardForStores([storeId], start, end, dateFrom, dateTo, false);
+    return this.computeDashboardForStores([storeId], start, end, dateFrom, dateTo, false, user);
   }
 
   private resolveRange(dateQuery: DashboardDateQuery) {
@@ -159,6 +165,7 @@ export class DashboardService {
     dateFrom: string,
     dateTo: string,
     includeStoreNameInSlowDeliveries: boolean,
+    user: AuthUser,
   ): Promise<DashboardPayload> {
     if (storeIds.length === 0) {
       return this.emptyDashboard(dateFrom, dateTo);
@@ -174,7 +181,7 @@ export class DashboardService {
       status: { not: SaleStatus.CANCELLED },
     };
 
-    const [saleAgg, paymentGroups, itemGroups, movements, deliveries] = await Promise.all([
+    const [saleAgg, paymentGroups, itemGroups, movements, deliveries, saleItemsForCost] = await Promise.all([
       this.prisma.sale.aggregate({
         where: saleWhere,
         _sum: { total: true },
@@ -212,6 +219,12 @@ export class DashboardService {
           deliverer: { include: { user: true } },
         },
       }),
+      canViewFinancialMargins(user.role)
+        ? this.prisma.saleItem.findMany({
+            where: { sale: saleWhere },
+            select: { quantity: true, unitCost: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const revenue = toNumber(saleAgg._sum.total);
@@ -314,11 +327,27 @@ export class DashboardService {
       }))
       .sort((a, b) => a.delivererName.localeCompare(b.delivererName, 'pt-BR'));
 
+    const financialSummary = canViewFinancialMargins(user.role)
+      ? (() => {
+          const totalCost = saleItemsForCost.reduce(
+            (sum, item) => sum + item.quantity * toNumber(item.unitCost),
+            0,
+          );
+          const grossProfit = computeGrossProfit(revenue, totalCost);
+          return {
+            totalCost,
+            grossProfit,
+            grossMarginPercent: computeGrossMarginPercent(revenue, grossProfit),
+          };
+        })()
+      : {};
+
     return {
       date: formatDashboardDateRangeLabel(dateFrom, dateTo),
       dateFrom,
       dateTo,
       revenue,
+      ...financialSummary,
       paymentsByMethod,
       productsSold,
       stockMovements: movements,

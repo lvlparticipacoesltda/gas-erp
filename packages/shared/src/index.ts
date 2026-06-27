@@ -16,6 +16,7 @@ export * from './schemas/push';
 export * from './schemas/delivery';
 export * from './permissions';
 export * from './sale-display';
+export * from './sale-financials';
 export * from './sale-backdate';
 export * from './sale-mobile';
 export * from './schemas/sale-mobile';

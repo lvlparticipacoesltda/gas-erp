@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createProductSchema, updateProductSchema, updateProductPriceSchema } from '@gas-erp/shared';
+import { createProductSchema, updateProductSchema, updateProductPriceSchema, canViewFinancialMargins } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
@@ -9,6 +9,18 @@ import { paginate, paginatedResult } from '../../common/utils/pagination';
 @Injectable()
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
+
+  private sanitizeProduct<T extends { storeSettings?: { supplierCost?: unknown }[] }>(
+    user: AuthUser,
+    product: T,
+  ): T {
+    if (canViewFinancialMargins(user.role)) return product;
+    if (!product.storeSettings?.length) return product;
+    return {
+      ...product,
+      storeSettings: product.storeSettings.map(({ supplierCost: _removed, ...setting }) => setting),
+    } as T;
+  }
 
   async findAll(user: AuthUser, storeId?: string, page = 1, pageSize = 20) {
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
@@ -26,7 +38,7 @@ export class ProductsService {
       }),
       this.prisma.product.count({ where }),
     ]);
-    return paginatedResult(data, total, p, ps);
+    return paginatedResult(data.map((product) => this.sanitizeProduct(user, product)), total, p, ps);
   }
 
   async findOne(user: AuthUser, id: string) {
@@ -35,7 +47,7 @@ export class ProductsService {
       include: { storeSettings: true, stockBalances: true },
     });
     if (!product) throw new NotFoundException('Produto não encontrado');
-    return product;
+    return this.sanitizeProduct(user, product);
   }
 
   async create(user: AuthUser, input: unknown, storeId?: string) {
@@ -56,11 +68,16 @@ export class ProductsService {
       assertStoreAccess(user, storeId);
       await this.prisma.productStoreSetting.upsert({
         where: { productId_storeId: { productId: product.id, storeId } },
-        update: { price: data.price ?? 0, deliveryFee: data.deliveryFee ?? 0 },
+        update: {
+          price: data.price ?? 0,
+          supplierCost: data.supplierCost ?? 0,
+          deliveryFee: data.deliveryFee ?? 0,
+        },
         create: {
           productId: product.id,
           storeId,
           price: data.price ?? 0,
+          supplierCost: data.supplierCost ?? 0,
           deliveryFee: data.deliveryFee ?? 0,
         },
       });
@@ -95,6 +112,7 @@ export class ProductsService {
       where: { productId_storeId: { productId, storeId: data.storeId } },
       update: {
         price: data.price,
+        supplierCost: data.supplierCost ?? 0,
         deliveryFee: data.deliveryFee ?? 0,
         active: data.active ?? true,
       },
@@ -102,6 +120,7 @@ export class ProductsService {
         productId,
         storeId: data.storeId,
         price: data.price,
+        supplierCost: data.supplierCost ?? 0,
         deliveryFee: data.deliveryFee ?? 0,
         active: data.active ?? true,
       },

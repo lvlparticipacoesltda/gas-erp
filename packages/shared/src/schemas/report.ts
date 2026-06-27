@@ -110,12 +110,21 @@ export interface SalesReportRow {
   routeDurationSeconds: number | null;
   routeDurationLabel: string | null;
   notes: string | null;
+  /** Preenchido apenas para perfis com canViewFinancialMargins. */
+  totalCost?: number;
+  grossProfit?: number;
+  grossMarginPercent?: number | null;
 }
 
 export interface SalesReportResponse extends ReportPeriod {
   totalRevenue: number;
   salesCount: number;
   averageTicket: number;
+  /** CMV total do período (perfis financeiros). */
+  totalCost?: number;
+  /** Lucro bruto total do período (perfis financeiros). */
+  grossProfit?: number;
+  grossMarginPercent?: number | null;
   byStatus: SalesReportByStatus[];
   byDay: SalesReportByDay[];
   byPaymentMethod: SalesReportByPaymentMethod[];

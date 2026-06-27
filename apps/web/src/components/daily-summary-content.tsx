@@ -10,6 +10,9 @@ export interface DailySummaryData {
   dateFrom?: string;
   dateTo?: string;
   revenue: number;
+  totalCost?: number;
+  grossProfit?: number;
+  grossMarginPercent?: number | null;
   salesCount: number;
   paymentsByMethod: Record<string, number>;
   productsSold: { name: string; qty: number; total: number }[];
@@ -50,11 +53,19 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
     showStoreInSlowDeliveries ??
     (metrics?.slowDeliveries.some((d) => d.storeName) ?? false);
   const paymentEntries = Object.entries(data.paymentsByMethod);
+  const showFinancial = data.totalCost != null && data.grossProfit != null;
 
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Card><div className="text-sm text-slate-500">Faturamento {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.revenue)}</div></Card>
+        {showFinancial && (
+          <>
+            <Card><div className="text-sm text-slate-500">CMV {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.totalCost!)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Lucro bruto {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.grossProfit!)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Margem bruta {periodLabel}</div><div className="text-2xl font-bold">{data.grossMarginPercent != null ? `${data.grossMarginPercent}%` : '—'}</div></Card>
+          </>
+        )}
         <Card><div className="text-sm text-slate-500">Vendas</div><div className="text-2xl font-bold">{data.salesCount}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas pendentes</div><div className="text-2xl font-bold">{data.deliveries.pending}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas em rota</div><div className="text-2xl font-bold">{data.deliveries.inProgress}</div></Card>

@@ -57,7 +57,7 @@ function buildSalesQuery(storeId: string, filters: SalesFilterState): string {
   return params.toString();
 }
 
-const TABLE_COLUMNS: { key: keyof SalesReportRow | 'actions'; label: string; className?: string }[] = [
+const BASE_TABLE_COLUMNS: { key: keyof SalesReportRow | 'actions'; label: string; className?: string }[] = [
   { key: 'saleDate', label: 'Data' },
   { key: 'createdAt', label: 'Criado em' },
   { key: 'saleId', label: 'ID venda', className: 'min-w-[8rem]' },
@@ -73,6 +73,15 @@ const TABLE_COLUMNS: { key: keyof SalesReportRow | 'actions'; label: string; cla
   { key: 'gasDoPovoBenefit', label: 'Gás do Povo' },
   { key: 'paymentSummary', label: 'Pagamento' },
   { key: 'total', label: 'Total' },
+];
+
+const FINANCIAL_TABLE_COLUMNS: { key: keyof SalesReportRow; label: string; className?: string }[] = [
+  { key: 'totalCost', label: 'CMV' },
+  { key: 'grossProfit', label: 'Lucro bruto' },
+  { key: 'grossMarginPercent', label: 'Margem %' },
+];
+
+const TAIL_TABLE_COLUMNS: { key: keyof SalesReportRow; label: string; className?: string }[] = [
   { key: 'deliveryStatusLabel', label: 'Status entrega' },
   { key: 'waitTimeLabel', label: 'Espera rota' },
   { key: 'routeDurationLabel', label: 'Tempo em rota' },
@@ -83,7 +92,10 @@ function cellValue(row: SalesReportRow, key: keyof SalesReportRow): string {
   const value = row[key];
   if (value == null || value === '') return '—';
   if (key === 'saleDate') return formatDay(String(value));
-  if (key === 'deliveryFee' || key === 'total') return formatCurrency(Number(value));
+  if (key === 'deliveryFee' || key === 'total' || key === 'totalCost' || key === 'grossProfit') {
+    return formatCurrency(Number(value));
+  }
+  if (key === 'grossMarginPercent') return value != null ? `${value}%` : '—';
   if (key === 'gasDoPovoBenefit') return value ? 'Sim' : 'Não';
   return String(value);
 }
@@ -158,6 +170,10 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
   if (loading && !data) return <PageLoader label="Carregando relatório de vendas…" />;
 
   const isRefetching = loading && !!data;
+  const showFinancial = data?.totalCost != null && data?.grossProfit != null;
+  const tableColumns = showFinancial
+    ? [...BASE_TABLE_COLUMNS, ...FINANCIAL_TABLE_COLUMNS, ...TAIL_TABLE_COLUMNS]
+    : [...BASE_TABLE_COLUMNS, ...TAIL_TABLE_COLUMNS];
 
   return (
     <div className="space-y-6">
@@ -263,11 +279,29 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
 
       {data && (
         <>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className={`grid gap-4 ${showFinancial ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-3'}`}>
             <Card>
               <div className="text-sm text-slate-500">Faturamento</div>
               <div className="text-2xl font-bold">{formatCurrency(data.totalRevenue)}</div>
             </Card>
+            {showFinancial && (
+              <>
+                <Card>
+                  <div className="text-sm text-slate-500">CMV</div>
+                  <div className="text-2xl font-bold">{formatCurrency(data.totalCost!)}</div>
+                </Card>
+                <Card>
+                  <div className="text-sm text-slate-500">Lucro bruto</div>
+                  <div className="text-2xl font-bold">{formatCurrency(data.grossProfit!)}</div>
+                </Card>
+                <Card>
+                  <div className="text-sm text-slate-500">Margem bruta</div>
+                  <div className="text-2xl font-bold">
+                    {data.grossMarginPercent != null ? `${data.grossMarginPercent}%` : '—'}
+                  </div>
+                </Card>
+              </>
+            )}
             <Card>
               <div className="text-sm text-slate-500">Vendas</div>
               <div className="text-2xl font-bold">{data.salesCount}</div>
@@ -298,7 +332,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
                     <table className="min-w-max w-full text-xs">
                       <thead className="bg-slate-50 text-left">
                         <tr>
-                          {TABLE_COLUMNS.map((col) => (
+                          {tableColumns.map((col) => (
                             <th key={col.key} className={`whitespace-nowrap p-2 font-medium ${col.className ?? ''}`}>
                               {col.label}
                             </th>
@@ -308,7 +342,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
                       <tbody>
                         {rows.map((row) => (
                           <tr key={row.saleId} className="border-t border-slate-100 hover:bg-slate-50/80">
-                            {TABLE_COLUMNS.map((col) => (
+                            {tableColumns.map((col) => (
                               <td
                                 key={col.key}
                                 className={`max-w-[16rem] truncate whitespace-nowrap p-2 text-slate-700 ${col.className ?? ''}`}
