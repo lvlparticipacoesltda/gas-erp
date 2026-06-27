@@ -14,7 +14,7 @@ import { buildStoreHref, defaultStorePath, STORE_NAV_ITEMS } from '@/lib/store-n
 import { NavLink } from '@/components/ui';
 import { Logo } from '@/components/logo';
 import { PageLoader } from '@/components/brand-loader';
-import { hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
+import { canManagePaymentMethods, hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
 interface Store {
@@ -141,6 +141,9 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
       ? masterLinks
       : [
           ...storeLinks,
+          ...(activeStoreId && canManagePaymentMethods(user.role)
+            ? [{ href: `/store/${activeStoreId}/settings/payment-methods`, label: 'Formas de pagamento' }]
+            : []),
           ...(activeStoreId ? [{ href: `/store/${activeStoreId}/settings`, label: 'Minha conta' }] : []),
         ];
 

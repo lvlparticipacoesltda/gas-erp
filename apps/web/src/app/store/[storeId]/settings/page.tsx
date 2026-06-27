@@ -15,14 +15,16 @@ export default function StoreSettingsPage() {
   return (
     <>
       {canManage && (
-        <Card className="mb-6">
-          <h2 className="font-semibold">Configurações da loja</h2>
-          <p className="mt-1 text-sm text-slate-600">Taxas de cartão, PIX e formas de pagamento customizadas.</p>
+        <Card className="mb-6 border-brand/20 bg-brand/5">
+          <h2 className="font-semibold">Formas de pagamento</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Ative meios de pagamento, configure taxas da maquininha (% ou fixo) e cadastre formas customizadas.
+          </p>
           <Link
             href={`/store/${storeId}/settings/payment-methods`}
-            className="mt-3 inline-block text-sm font-medium text-brand hover:underline"
+            className="mt-4 inline-flex rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
           >
-            Formas de pagamento →
+            Configurar formas de pagamento
           </Link>
         </Card>
       )}
