@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { DailySummaryContent, type DailySummaryData } from '@/components/daily-summary-content';
 import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PageHeader } from '@/components/ui';
+import { DASHBOARD_POLL_INTERVAL_MS, useLiveQuery } from '@/hooks/use-live-query';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { todayDateKey } from '@gas-erp/shared';
@@ -15,25 +16,13 @@ export default function DailySummaryPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [dateFrom, setDateFrom] = useState(todayDateKey);
   const [dateTo, setDateTo] = useState(todayDateKey);
-  const [data, setData] = useState<DailySummaryData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const query = useMemo(() => buildDashboardDateQuery(dateFrom, dateTo), [dateFrom, dateTo]);
 
-  useEffect(() => {
-    if (!storeId) return;
-    setLoading(true);
-    setError('');
-    const query = buildDashboardDateQuery(dateFrom, dateTo);
-    api<DailySummaryData>(`/dashboard/store?storeId=${storeId}&${query}`, {}, getToken())
-      .then(setData)
-      .catch((err) => {
-        setData(null);
-        setError(err instanceof Error ? err.message : 'Erro ao carregar resumo');
-      })
-      .finally(() => setLoading(false));
-  }, [storeId, dateFrom, dateTo]);
-
-  const isRefetching = loading && !!data;
+  const { data, loading, isRefetching, error } = useLiveQuery<DailySummaryData>(
+    () => api(`/dashboard/store?storeId=${storeId}&${query}`, {}, getToken()),
+    [storeId, query],
+    { enabled: Boolean(storeId) },
+  );
 
   if (loading && !data) return <PageLoader label="Carregando resumo…" />;
 
@@ -43,15 +32,15 @@ export default function DailySummaryPage() {
         title="Resumo diário"
         subtitle={
           data?.date
-            ? `Fechamento operacional · ${data.date}`
-            : 'Fechamento operacional da unidade'
+            ? `Fechamento operacional · ${data.date} · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
+            : `Fechamento operacional da unidade · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
         }
       />
 
       <DailySummaryDateFilter
         dateFrom={dateFrom}
         dateTo={dateTo}
-        disabled={loading}
+        disabled={isRefetching}
         onChange={(from, to) => {
           setDateFrom(from);
           setDateTo(to);

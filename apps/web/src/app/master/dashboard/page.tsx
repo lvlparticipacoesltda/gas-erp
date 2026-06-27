@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
 import { PageLoader } from '@/components/brand-loader';
 import { DailySummaryContent, type DailySummaryData } from '@/components/daily-summary-content';
 import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { Card, PageHeader } from '@/components/ui';
+import { DASHBOARD_POLL_INTERVAL_MS, useLiveQuery } from '@/hooks/use-live-query';
 import { api, getToken, setCurrentStoreId } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
@@ -24,42 +25,25 @@ export default function MasterDashboardPage() {
   const router = useRouter();
   const [dateFrom, setDateFrom] = useState(todayDateKey);
   const [dateTo, setDateTo] = useState(todayDateKey);
-  const [data, setData] = useState<{
+  const query = useMemo(() => buildDashboardDateQuery(dateFrom, dateTo), [dateFrom, dateTo]);
+
+  const { data, loading, isRefetching, error } = useLiveQuery<{
     stores: StoreStat[];
     date?: string;
     dateFrom?: string;
     dateTo?: string;
     summary?: DailySummaryData;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    setLoading(true);
-    setError('');
-    const query = buildDashboardDateQuery(dateFrom, dateTo);
-    api<{
-      stores: StoreStat[];
-      date?: string;
-      dateFrom?: string;
-      dateTo?: string;
-      summary?: DailySummaryData;
-    }>(`/dashboard/master?${query}`, {}, getToken())
-      .then(setData)
-      .catch((err) => {
-        setData(null);
-        setError(err instanceof Error ? err.message : 'Erro ao carregar visão geral');
-      })
-      .finally(() => setLoading(false));
-  }, [dateFrom, dateTo]);
+  }>(
+    () => api(`/dashboard/master?${query}`, {}, getToken()),
+    [query],
+  );
 
   function openStore(id: string) {
-    if (loading) return;
+    if (isRefetching) return;
     setCurrentStoreId(id);
     router.push(`/store/${id}/daily-summary`);
   }
 
-  const isRefetching = loading && !!data;
   const isRange = dateFrom !== dateTo;
   const salesLabel = isRange ? 'Vendas no período' : 'Vendas hoje';
   const revenueLabel = isRange ? 'Faturamento no período' : 'Faturamento';
@@ -70,13 +54,17 @@ export default function MasterDashboardPage() {
     <>
       <PageHeader
         title="Painel Master"
-        subtitle={data?.date ? `Visão consolidada · ${data.date}` : 'Visão consolidada de todas as unidades'}
+        subtitle={
+          data?.date
+            ? `Visão consolidada · ${data.date} · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
+            : `Visão consolidada de todas as unidades · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
+        }
       />
 
       <DailySummaryDateFilter
         dateFrom={dateFrom}
         dateTo={dateTo}
-        disabled={loading}
+        disabled={isRefetching}
         onChange={(from, to) => {
           setDateFrom(from);
           setDateTo(to);
