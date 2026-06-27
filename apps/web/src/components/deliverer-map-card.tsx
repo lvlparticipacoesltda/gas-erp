@@ -16,6 +16,7 @@ import {
   DELIVERER_STATUS_LABELS,
   DELIVERY_STATUS_LABELS,
   formatWaitTime,
+  getDelivererAvailabilityLock,
   getDelivererPositionBadge,
   getElapsedWaitingSeconds,
 } from '@gas-erp/shared';
@@ -78,20 +79,22 @@ function BatteryInline({
 function AvailabilityToggle({
   available,
   locked,
+  lockReason,
   saving,
   compact,
   onToggle,
 }: {
   available: boolean;
   locked: boolean;
+  lockReason: string | null;
   saving: boolean;
   compact?: boolean;
   onToggle: (next: boolean) => void;
 }) {
   if (locked) {
     return (
-      <p className={`text-[11px] text-slate-500 ${compact ? '' : 'mt-2'}`}>
-        Bloqueado em rota
+      <p className={`text-[11px] text-slate-500 ${compact ? 'max-w-[7rem] text-right leading-tight' : 'mt-2'}`}>
+        {lockReason ?? 'Indisponível bloqueado'}
       </p>
     );
   }
@@ -136,14 +139,18 @@ function DelivererAvatar({ inRoute }: { inRoute: boolean }) {
 export function DelivererMapCard({
   position: p,
   isSelected,
+  isExpanded,
   onSelect,
+  onToggleExpand,
   canToggleAvailability,
   saving,
   onToggleAvailability,
 }: {
   position: DelivererPosition;
   isSelected: boolean;
+  isExpanded: boolean;
   onSelect: () => void;
+  onToggleExpand: () => void;
   canToggleAvailability: boolean;
   saving: boolean;
   onToggleAvailability: (next: boolean) => void;
@@ -152,86 +159,100 @@ export function DelivererMapCard({
   const gps = gpsStatusShort(p);
   const inRoute = p.deliveryStatus === 'IN_PROGRESS';
   const pendingCount = p.pendingDeliveries?.length ?? 0;
-  const availabilityLocked = p.delivererStatus === 'ON_DELIVERY';
+  const { locked: availabilityLocked, reason: lockReason } = getDelivererAvailabilityLock(p);
   const statusLabel = DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus;
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`w-full px-3 py-2.5 text-left transition-colors ${
+    <div
+      className={`w-full transition-colors ${
         isSelected ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : 'hover:bg-slate-50'
       }`}
     >
-      <div className="flex gap-2.5">
-        <DelivererAvatar inRoute={inRoute} />
+      <div className="flex items-start gap-1 px-3 py-2.5">
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex min-w-0 flex-1 gap-2.5 text-left"
+        >
+          <DelivererAvatar inRoute={inRoute} />
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <p className="truncate text-sm font-semibold uppercase tracking-tight text-slate-900">
-              {p.name}
-            </p>
-            <div className="flex shrink-0 items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${gps.dotClass}`} aria-hidden />
-              <span className="text-[11px] font-medium text-slate-600">
-                {gps.online ? 'Online' : 'Sem sinal'}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <p className="truncate text-sm font-semibold uppercase tracking-tight text-slate-900">
+                {p.name}
+              </p>
+              <div className="flex shrink-0 items-center gap-1">
+                <span className={`h-2 w-2 rounded-full ${gps.dotClass}`} aria-hidden />
+                <span className="text-[11px] font-medium text-slate-600">
+                  {gps.online ? 'Online' : 'Sem sinal'}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+              <span className="inline-flex items-center gap-0.5">
+                <Navigation className="h-3 w-3 shrink-0" aria-hidden />
+                {gps.label}
               </span>
+              <span className="text-slate-300">·</span>
+              <span className="font-medium text-slate-600">{statusLabel}</span>
+              <BatteryInline level={p.batteryLevel} charging={p.batteryCharging} />
             </div>
+
+            {(inRoute || pendingCount > 0) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {inRoute && (
+                  <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-amber-800">
+                    <MapPin className="h-3 w-3 shrink-0" aria-hidden />
+                    <span className="truncate font-medium">{p.customerName ?? 'Cliente'}</span>
+                    <RouteElapsed
+                      startedAt={p.routeStartedAt}
+                      inline
+                      className="shrink-0 font-semibold text-amber-700"
+                    />
+                  </div>
+                )}
+                {pendingCount > 0 && (
+                  <PendingSummary pendingDeliveries={p.pendingDeliveries!} />
+                )}
+              </div>
+            )}
+
+            {!inRoute && pendingCount === 0 && badge.key !== 'LIVE' && badge.key !== 'NO_GPS' && (
+              <div className="mt-1">
+                <Badge tone={badge.tone}>{badge.label}</Badge>
+              </div>
+            )}
           </div>
+        </button>
 
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
-            <span className="inline-flex items-center gap-0.5">
-              <Navigation className="h-3 w-3 shrink-0" aria-hidden />
-              {gps.label}
-            </span>
-            <span className="text-slate-300">·</span>
-            <span className="font-medium text-slate-600">{statusLabel}</span>
-            <BatteryInline level={p.batteryLevel} charging={p.batteryCharging} />
-          </div>
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? 'Recolher detalhes' : 'Expandir detalhes'}
+          className="mt-0.5 shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
 
-          {(inRoute || pendingCount > 0) && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {inRoute && (
-                <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-amber-800">
-                  <MapPin className="h-3 w-3 shrink-0" aria-hidden />
-                  <span className="truncate font-medium">{p.customerName ?? 'Cliente'}</span>
-                  <RouteElapsed
-                    startedAt={p.routeStartedAt}
-                    inline
-                    className="shrink-0 font-semibold text-amber-700"
-                  />
-                </div>
-              )}
-              {pendingCount > 0 && (
-                <PendingSummary pendingDeliveries={p.pendingDeliveries!} />
-              )}
-            </div>
-          )}
-
-          {!inRoute && pendingCount === 0 && badge.key !== 'LIVE' && badge.key !== 'NO_GPS' && (
-            <div className="mt-1">
-              <Badge tone={badge.tone}>{badge.label}</Badge>
-            </div>
-          )}
-        </div>
-
-        {canToggleAvailability && !isSelected && (
+        {canToggleAvailability && !isExpanded && (
           <AvailabilityToggle
             available={p.status !== 'OFFLINE'}
             locked={availabilityLocked}
+            lockReason={lockReason}
             saving={saving}
             compact
             onToggle={onToggleAvailability}
           />
         )}
-
-        {isSelected && (
-          <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-        )}
       </div>
 
-      {isSelected && (
-        <div className="mt-2.5 border-t border-slate-100 pt-2.5 pl-[46px]">
+      {isExpanded && (
+        <div className="border-t border-slate-100 px-3 pb-2.5 pt-2.5 pl-[52px]">
           {inRoute && (
             <div className="space-y-1 text-xs text-slate-600">
               <p>
@@ -259,13 +280,14 @@ export function DelivererMapCard({
             <AvailabilityToggle
               available={p.status !== 'OFFLINE'}
               locked={availabilityLocked}
+              lockReason={lockReason}
               saving={saving}
               onToggle={onToggleAvailability}
             />
           )}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -293,6 +315,7 @@ export function DelivererOfflineCard({
       <AvailabilityToggle
         available={false}
         locked={false}
+        lockReason={null}
         saving={saving}
         compact
         onToggle={onToggleAvailability}

@@ -457,12 +457,15 @@ export class DeliverersService {
           : data.status;
 
     if (nextStatus === 'OFFLINE') {
-      const inRoute = await this.prisma.delivery.count({
-        where: { delivererId: id, status: DeliveryStatus.IN_PROGRESS },
+      const allocatedRoutes = await this.prisma.delivery.count({
+        where: {
+          delivererId: id,
+          status: { in: [DeliveryStatus.IN_PROGRESS, DeliveryStatus.PENDING] },
+        },
       });
-      if (inRoute > 0) {
+      if (allocatedRoutes > 0) {
         throw new BadRequestException(
-          'Entregador em rota não pode ficar indisponível. Conclua ou cancele a entrega primeiro.',
+          'Entregador com rota alocada não pode ficar indisponível. Conclua, reatribua ou cancele a entrega primeiro.',
         );
       }
     }

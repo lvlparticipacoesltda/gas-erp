@@ -10,7 +10,7 @@ import { DelivererMapCard, DelivererOfflineCard } from '@/components/deliverer-m
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { buildStoreHref } from '@/lib/store-nav';
 import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
-import { canToggleDelivererAvailability } from '@gas-erp/shared';
+import { canToggleDelivererAvailability, getDelivererAvailabilityLock } from '@gas-erp/shared';
 
 const REFRESH_INTERVAL_MS = 15_000;
 
@@ -40,6 +40,7 @@ export default function DelivererMapPage() {
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [canToggleAvailability] = useState(() => {
     const user = getStoredUser<AuthUser>();
@@ -90,6 +91,9 @@ export default function DelivererMapPage() {
   async function setAvailability(delivererId: string, available: boolean) {
     if (!available) {
       const deliverer = positions.find((p) => p.delivererId === delivererId);
+      const lock = deliverer ? getDelivererAvailabilityLock(deliverer) : null;
+      if (lock?.locked) return;
+
       const name = deliverer?.name ?? offlineDeliverers.find((d) => d.id === delivererId)?.user.name;
       const ok = confirm(
         `Marcar ${name ?? 'entregador'} como indisponível?\n\nEle deixará de aparecer no mapa até ser reativado.`,
@@ -223,7 +227,11 @@ export default function DelivererMapPage() {
               <DelivererMapCard
                 position={p}
                 isSelected={selectedId === p.delivererId}
+                isExpanded={expandedId === p.delivererId}
                 onSelect={() => setSelectedId(p.delivererId)}
+                onToggleExpand={() =>
+                  setExpandedId((current) => (current === p.delivererId ? null : p.delivererId))
+                }
                 canToggleAvailability={canToggleAvailability}
                 saving={savingId === p.delivererId}
                 onToggleAvailability={(next) => setAvailability(p.delivererId, next)}
