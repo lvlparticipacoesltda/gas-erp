@@ -47,8 +47,7 @@ body {
 }
 
 .brand-loader-clip {
-  transform-box: fill-box;
-  transform-origin: center bottom;
+  transform-origin: bottom center;
   animation: brand-loader-clip 1.6s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
 }
 

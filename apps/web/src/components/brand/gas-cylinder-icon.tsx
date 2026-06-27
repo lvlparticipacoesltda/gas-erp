@@ -9,7 +9,7 @@ export function GasCylinderIcon({
   className?: string;
   variant?: 'mark' | 'app' | 'mono-white';
 }) {
-  const src = variant === 'app' ? '/icon.png' : '/brand/gas-cylinder-mark.png';
+  const src = variant === 'app' ? '/brand/app-icon.png' : '/brand/gas-cylinder-mark.png';
 
   return (
     <Image
