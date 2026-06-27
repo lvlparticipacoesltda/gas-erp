@@ -1,0 +1,22 @@
+{
+  "_comment": "Copie para google-services.json após criar o app Android no Firebase (package com.gaserp.entregador). Ver docs/mobile-push-fcm.md",
+  "project_info": {
+    "project_number": "SUBSTITUA",
+    "project_id": "SUBSTITUA",
+    "storage_bucket": "SUBSTITUA.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "SUBSTITUA",
+        "android_client_info": {
+          "package_name": "com.gaserp.entregador"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [{ "current_key": "SUBSTITUA" }],
+      "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+    }
+  ],
+  "configuration_version": "1"
+}

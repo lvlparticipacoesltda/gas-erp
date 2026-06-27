@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
-import { Pagination } from '@/components/pagination';
+import { PaginatedSection } from '@/components/paginated-section';
 import { Badge, Button, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -164,9 +164,18 @@ export default function SalesListPage() {
         )}
       </div>
 
-      {loading && <p className="mb-3 text-sm text-slate-500">Carregando...</p>}
-
-      <Table>
+      <PaginatedSection
+        loading={loading}
+        pagination={{
+          className: 'mt-4',
+          page,
+          totalPages,
+          total,
+          pageSize: PAGE_SIZE,
+          onPageChange: setPage,
+        }}
+      >
+        <Table>
           <thead className="bg-slate-50 text-left">
             <tr>
               <th className="p-3">Data</th>
@@ -243,14 +252,7 @@ export default function SalesListPage() {
             )}
           </tbody>
         </Table>
-
-        <Pagination
-          className="mt-4"
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          onPageChange={setPage}
-        />
+      </PaginatedSection>
     </>
   );
 }

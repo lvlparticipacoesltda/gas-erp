@@ -1,9 +1,13 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
-import { Pagination, paginateSlice, totalPagesFor } from '@/components/pagination';
-
-const DEFAULT_TABLE_PAGE_SIZE = 15;
+import { useEffect, useState, useTransition, type ReactNode } from 'react';
+import { LoadingOverlay } from '@/components/loading-overlay';
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  Pagination,
+  paginateSlice,
+  totalPagesFor,
+} from '@/components/pagination';
 
 interface PaginatedListProps<T> {
   items: T[];
@@ -19,6 +23,7 @@ export function PaginatedList<T>({
   children,
 }: PaginatedListProps<T>) {
   const [page, setPage] = useState(1);
+  const [isPending, startTransition] = useTransition();
   const totalPages = totalPagesFor(items.length, pageSize);
   const safePage = Math.min(page, totalPages);
   const pageItems = paginateSlice(items, safePage, pageSize);
@@ -33,13 +38,17 @@ export function PaginatedList<T>({
 
   return (
     <>
-      {children(pageItems)}
+      <LoadingOverlay loading={isPending} label="Carregando…" minHeight="min-h-[8rem]">
+        {children(pageItems)}
+      </LoadingOverlay>
       <Pagination
         className="mt-3"
         page={safePage}
         totalPages={totalPages}
         total={items.length}
-        onPageChange={setPage}
+        pageSize={pageSize}
+        loading={isPending}
+        onPageChange={(next) => startTransition(() => setPage(next))}
       />
     </>
   );

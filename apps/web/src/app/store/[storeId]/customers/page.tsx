@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { PageLoader } from '@/components/brand-loader';
+import { BrandLoader, PageLoader } from '@/components/brand-loader';
 import { CustomerAddressFields, customerAddressPayload, type CustomerAddressForm } from '@/components/customer-address-fields';
+import { LoadingOverlay } from '@/components/loading-overlay';
 import { Pagination } from '@/components/pagination';
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
@@ -135,12 +136,17 @@ function CustomerHistoryModal({
         </div>
 
         <div className="overflow-y-auto px-6 py-4">
-          {loading && <p className="text-sm text-slate-500">Carregando pedidos…</p>}
+          {loading && sales.length === 0 && !error && (
+            <div className="flex justify-center py-10">
+              <BrandLoader size="md" label="Carregando pedidos…" />
+            </div>
+          )}
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {!loading && !error && sales.length === 0 && (
+          {!error && sales.length === 0 && !loading && (
             <p className="text-sm text-slate-500">Nenhum pedido encontrado para este cliente nesta unidade.</p>
           )}
-          {!loading && !error && sales.length > 0 && (
+          {!error && sales.length > 0 && (
+            <LoadingOverlay loading={loading} label="Carregando…" minHeight="min-h-[10rem]">
             <ul className="space-y-3">
               {sales.map((sale) => {
                 const display = getSaleDisplayStatus(sale);
@@ -179,13 +185,16 @@ function CustomerHistoryModal({
                 );
               })}
             </ul>
+            </LoadingOverlay>
           )}
-          {!loading && !error && total > 0 && (
+          {!error && total > 0 && (
             <Pagination
               className="mt-4"
               page={page}
               totalPages={totalPages}
               total={total}
+              pageSize={HISTORY_PAGE_SIZE}
+              loading={loading}
               onPageChange={setPage}
             />
           )}
@@ -387,7 +396,7 @@ export default function CustomersPage() {
               </Button>
             ) : null}
           </div>
-          {loading && <p className="px-4 py-2 text-sm text-slate-500">Carregando...</p>}
+          <LoadingOverlay loading={loading} label="Carregando…">
           <Table>
             <thead className="bg-slate-50 text-left">
               <tr><th className="p-3">Nome</th><th className="p-3">Telefone</th><th className="p-3">Endereço</th><th className="p-3" /></tr>
@@ -417,8 +426,9 @@ export default function CustomersPage() {
               )}
             </tbody>
           </Table>
+          </LoadingOverlay>
           <div className="border-t border-slate-100 px-4 py-3">
-            <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} loading={loading} onPageChange={setPage} />
           </div>
         </Card>
       </div>

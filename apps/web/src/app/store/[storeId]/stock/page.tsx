@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
-import { Pagination } from '@/components/pagination';
+import { PaginatedSection } from '@/components/paginated-section';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -65,33 +65,51 @@ export default function StockPage() {
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [ready, setReady] = useState(false);
+  const [movementsLoading, setMovementsLoading] = useState(false);
   const [movementsPage, setMovementsPage] = useState(1);
   const [movementsTotalPages, setMovementsTotalPages] = useState(1);
   const [movementsTotal, setMovementsTotal] = useState(0);
 
   const MOVEMENTS_PAGE_SIZE = 20;
 
-  async function load() {
-    const [b, m] = await Promise.all([
-      api<Balance[]>(`/stock/balances?storeId=${storeId}`, {}, getToken()),
-      api<PaginatedResponse<Movement>>(
-        `/stock/movements?storeId=${storeId}&page=${movementsPage}&pageSize=${MOVEMENTS_PAGE_SIZE}`,
-        {},
-        getToken(),
-      ),
-    ]);
+  async function loadBalances() {
+    const b = await api<Balance[]>(`/stock/balances?storeId=${storeId}`, {}, getToken());
     setBalances(b);
-    setMovements(m.data);
-    setMovementsTotalPages(m.totalPages);
-    setMovementsTotal(m.total);
     if (!adjustForm.productId && b[0]) {
       setAdjustForm((f) => ({ ...f, productId: b[0].product.id }));
     }
   }
 
+  async function loadMovements() {
+    setMovementsLoading(true);
+    try {
+      const m = await api<PaginatedResponse<Movement>>(
+        `/stock/movements?storeId=${storeId}&page=${movementsPage}&pageSize=${MOVEMENTS_PAGE_SIZE}`,
+        {},
+        getToken(),
+      );
+      setMovements(m.data);
+      setMovementsTotalPages(m.totalPages);
+      setMovementsTotal(m.total);
+    } finally {
+      setMovementsLoading(false);
+    }
+  }
+
   useEffect(() => {
-    load().finally(() => setReady(true));
-  }, [storeId, movementsPage]);
+    setMovementsPage(1);
+    setReady(false);
+    loadBalances()
+      .catch(() => undefined)
+      .finally(() => setReady(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    loadMovements();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movementsPage, ready]);
 
   async function handleAdjust(e: React.FormEvent) {
     e.preventDefault();
@@ -117,7 +135,7 @@ export default function StockPage() {
       }, getToken());
       setFormSuccess('Estoque atualizado com sucesso.');
       setAdjustForm((f) => ({ ...f, quantity: 0 }));
-      load();
+      await Promise.all([loadBalances(), loadMovements()]);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao ajustar estoque');
     }
@@ -191,6 +209,17 @@ export default function StockPage() {
       </Table>
 
       <h2 className="mb-3 mt-8 font-semibold">Movimentações recentes</h2>
+      <PaginatedSection
+        loading={movementsLoading}
+        pagination={{
+          className: 'mt-4',
+          page: movementsPage,
+          totalPages: movementsTotalPages,
+          total: movementsTotal,
+          pageSize: MOVEMENTS_PAGE_SIZE,
+          onPageChange: setMovementsPage,
+        }}
+      >
       <Table>
         <thead className="bg-slate-50 text-left">
           <tr>
@@ -220,13 +249,7 @@ export default function StockPage() {
           ))}
         </tbody>
       </Table>
-      <Pagination
-        className="mt-4"
-        page={movementsPage}
-        totalPages={movementsTotalPages}
-        total={movementsTotal}
-        onPageChange={setMovementsPage}
-      />
+      </PaginatedSection>
     </>
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
-import { Pagination } from '@/components/pagination';
+import { PaginatedSection } from '@/components/paginated-section';
 import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -36,18 +36,25 @@ export default function ProductsPage() {
   const [editForm, setEditForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const PAGE_SIZE = 20;
 
   async function load() {
-    const res = await api<PaginatedResponse<Product>>(
-      `/products?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}`,
-      {},
-      getToken(),
-    );
-    setProducts(res.data);
-    setTotalPages(res.totalPages);
-    setTotal(res.total);
+    setLoading(true);
+    try {
+      const res = await api<PaginatedResponse<Product>>(
+        `/products?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}`,
+        {},
+        getToken(),
+      );
+      setProducts(res.data);
+      setTotalPages(res.totalPages);
+      setTotal(res.total);
+    } finally {
+      setLoading(false);
+      setReady(true);
+    }
   }
 
   useEffect(() => {
@@ -143,6 +150,17 @@ export default function ProductsPage() {
             </form>
           )}
         </Card>
+        <PaginatedSection
+          loading={loading}
+          pagination={{
+            className: 'mt-4',
+            page,
+            totalPages,
+            total,
+            pageSize: PAGE_SIZE,
+            onPageChange: setPage,
+          }}
+        >
         <Table>
           <thead className="bg-slate-50 text-left">
             <tr><th className="p-3">Produto</th><th className="p-3">Preço</th><th className="p-3">Taxa entrega</th><th className="p-3">Disponível</th><th className="p-3" /></tr>
@@ -161,13 +179,7 @@ export default function ProductsPage() {
             ))}
           </tbody>
         </Table>
-        <Pagination
-          className="mt-4"
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          onPageChange={setPage}
-        />
+        </PaginatedSection>
       </div>
     </>
   );

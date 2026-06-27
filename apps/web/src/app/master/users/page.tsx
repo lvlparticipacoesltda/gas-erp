@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { PageLoader } from '@/components/brand-loader';
-import { Pagination } from '@/components/pagination';
+import { PaginatedSection } from '@/components/paginated-section';
 import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { ROLE_LABELS, USER_ROLES, type PaginatedResponse } from '@gas-erp/shared';
@@ -60,25 +60,39 @@ export default function MasterUsersPage() {
   });
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
   const PAGE_SIZE = 20;
 
-  async function load() {
-    const [u, s] = await Promise.all([
-      api<PaginatedResponse<UserRow>>(`/users?page=${page}&pageSize=${PAGE_SIZE}`, {}, getToken()),
-      api<Store[]>('/stores', {}, getToken()),
-    ]);
-    setUsers(u.data);
-    setTotalPages(u.totalPages);
-    setTotal(u.total);
-    setStores(s);
+  useEffect(() => {
+    api<Store[]>('/stores', {}, getToken())
+      .then(setStores)
+      .catch(() => setStores([]));
+  }, []);
+
+  async function loadUsers() {
+    setLoading(true);
+    try {
+      const u = await api<PaginatedResponse<UserRow>>(
+        `/users?page=${page}&pageSize=${PAGE_SIZE}`,
+        {},
+        getToken(),
+      );
+      setUsers(u.data);
+      setTotalPages(u.totalPages);
+      setTotal(u.total);
+    } finally {
+      setLoading(false);
+      setReady(true);
+    }
   }
 
   useEffect(() => {
-    load().finally(() => setReady(true));
+    loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   function startEdit(user: UserRow) {
@@ -126,7 +140,7 @@ export default function MasterUsersPage() {
         getToken(),
       );
       setForm(emptyCreate);
-      load();
+      loadUsers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao cadastrar usuário');
     }
@@ -162,7 +176,7 @@ export default function MasterUsersPage() {
     try {
       await api(`/users/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) }, getToken());
       setEditing(null);
-      load();
+      loadUsers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao salvar usuário');
     }
@@ -316,6 +330,17 @@ export default function MasterUsersPage() {
             </form>
           )}
         </Card>
+        <PaginatedSection
+          loading={loading}
+          pagination={{
+            className: 'mt-4',
+            page,
+            totalPages,
+            total,
+            pageSize: PAGE_SIZE,
+            onPageChange: setPage,
+          }}
+        >
         <Table>
           <thead className="bg-slate-50 text-left">
             <tr>
@@ -351,13 +376,7 @@ export default function MasterUsersPage() {
             ))}
           </tbody>
         </Table>
-        <Pagination
-          className="mt-4"
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          onPageChange={setPage}
-        />
+        </PaginatedSection>
       </div>
     </>
   );

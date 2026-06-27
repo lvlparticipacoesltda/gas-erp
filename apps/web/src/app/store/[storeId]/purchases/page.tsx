@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
-import { Pagination } from '@/components/pagination';
+import { PaginatedSection } from '@/components/paginated-section';
 import { Badge, Button, Card, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -73,7 +73,17 @@ export default function PurchasesPage() {
       />
 
       <Card className="overflow-hidden p-0">
-        {loading && <p className="px-4 py-2 text-sm text-slate-500">Carregando...</p>}
+        <PaginatedSection
+          loading={loading}
+          pagination={{
+            className: 'border-t border-slate-100 px-4 py-3',
+            page,
+            totalPages,
+            total,
+            pageSize: PAGE_SIZE,
+            onPageChange: setPage,
+          }}
+        >
         <Table>
           <thead className="bg-slate-50 text-left">
             <tr>
@@ -119,9 +129,7 @@ export default function PurchasesPage() {
             )}
           </tbody>
         </Table>
-        <div className="border-t border-slate-100 px-4 py-3">
-          <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
-        </div>
+        </PaginatedSection>
       </Card>
     </>
   );

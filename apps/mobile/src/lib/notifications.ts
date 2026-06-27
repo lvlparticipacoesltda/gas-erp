@@ -11,6 +11,8 @@ import { getToken } from './storage';
 /** Fallback se Constants não expuser o projectId no build standalone. */
 const EAS_PROJECT_ID = '165eab5a-801a-45a3-ae81-e0a6ef28e7f3';
 
+const PUSH_LOG = '[push]';
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -23,6 +25,11 @@ Notifications.setNotificationHandler({
 
 let notificationPermissionFlow: Promise<boolean> | null = null;
 
+function logPush(message: string, detail?: string) {
+  const line = detail ? `${message}: ${detail}` : message;
+  console.warn(PUSH_LOG, line);
+}
+
 function resolveEasProjectId(): string | null {
   return (
     Constants.expoConfig?.extra?.eas?.projectId ??
@@ -33,12 +40,7 @@ function resolveEasProjectId(): string | null {
 
 function startNotificationPermissionFlow(): Promise<boolean> {
   if (!notificationPermissionFlow) {
-    notificationPermissionFlow = requestNotificationPermissionOnAppOpen().then(async (granted) => {
-      if (granted) {
-        await syncPushTokenWithApi().catch(() => undefined);
-      }
-      return granted;
-    });
+    notificationPermissionFlow = requestNotificationPermissionOnAppOpen();
   }
   return notificationPermissionFlow;
 }
@@ -59,10 +61,6 @@ async function ensureAndroidChannel() {
   });
 }
 
-/**
- * Solicita permissão de notificação na abertura do app (antes do login).
- * Apenas o prompt nativo do sistema — sem alerta extra do app.
- */
 export async function requestNotificationPermissionOnAppOpen(): Promise<boolean> {
   if (!Device.isDevice) return false;
 
@@ -83,47 +81,92 @@ export async function requestNotificationPermissionOnAppOpen(): Promise<boolean>
   return requested.status === 'granted';
 }
 
-async function getExpoPushTokenIfGranted(): Promise<string | null> {
-  if (!Device.isDevice) return null;
+async function getExpoPushTokenIfGranted(): Promise<{ token: string | null; error?: string }> {
+  if (!Device.isDevice) {
+    return { token: null, error: 'emulador — use celular físico' };
+  }
 
   await ensureAndroidChannel();
 
   const { status } = await Notifications.getPermissionsAsync();
-  if (status !== 'granted') return null;
+  if (status !== 'granted') {
+    return { token: null, error: 'permissão de notificação não concedida' };
+  }
 
   const projectId = resolveEasProjectId();
-  if (!projectId) return null;
+  if (!projectId) {
+    return { token: null, error: 'EAS projectId não encontrado no build' };
+  }
 
   try {
     const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
-    return pushToken.data;
-  } catch {
-    return null;
+    if (!pushToken.data.startsWith('ExponentPushToken[')) {
+      return { token: null, error: `formato inesperado: ${pushToken.data.slice(0, 40)}...` };
+    }
+    return { token: pushToken.data };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { token: null, error: msg };
   }
 }
 
+export type PushSyncResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
 /**
- * Aguarda permissão de notificação (se ainda em andamento) e envia token à API.
- * Passe accessToken no login para evitar race com o SecureStore.
+ * Obtém Expo Push Token e envia à API (requer login + permissão + FCM no build Android).
  */
-export async function syncPushTokenWithApi(accessToken?: string): Promise<boolean> {
+export async function syncPushTokenWithApi(accessToken?: string): Promise<PushSyncResult> {
+  await waitForNotificationPermissionFlow().catch(() => false);
+
   const jwt = accessToken ?? (await getToken());
-  if (!jwt) return false;
+  if (!jwt) {
+    return { ok: false, reason: 'sem sessão (faça login)' };
+  }
 
-  const pushToken = await getExpoPushTokenIfGranted();
-  if (!pushToken) return false;
+  const { token: pushToken, error: tokenError } = await getExpoPushTokenIfGranted();
+  if (!pushToken) {
+    if (tokenError) {
+      logPush('falha ao obter Expo Push Token', tokenError);
+      if (/firebase|FCM|FirebaseApp/i.test(tokenError)) {
+        logPush(
+          'configure FCM no Firebase + EAS e gere novo APK',
+          'ver docs/mobile-push-fcm.md',
+        );
+      }
+    }
+    return { ok: false, reason: tokenError ?? 'token Expo indisponível' };
+  }
 
-  await api('/deliverers/me/push-token', {
-    method: 'PUT',
-    body: { token: pushToken },
-    token: jwt,
-  });
-  return true;
+  try {
+    await api('/deliverers/me/push-token', {
+      method: 'PUT',
+      body: { token: pushToken },
+      token: jwt,
+    });
+    logPush('token registrado na API');
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logPush('erro ao enviar token à API', msg);
+    return { ok: false, reason: msg };
+  }
 }
 
-/** @deprecated Use syncPushTokenWithApi */
 export async function registerPushTokenWithApi(accessToken?: string): Promise<boolean> {
-  return syncPushTokenWithApi(accessToken);
+  const result = await syncPushTokenWithApi(accessToken);
+  return result.ok;
+}
+
+export async function syncPushWithRetries(accessToken?: string, attempts = 3): Promise<void> {
+  for (let i = 0; i < attempts; i += 1) {
+    const result = await syncPushTokenWithApi(accessToken);
+    if (result.ok) return;
+    if (i < attempts - 1) {
+      await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    }
+  }
 }
 
 export async function clearPushTokenOnServer(): Promise<void> {
@@ -141,7 +184,6 @@ function getDeliveryIdFromNotification(
   return typeof deliveryId === 'string' ? deliveryId : undefined;
 }
 
-/** Pede notificação uma vez ao abrir; ao voltar ao app só tenta registrar token. */
 export function useNotificationPermissionOnAppOpen() {
   const started = useRef(false);
 
@@ -149,18 +191,9 @@ export function useNotificationPermissionOnAppOpen() {
     if (started.current) return;
     started.current = true;
     void startNotificationPermissionFlow().catch(() => undefined);
-
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void syncPushTokenWithApi().catch(() => undefined);
-      }
-    });
-
-    return () => sub.remove();
   }, []);
 }
 
-/** Escuta notificações e atualiza lista / deep link (após login). */
 export function usePushNotifications(onRefresh: () => void | Promise<void>) {
   const router = useRouter();
   const onRefreshRef = useRef(onRefresh);
@@ -197,14 +230,13 @@ export function usePushNotifications(onRefresh: () => void | Promise<void>) {
   }, [router]);
 }
 
-/** Registra token na API após login e ao voltar ao app autenticado. */
 export function useRegisterPushTokenWhenAuthenticated() {
   useEffect(() => {
-    void syncPushTokenWithApi().catch(() => undefined);
+    void syncPushWithRetries();
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void syncPushTokenWithApi().catch(() => undefined);
+        void syncPushWithRetries();
       }
     });
 

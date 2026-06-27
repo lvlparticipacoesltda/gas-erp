@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
-import { Pagination } from '@/components/pagination';
+import { PaginatedSection } from '@/components/paginated-section';
 import { Button, Card, Input, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { SUPPLIER_TYPE_LABELS, type PaginatedResponse } from '@gas-erp/shared';
@@ -114,7 +114,17 @@ export default function SuppliersPage() {
             </Button>
           ) : null}
         </div>
-        {loading && <p className="px-4 py-2 text-sm text-slate-500">Carregando...</p>}
+        <PaginatedSection
+          loading={loading}
+          pagination={{
+            className: 'border-t border-slate-100 px-4 py-3',
+            page,
+            totalPages,
+            total,
+            pageSize: PAGE_SIZE,
+            onPageChange: setPage,
+          }}
+        >
         <Table>
           <thead className="bg-slate-50 text-left">
             <tr>
@@ -162,9 +172,7 @@ export default function SuppliersPage() {
             )}
           </tbody>
         </Table>
-        <div className="border-t border-slate-100 px-4 py-3">
-          <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
-        </div>
+        </PaginatedSection>
       </Card>
     </>
   );
