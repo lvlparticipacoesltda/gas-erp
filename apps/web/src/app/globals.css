@@ -25,7 +25,6 @@ body {
   font-family: Inter, system-ui, sans-serif;
 }
 
-/* Loader da marca — preenchimento suave de baixo para cima */
 @keyframes brand-loader-clip {
   0%,
   100% {
@@ -47,7 +46,8 @@ body {
 }
 
 .brand-loader-clip {
-  transform-origin: bottom center;
+  transform-box: fill-box;
+  transform-origin: center bottom;
   animation: brand-loader-clip 1.6s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
 }
 

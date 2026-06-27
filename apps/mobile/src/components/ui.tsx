@@ -9,7 +9,6 @@ import {
   type ViewStyle,
 } from 'react-native';
 import type { SaleDisplayTone } from '@gas-erp/shared';
-import { BrandLoader } from '@/components/BrandLoader';
 import { colors, radius, spacing } from '../theme';
 
 const toneStyles: Record<SaleDisplayTone, { bg: string; fg: string }> = {
@@ -125,7 +124,12 @@ export function StateMessage({
 }
 
 export function Loading({ label }: { label?: string }) {
-  return <BrandLoader label={label ?? 'Carregando…'} />;
+  return (
+    <View style={styles.state}>
+      <ActivityIndicator size="large" color={colors.primary} />
+      {label ? <Text style={styles.stateSubtitle}>{label}</Text> : null}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
