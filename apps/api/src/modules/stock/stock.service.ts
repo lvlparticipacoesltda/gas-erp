@@ -204,14 +204,10 @@ export class StockService {
     userId: string,
     saleId: string,
   ) {
-    const balance = await db.stockBalance.upsert({
+    await db.stockBalance.upsert({
       where: { productId_storeId: { productId, storeId } },
-      update: {},
-      create: { productId, storeId, available: 0 },
-    });
-    await db.stockBalance.update({
-      where: { id: balance.id },
-      data: { available: balance.available + quantity },
+      update: { available: { increment: quantity } },
+      create: { productId, storeId, available: quantity },
     });
     await db.stockMovement.create({
       data: {

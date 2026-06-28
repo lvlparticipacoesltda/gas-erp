@@ -442,11 +442,11 @@ export class SalesService {
 
     const now = new Date();
 
-    const { updated, pushDelivery } = await this.prisma.$transaction(async (tx) => {
+    const { pushDelivery } = await this.prisma.$transaction(async (tx) => {
       const newDelivery = await this.finalizeSaleFulfillment(tx, sale.id, saleInput, user.id, pickup);
 
       const nextStatus = pickup ? SaleStatus.PORTARIA : SaleStatus.CONFIRMED;
-      const result = await tx.sale.update({
+      await tx.sale.update({
         where: { id: sale.id },
         data: {
           mobileApproval: 'APPROVED',
@@ -457,7 +457,6 @@ export class SalesService {
           deliveredAt: pickup ? now : undefined,
           status: nextStatus,
         },
-        include: this.saleInclude,
       });
 
       await tx.saleMobileApprovalLog.create({
@@ -489,13 +488,17 @@ export class SalesService {
         });
       }
 
+      return { pushDelivery: newDelivery };
+    });
+
+    try {
       await this.audit.log(user, 'APPROVE_MOBILE', 'Sale', sale.id, {
         approvedBy: user.id,
         approvedByName: user.name,
       });
-
-      return { updated: result, pushDelivery: newDelivery };
-    });
+    } catch {
+      // Auditoria não deve bloquear o fluxo.
+    }
 
     if (pushDelivery) {
       void this.push
@@ -503,7 +506,7 @@ export class SalesService {
         .catch(() => undefined);
     }
 
-    return updated;
+    return this.findOne(user, id);
   }
 
   async rejectMobile(user: AuthUser, id: string, input: unknown) {
@@ -518,8 +521,8 @@ export class SalesService {
     }
 
     const now = new Date();
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.sale.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.sale.update({
         where: { id: sale.id },
         data: {
           mobileApproval: 'REJECTED',
@@ -528,7 +531,6 @@ export class SalesService {
           canceledAt: now,
           canceledReason: `Venda do app rejeitada: ${data.reason.trim()}`,
         },
-        include: this.saleInclude,
       });
 
       await tx.saleMobileApprovalLog.create({
@@ -548,17 +550,19 @@ export class SalesService {
           notes: `Venda do app rejeitada: ${data.reason.trim()}`,
         },
       });
+    });
 
+    try {
       await this.audit.log(user, 'REJECT_MOBILE', 'Sale', sale.id, {
         rejectedBy: user.id,
         rejectedByName: user.name,
         reason: data.reason.trim(),
       });
+    } catch {
+      // Auditoria não deve bloquear o fluxo.
+    }
 
-      return result;
-    });
-
-    return updated;
+    return this.findOne(user, id);
   }
 
   private async validateMobileSaleReferences(user: AuthUser, data: CreateMobileSaleInput) {
@@ -656,11 +660,11 @@ export class SalesService {
 
     const now = new Date();
 
-    const { updated, pushDelivery } = await this.prisma.$transaction(async (tx) => {
+    const { pushDelivery } = await this.prisma.$transaction(async (tx) => {
       const newDelivery = await this.finalizeSaleFulfillment(tx, sale.id, saleInput, user.id, pickup);
 
       const nextStatus = pickup ? SaleStatus.PORTARIA : SaleStatus.CONFIRMED;
-      const result = await tx.sale.update({
+      await tx.sale.update({
         where: { id: sale.id },
         data: {
           backdateApproval: 'APPROVED',
@@ -670,7 +674,6 @@ export class SalesService {
           deliveredAt: pickup ? now : undefined,
           status: nextStatus,
         },
-        include: this.saleInclude,
       });
 
       await tx.saleBackdateLog.create({
@@ -693,14 +696,18 @@ export class SalesService {
         });
       }
 
+      return { pushDelivery: newDelivery };
+    });
+
+    try {
       await this.audit.log(user, 'APPROVE_BACKDATE', 'Sale', sale.id, {
         saleDate: sale.saleDate,
         approvedBy: user.id,
         approvedByName: user.name,
       });
-
-      return { updated: result, pushDelivery: newDelivery };
-    });
+    } catch {
+      // Auditoria não deve bloquear o fluxo.
+    }
 
     if (pushDelivery) {
       void this.push
@@ -708,7 +715,7 @@ export class SalesService {
         .catch(() => undefined);
     }
 
-    return updated;
+    return this.findOne(user, id);
   }
 
   async rejectBackdate(user: AuthUser, id: string, input: unknown) {
@@ -723,8 +730,8 @@ export class SalesService {
     }
 
     const now = new Date();
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.sale.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.sale.update({
         where: { id: sale.id },
         data: {
           backdateApproval: 'REJECTED',
@@ -733,7 +740,6 @@ export class SalesService {
           canceledAt: now,
           canceledReason: `Venda retroativa rejeitada: ${data.reason.trim()}`,
         },
-        include: this.saleInclude,
       });
 
       await tx.saleBackdateLog.create({
@@ -753,18 +759,20 @@ export class SalesService {
           notes: `Venda retroativa rejeitada: ${data.reason.trim()}`,
         },
       });
+    });
 
+    try {
       await this.audit.log(user, 'REJECT_BACKDATE', 'Sale', sale.id, {
         saleDate: sale.saleDate,
         rejectedBy: user.id,
         rejectedByName: user.name,
         reason: data.reason.trim(),
       });
+    } catch {
+      // Auditoria não deve bloquear o fluxo.
+    }
 
-      return result;
-    });
-
-    return updated;
+    return this.findOne(user, id);
   }
 
   private async rollbackSaleCreate(
@@ -971,19 +979,21 @@ export class SalesService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       if (data.status === 'CANCELLED') {
-        for (const item of sale.items) {
-          await this.stockService.restoreForCancelledSale(
-            tx,
-            sale.storeId,
-            item.productId,
-            item.quantity,
-            user.id,
-            sale.id,
-          );
-        }
+        await Promise.all(
+          sale.items.map((item) =>
+            this.stockService.restoreForCancelledSale(
+              tx,
+              sale.storeId,
+              item.productId,
+              item.quantity,
+              user.id,
+              sale.id,
+            ),
+          ),
+        );
       }
 
-      const updated = await tx.sale.update({
+      await tx.sale.update({
         where: { id },
         data: {
           status: data.status as SaleStatus,
@@ -992,7 +1002,6 @@ export class SalesService {
           canceledAt: data.status === 'CANCELLED' ? new Date() : undefined,
           deliveredAt: data.status === 'DELIVERED' ? new Date() : undefined,
         },
-        include: this.saleInclude,
       });
 
       await tx.saleStatusLog.create({
@@ -1053,7 +1062,7 @@ export class SalesService {
         });
       }
 
-      return { updated, pushNewDelivery, pushCancelled };
+      return { pushNewDelivery, pushCancelled };
     });
 
     try {
@@ -1079,7 +1088,7 @@ export class SalesService {
         .catch(() => undefined);
     }
 
-    return result.updated;
+    return this.findOne(user, id);
   }
 
   private async assertDelivererAssignable(
