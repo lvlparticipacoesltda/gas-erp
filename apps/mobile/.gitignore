@@ -20,6 +20,9 @@ expo-env.d.ts
 .env
 .env.local
 
+# Firebase Android (contém API key — não versionar)
+google-services.json
+
 # Misc
 .DS_Store
 npm-debug.*

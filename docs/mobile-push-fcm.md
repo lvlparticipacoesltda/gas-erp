@@ -18,13 +18,14 @@ E **não** aparece `Push token registrado para entregador ...`.
 |-------|------|
 | 1. Projeto Firebase | [console.firebase.google.com](https://console.firebase.google.com) |
 | 2. App Android `com.gaserp.entregador` | Firebase → Adicionar app |
-| 3. Baixar `google-services.json` | Colocar em `apps/mobile/google-services.json` |
+| 3. Baixar `google-services.json` | Colocar **localmente** em `apps/mobile/google-services.json` (não commitar) |
 | 4. Referenciar no `app.json` | `"googleServicesFile": "./google-services.json"` |
-| 5. Chave FCM V1 (Service Account JSON) | Firebase → Project settings → Service accounts → Generate key |
-| 6. Enviar chave ao EAS | `eas credentials` → Android → FCM V1 |
-| 7. **Novo build** | `eas build -p android --profile preview` |
+| 5. Secret no EAS (builds na nuvem) | Ver seção **EAS — google-services.json** abaixo |
+| 6. Chave FCM V1 (Service Account JSON) | Firebase → Project settings → Service accounts → Generate key |
+| 7. Enviar chave ao EAS | `eas credentials` → Android → FCM V1 |
+| 8. **Novo build** | `eas build -p android --profile preview` |
 
-> O `google-services.json` pode ir no repositório (contém IDs públicos do Firebase).
+> **Não commite** `google-services.json` — contém API key do Google. Use `google-services.json.example` como modelo. Restrinja a key no [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (app Android + package `com.gaserp.entregador`).
 
 ---
 
@@ -37,6 +38,36 @@ E **não** aparece `Push token registrado para entregador ...`.
    ```text
    apps/mobile/google-services.json
    ```
+
+   Ou copie o exemplo e preencha:
+
+   ```bash
+   cp apps/mobile/google-services.json.example apps/mobile/google-services.json
+   ```
+
+---
+
+## EAS — google-services.json (build na nuvem)
+
+O arquivo está no `.gitignore`. Para `eas build` funcionar, crie um secret no projeto Expo:
+
+```bash
+cd apps/mobile
+npx eas env:create \
+  --name GOOGLE_SERVICES_JSON_BASE64 \
+  --value "$(base64 -i google-services.json | tr -d '\n')" \
+  --environment preview \
+  --visibility secret
+
+# Repita para production se usar perfil production
+npx eas env:create \
+  --name GOOGLE_SERVICES_JSON_BASE64 \
+  --value "$(base64 -i google-services.json | tr -d '\n')" \
+  --environment production \
+  --visibility secret
+```
+
+O `app.config.js` grava o arquivo a partir do secret antes do build.
 
 ---
 
