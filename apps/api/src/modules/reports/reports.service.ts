@@ -17,7 +17,6 @@ import {
   getSaleAttendantName,
   getSaleDisplayStatus,
   getWaitTimeSeconds,
-  resolveDashboardDateRange,
   toNumber,
   canViewFinancialMargins,
   computeGrossMarginPercent,
@@ -34,6 +33,7 @@ import {
   type StockReportResponse,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
+import { resolveDashboardDateRange } from '../../common/utils/business-day';
 
 const salesReportInclude = {
   customer: { select: { name: true, phone: true } },

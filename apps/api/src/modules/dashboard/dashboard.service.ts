@@ -17,10 +17,10 @@ import {
   formatDashboardDateRangeLabel,
   getRouteDurationSeconds,
   getWaitTimeSeconds,
-  resolveDashboardDateRange,
   toNumber,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
+import { resolveDashboardDateRange } from '../../common/utils/business-day';
 
 const SLOW_DELIVERY_THRESHOLD_SECONDS = 900;
 
