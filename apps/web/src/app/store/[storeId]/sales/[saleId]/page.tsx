@@ -106,7 +106,10 @@ export default function SaleDetailPage() {
       api<Deliverer[]>(`/deliverers?storeId=${storeId}`, {}, getToken()),
     ]);
     setSale(s);
-    setStatus(s.status);
+    const terminal = s.status === 'DELIVERED' || s.status === 'PORTARIA';
+    const current = getStoredUser<{ role: string }>();
+    const manager = current ? canManageSales(current.role) : false;
+    setStatus(terminal && manager && s.status !== 'CANCELLED' ? 'CANCELLED' : s.status);
     setDelivererId(s.deliverer?.id ?? '');
     setDeliverers(d);
   }
@@ -117,6 +120,10 @@ export default function SaleDetailPage() {
 
   async function saveStatus() {
     if (!sale) return;
+    if (status === 'CANCELLED' && !cancelReason.trim()) {
+      setError('Informe o motivo do cancelamento.');
+      return;
+    }
     setError('');
     setSaving(true);
     try {
@@ -234,7 +241,11 @@ export default function SaleDetailPage() {
     isTerminal && isManager
       ? ['CANCELLED']
       : SALE_STATUSES.filter((s) => s !== 'DRAFT' && s !== 'PORTARIA');
-  const statusSelectValue = editableStatuses.includes(status) ? status : '';
+  const statusSelectValue = editableStatuses.includes(status)
+    ? status
+    : editableStatuses[0] ?? '';
+  const statusChanged = statusSelectValue !== sale.status;
+  const cancelReasonReady = statusSelectValue !== 'CANCELLED' || cancelReason.trim().length > 0;
 
   const assignableDeliverers = deliverers.filter(
     (d) => isDelivererAssignableForSale(d).assignable || d.id === sale.deliverer?.id,
@@ -489,16 +500,21 @@ export default function SaleDetailPage() {
                   </div>
                 )}
 
-                {status === 'CANCELLED' && (
+                {statusSelectValue === 'CANCELLED' && (
                   <div>
                     <Label>Motivo do cancelamento</Label>
-                    <Input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} required />
+                    <Input
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="Descreva o motivo do cancelamento"
+                      required
+                    />
                   </div>
                 )}
 
                 <Button
                   type="button"
-                  disabled={saving || !statusSelectValue || statusSelectValue === sale.status}
+                  disabled={saving || !statusSelectValue || !statusChanged || !cancelReasonReady}
                   onClick={saveStatus}
                 >
                   {saving ? 'Salvando...' : 'Salvar alterações'}
