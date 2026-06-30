@@ -2,6 +2,9 @@
 
 export const DEFAULT_STORE_TIMEZONE = 'America/Sao_Paulo';
 
+/** Desde 2019 o Brasil não usa horário de verão — SP é sempre UTC-3. */
+const SAO_PAULO_UTC_OFFSET_HOURS = 3;
+
 export function formatDateKeyInTimezone(date: Date, timeZone: string = DEFAULT_STORE_TIMEZONE): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone }).format(date);
 }
@@ -49,18 +52,17 @@ function getZonedParts(date: Date, timeZone: string): ZonedParts {
   };
 }
 
-/** Converte data/hora local da loja para instante UTC. */
-export function zonedTimeToUtc(
+function zonedTimeToUtcWithIntl(
   dateKey: string,
   hour: number,
   minute: number,
   second: number,
-  timeZone: string = DEFAULT_STORE_TIMEZONE,
+  timeZone: string,
 ): Date {
   const [y, mo, d] = dateKey.split('-').map(Number);
   let utcMs = Date.UTC(y, mo - 1, d, hour, minute, second);
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 8; i++) {
     const z = getZonedParts(new Date(utcMs), timeZone);
     const targetSec = hour * 3600 + minute * 60 + second;
     const actualSec = z.hour * 3600 + z.minute * 60 + z.second;
@@ -71,6 +73,23 @@ export function zonedTimeToUtc(
   }
 
   return new Date(utcMs);
+}
+
+/** Converte data/hora local da loja para instante UTC. */
+export function zonedTimeToUtc(
+  dateKey: string,
+  hour: number,
+  minute: number,
+  second: number,
+  timeZone: string = DEFAULT_STORE_TIMEZONE,
+): Date {
+  const [y, mo, d] = dateKey.split('-').map(Number);
+
+  if (timeZone === DEFAULT_STORE_TIMEZONE) {
+    return new Date(Date.UTC(y, mo - 1, d, hour + SAO_PAULO_UTC_OFFSET_HOURS, minute, second));
+  }
+
+  return zonedTimeToUtcWithIntl(dateKey, hour, minute, second, timeZone);
 }
 
 /** Intervalo [início, fim) do dia operacional em UTC. */
@@ -120,15 +139,25 @@ export function resolveDashboardDateRange(
   timeZone: string = DEFAULT_STORE_TIMEZONE,
 ): { start: Date; end: Date; dateFrom: string; dateTo: string } {
   const { date, dateFrom, dateTo } = query;
+  let range: { start: Date; end: Date; dateFrom: string; dateTo: string };
+
   if (dateFrom || dateTo) {
-    return getBusinessDayRangeBounds(dateFrom ?? dateTo!, dateTo ?? dateFrom, timeZone);
-  }
-  if (date) {
+    range = getBusinessDayRangeBounds(dateFrom ?? dateTo!, dateTo ?? dateFrom, timeZone);
+  } else if (date) {
     const single = getBusinessDayBounds(date, timeZone);
-    return { start: single.start, end: single.end, dateFrom: single.dateKey, dateTo: single.dateKey };
+    range = { start: single.start, end: single.end, dateFrom: single.dateKey, dateTo: single.dateKey };
+  } else {
+    const today = getBusinessDayBounds(undefined, timeZone);
+    range = { start: today.start, end: today.end, dateFrom: today.dateKey, dateTo: today.dateKey };
   }
-  const today = getBusinessDayBounds(undefined, timeZone);
-  return { start: today.start, end: today.end, dateFrom: today.dateKey, dateTo: today.dateKey };
+
+  if (range.end <= range.start) {
+    throw new Error(
+      `Intervalo de datas inválido (${range.dateFrom} a ${range.dateTo}). Recarregue a página ou contate o suporte.`,
+    );
+  }
+
+  return range;
 }
 
 export function formatDashboardDateRangeLabel(dateFrom: string, dateTo: string): string {

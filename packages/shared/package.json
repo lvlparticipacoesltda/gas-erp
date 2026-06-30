@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "react-native": "./src/index.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/verify-business-day.mjs",
     "dev": "tsc --watch"
   },
   "dependencies": {
