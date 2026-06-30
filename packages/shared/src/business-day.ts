@@ -14,6 +14,19 @@ function addDaysToDateKey(dateKey: string, days: number): string {
 
 type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
 
+function calendarDayDiff(
+  targetYear: number,
+  targetMonth: number,
+  targetDay: number,
+  zonedYear: number,
+  zonedMonth: number,
+  zonedDay: number,
+): number {
+  const targetMs = Date.UTC(targetYear, targetMonth - 1, targetDay);
+  const zonedMs = Date.UTC(zonedYear, zonedMonth - 1, zonedDay);
+  return Math.round((targetMs - zonedMs) / 86_400_000);
+}
+
 function getZonedParts(date: Date, timeZone: string): ZonedParts {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -51,7 +64,7 @@ export function zonedTimeToUtc(
     const z = getZonedParts(new Date(utcMs), timeZone);
     const targetSec = hour * 3600 + minute * 60 + second;
     const actualSec = z.hour * 3600 + z.minute * 60 + z.second;
-    const dayDelta = d - z.day;
+    const dayDelta = calendarDayDiff(y, mo, d, z.year, z.month, z.day);
     const adjustSec = dayDelta * 86400 + (targetSec - actualSec);
     if (adjustSec === 0) break;
     utcMs += adjustSec * 1000;
