@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  aggregateDelivererRouteStats,
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
   COUNTED_MOBILE_APPROVALS,
@@ -15,14 +16,10 @@ import {
   computeNetRevenue,
   computeSaleCogs,
   formatDashboardDateRangeLabel,
-  getRouteDurationSeconds,
-  getWaitTimeSeconds,
   toNumber,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { resolveDashboardDateRange } from '../../common/utils/business-day';
-
-const SLOW_DELIVERY_THRESHOLD_SECONDS = 900;
 
 type DashboardPayload = {
   date: string;
@@ -58,6 +55,7 @@ type DashboardPayload = {
     pending: number;
     inProgress: number;
     completed: number;
+    cancelled: number;
   };
   deliveryMetrics: {
     avgWaitTimeSeconds: number | null;
@@ -67,6 +65,7 @@ type DashboardPayload = {
     pendingCount: number;
     inProgressCount: number;
     completedCount: number;
+    cancelledCount: number;
     slowDeliveries: {
       saleId: string;
       storeName?: string;
@@ -78,7 +77,8 @@ type DashboardPayload = {
     byDeliverer: {
       delivererId: string;
       delivererName: string;
-      deliveryCount: number;
+      completedCount: number;
+      cancelledCount: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
     }[];
@@ -195,7 +195,7 @@ export class DashboardService {
       productsSold: [],
       stockMovements: 0,
       salesCount: 0,
-      deliveries: { pending: 0, inProgress: 0, completed: 0 },
+      deliveries: { pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
       deliveryMetrics: {
         avgWaitTimeSeconds: null,
         maxWaitTimeSeconds: null,
@@ -204,6 +204,7 @@ export class DashboardService {
         pendingCount: 0,
         inProgressCount: 0,
         completedCount: 0,
+        cancelledCount: 0,
         slowDeliveries: [],
         byDeliverer: [],
       },
@@ -406,80 +407,21 @@ export class DashboardService {
           }))
           .sort((a, b) => b.total - a.total);
 
-    const pendingDeliveries = deliveries.filter((d) => d.status === 'PENDING').length;
-    const inProgressDeliveries = deliveries.filter((d) => d.status === 'IN_PROGRESS').length;
-    const completedDeliveries = deliveries.filter((d) => d.status === 'DELIVERED').length;
-
-    const waitTimes: number[] = [];
-    const routeTimes: number[] = [];
-    const slowDeliveries: DashboardPayload['deliveryMetrics']['slowDeliveries'] = [];
-    const delivererStats = new Map<
-      string,
-      { delivererName: string; waitTimes: number[]; routeTimes: number[]; deliveryCount: number }
-    >();
-
-    for (const delivery of deliveries) {
-      const delivererName = delivery.deliverer.user.name;
-      const waitTimeSeconds = getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
-      const routeDurationSeconds = getRouteDurationSeconds(delivery.startedAt, delivery.completedAt);
-
-      if (waitTimeSeconds != null) waitTimes.push(waitTimeSeconds);
-      if (routeDurationSeconds != null) routeTimes.push(routeDurationSeconds);
-
-      const stats = delivererStats.get(delivery.delivererId) ?? {
-        delivererName,
-        waitTimes: [],
-        routeTimes: [],
-        deliveryCount: 0,
-      };
-      stats.deliveryCount += 1;
-      if (waitTimeSeconds != null) stats.waitTimes.push(waitTimeSeconds);
-      if (routeDurationSeconds != null) stats.routeTimes.push(routeDurationSeconds);
-      delivererStats.set(delivery.delivererId, stats);
-
-      const isSlowWait = waitTimeSeconds != null && waitTimeSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS;
-      const isSlowRoute = routeDurationSeconds != null && routeDurationSeconds > SLOW_DELIVERY_THRESHOLD_SECONDS;
-      if (isSlowWait || isSlowRoute) {
-        slowDeliveries.push({
-          saleId: delivery.saleId,
-          ...(includeStoreNameInSlowDeliveries
-            ? { storeName: delivery.sale.store.name }
-            : {}),
-          customerName: delivery.sale.customer?.name ?? 'Cliente avulso',
-          delivererName,
-          waitTimeSeconds,
-          routeDurationSeconds,
-        });
-      }
-    }
-
-    const avgWaitTimeSeconds = waitTimes.length
-      ? Math.round(waitTimes.reduce((sum, value) => sum + value, 0) / waitTimes.length)
-      : null;
-    const maxWaitTimeSeconds = waitTimes.length ? Math.max(...waitTimes) : null;
-    const avgRouteDurationSeconds = routeTimes.length
-      ? Math.round(routeTimes.reduce((sum, value) => sum + value, 0) / routeTimes.length)
-      : null;
-    const maxRouteDurationSeconds = routeTimes.length ? Math.max(...routeTimes) : null;
-    slowDeliveries.sort((a, b) => {
-      const aMax = Math.max(a.waitTimeSeconds ?? 0, a.routeDurationSeconds ?? 0);
-      const bMax = Math.max(b.waitTimeSeconds ?? 0, b.routeDurationSeconds ?? 0);
-      return bMax - aMax;
-    });
-
-    const byDeliverer = Array.from(delivererStats.entries())
-      .map(([delivererId, stats]) => ({
-        delivererId,
-        delivererName: stats.delivererName,
-        deliveryCount: stats.deliveryCount,
-        avgWaitTimeSeconds: stats.waitTimes.length
-          ? Math.round(stats.waitTimes.reduce((sum, value) => sum + value, 0) / stats.waitTimes.length)
-          : null,
-        avgRouteDurationSeconds: stats.routeTimes.length
-          ? Math.round(stats.routeTimes.reduce((sum, value) => sum + value, 0) / stats.routeTimes.length)
-          : null,
-      }))
-      .sort((a, b) => a.delivererName.localeCompare(b.delivererName, 'pt-BR'));
+    const routeStats = aggregateDelivererRouteStats(
+      deliveries.map((delivery) => ({
+        status: delivery.status,
+        delivererId: delivery.delivererId,
+        delivererName: delivery.deliverer.user.name,
+        saleId: delivery.saleId,
+        saleCreatedAt: delivery.sale.createdAt,
+        startedAt: delivery.startedAt,
+        completedAt: delivery.completedAt,
+        customerName: delivery.sale.customer?.name ?? undefined,
+        ...(includeStoreNameInSlowDeliveries
+          ? { storeName: delivery.sale.store.name }
+          : {}),
+      })),
+    );
 
     const financialSummary = showFinancial
       ? (() => {
@@ -514,20 +456,22 @@ export class DashboardService {
       stockMovements: movements,
       salesCount,
       deliveries: {
-        pending: pendingDeliveries,
-        inProgress: inProgressDeliveries,
-        completed: completedDeliveries,
+        pending: routeStats.counts.pending,
+        inProgress: routeStats.counts.inProgress,
+        completed: routeStats.counts.completed,
+        cancelled: routeStats.counts.cancelled,
       },
       deliveryMetrics: {
-        avgWaitTimeSeconds,
-        maxWaitTimeSeconds,
-        avgRouteDurationSeconds,
-        maxRouteDurationSeconds,
-        pendingCount: pendingDeliveries,
-        inProgressCount: inProgressDeliveries,
-        completedCount: completedDeliveries,
-        slowDeliveries,
-        byDeliverer,
+        avgWaitTimeSeconds: routeStats.avgWaitTimeSeconds,
+        maxWaitTimeSeconds: routeStats.maxWaitTimeSeconds,
+        avgRouteDurationSeconds: routeStats.avgRouteDurationSeconds,
+        maxRouteDurationSeconds: routeStats.maxRouteDurationSeconds,
+        pendingCount: routeStats.counts.pending,
+        inProgressCount: routeStats.counts.inProgress,
+        completedCount: routeStats.counts.completed,
+        cancelledCount: routeStats.counts.cancelled,
+        slowDeliveries: routeStats.slowDeliveries,
+        byDeliverer: routeStats.byDeliverer,
       },
     };
   }

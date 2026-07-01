@@ -83,7 +83,10 @@ export interface SalesReportByPaymentMethod {
 export interface SalesReportByDeliverer {
   delivererId: string;
   delivererName: string;
-  deliveryCount: number;
+  /** Rotas concluídas no período. */
+  completedCount: number;
+  /** Rotas atribuídas e canceladas no período. */
+  cancelledCount: number;
   avgWaitTimeSeconds: number | null;
   avgRouteDurationSeconds: number | null;
 }

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PaymentMethod, Prisma, SaleStatus, PurchaseInvoiceStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  aggregateDelivererRouteStats,
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
   COUNTED_MOBILE_APPROVALS,
@@ -307,36 +308,18 @@ export class ReportsService {
       })
       .sort((a, b) => b.total - a.total);
 
-    const delivererStats = new Map<
-      string,
-      { delivererName: string; deliveryCount: number; waitTimes: number[]; routeTimes: number[] }
-    >();
-    for (const delivery of deliveries) {
-      const delivererName = delivery.deliverer.user.name;
-      const stats = delivererStats.get(delivery.delivererId) ?? {
-        delivererName,
-        deliveryCount: 0,
-        waitTimes: [],
-        routeTimes: [],
-      };
-      stats.deliveryCount += 1;
-      const waitTimeSeconds = getWaitTimeSeconds(delivery.sale.createdAt, delivery.startedAt);
-      const routeDurationSeconds = getRouteDurationSeconds(delivery.startedAt, delivery.completedAt);
-      if (waitTimeSeconds != null) stats.waitTimes.push(waitTimeSeconds);
-      if (routeDurationSeconds != null) stats.routeTimes.push(routeDurationSeconds);
-      delivererStats.set(delivery.delivererId, stats);
-    }
-    const avg = (values: number[]) =>
-      values.length ? Math.round(values.reduce((s, v) => s + v, 0) / values.length) : null;
-    const byDeliverer = Array.from(delivererStats.entries())
-      .map(([delivererId, stats]) => ({
-        delivererId,
-        delivererName: stats.delivererName,
-        deliveryCount: stats.deliveryCount,
-        avgWaitTimeSeconds: avg(stats.waitTimes),
-        avgRouteDurationSeconds: avg(stats.routeTimes),
-      }))
-      .sort((a, b) => b.deliveryCount - a.deliveryCount);
+    const routeStats = aggregateDelivererRouteStats(
+      deliveries.map((delivery) => ({
+        status: delivery.status,
+        delivererId: delivery.delivererId,
+        delivererName: delivery.deliverer.user.name,
+        saleId: delivery.saleId,
+        saleCreatedAt: delivery.sale.createdAt,
+        startedAt: delivery.startedAt,
+        completedAt: delivery.completedAt,
+      })),
+    );
+    const byDeliverer = routeStats.byDeliverer;
 
     let rows = sales.map((sale) => mapSaleToReportRow(sale, showFinancial));
 

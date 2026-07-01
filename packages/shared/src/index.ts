@@ -25,6 +25,7 @@ export * from './schemas/sale-mobile';
 export * from './schemas/payment-method';
 export * from './payment-methods-catalog';
 export * from './delivery-metrics';
+export * from './deliverer-route-stats';
 export * from './deliverer-availability';
 export * from './payment-sum-hint';
 export * from './geo-distance';

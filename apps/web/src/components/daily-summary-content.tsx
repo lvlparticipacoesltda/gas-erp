@@ -34,7 +34,7 @@ export interface DailySummaryData {
     totalCost?: number;
     grossProfit?: number;
   }[];
-  deliveries: { pending: number; inProgress: number; completed: number };
+  deliveries: { pending: number; inProgress: number; completed: number; cancelled: number };
   deliveryMetrics?: {
     avgWaitTimeSeconds: number | null;
     maxWaitTimeSeconds: number | null;
@@ -51,7 +51,8 @@ export interface DailySummaryData {
     byDeliverer: {
       delivererId: string;
       delivererName: string;
-      deliveryCount: number;
+      completedCount: number;
+      cancelledCount: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
     }[];
@@ -97,6 +98,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
         <Card><div className="text-sm text-slate-500">Entregas pendentes</div><div className="text-2xl font-bold">{data.deliveries.pending}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas em rota</div><div className="text-2xl font-bold">{data.deliveries.inProgress}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas concluídas</div><div className="text-2xl font-bold">{data.deliveries.completed}</div></Card>
+        <Card><div className="text-sm text-slate-500">Rotas canceladas</div><div className="text-2xl font-bold">{data.deliveries.cancelled}</div></Card>
         <Card><div className="text-sm text-slate-500">Tempo médio até a rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
         <Card><div className="text-sm text-slate-500">Maior espera até a rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
         <Card><div className="text-sm text-slate-500">Tempo médio em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgRouteDurationSeconds)}</div></Card>
@@ -144,7 +146,8 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 <thead className="bg-slate-50 text-left">
                   <tr>
                     <th className="p-3">Entregador</th>
-                    <th className="p-3">Entregas</th>
+                    <th className="p-3">Rotas realizadas</th>
+                    <th className="p-3">Rotas canceladas</th>
                     <th className="p-3">Média até aceitar rota</th>
                     <th className="p-3">Média para finalizar rota</th>
                   </tr>
@@ -153,7 +156,8 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                   {rows.map((d) => (
                     <tr key={d.delivererId} className="border-t border-slate-100">
                       <td className="p-3">{d.delivererName}</td>
-                      <td className="p-3">{d.deliveryCount}</td>
+                      <td className="p-3">{d.completedCount}</td>
+                      <td className="p-3">{d.cancelledCount}</td>
                       <td className="p-3">{formatWaitTime(d.avgWaitTimeSeconds)}</td>
                       <td className="p-3">{formatWaitTime(d.avgRouteDurationSeconds)}</td>
                     </tr>
