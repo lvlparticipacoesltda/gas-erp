@@ -13,10 +13,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   MOBILE_APPROVAL_LABELS,
-  PAYMENT_METHOD_LABELS,
   type PaginatedResponse,
   getSaleDisplayStatus,
 } from '@gas-erp/shared';
+import {
+  SalePaymentsEditor,
+  createDefaultPaymentLines,
+  paymentLinesToPayload,
+  paymentsMatchTotal,
+  type PaymentLine,
+  type StorePaymentMethodOption,
+} from '@/components/SalePaymentsEditor';
 import { Badge, Button, Card, Loading, StateMessage } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
@@ -63,9 +70,6 @@ interface MobileSaleRow {
 }
 
 type Fulfillment = 'DELIVERY' | 'PICKUP';
-type PaymentMethod = 'CASH' | 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD';
-
-const MOBILE_PAYMENT_METHODS: PaymentMethod[] = ['CASH', 'PIX', 'CREDIT_CARD', 'DEBIT_CARD'];
 
 const emptyNewCustomer = {
   name: '',
@@ -116,7 +120,10 @@ export default function NewSaleScreen() {
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
+  const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
+  const [paymentMethodsError, setPaymentMethodsError] = useState('');
   const [fulfillment, setFulfillment] = useState<Fulfillment>('DELIVERY');
   const [notes, setNotes] = useState('');
   const [deliveryZipCode, setDeliveryZipCode] = useState('');
@@ -181,6 +188,45 @@ export default function NewSaleScreen() {
       })
       .catch(() => undefined);
   }, [storeId]);
+
+  useEffect(() => {
+    if (!storeId) {
+      setPaymentMethods([]);
+      setPaymentLines([]);
+      return;
+    }
+    setPaymentLines([]);
+    setLoadingPaymentMethods(true);
+    setPaymentMethodsError('');
+    api<StorePaymentMethodOption[]>(`/stores/${storeId}/payment-methods?activeOnly=true`)
+      .then((rows) => {
+        const regular = rows.filter((m) => m.systemCode !== 'GDP');
+        setPaymentMethods(regular);
+        setPaymentLines(createDefaultPaymentLines(regular, saleTotal));
+      })
+      .catch((err) => {
+        setPaymentMethods([]);
+        setPaymentLines([]);
+        setPaymentMethodsError(
+          err instanceof Error ? err.message : 'Erro ao carregar formas de pagamento',
+        );
+      })
+      .finally(() => setLoadingPaymentMethods(false));
+    // Recarrega formas ao trocar de loja; saleTotal é aplicado no efeito abaixo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId]);
+
+  useEffect(() => {
+    setPaymentLines((current) => {
+      if (current.length === 0) {
+        return createDefaultPaymentLines(paymentMethods, saleTotal);
+      }
+      if (current.length === 1) {
+        return [{ ...current[0], amount: saleTotal }];
+      }
+      return current;
+    });
+  }, [saleTotal, paymentMethods]);
 
   const searchCustomers = useCallback(async (query: string) => {
     const term = query.trim();
@@ -402,6 +448,14 @@ export default function NewSaleScreen() {
       setError('Informe o endereço de entrega ou use sua localização.');
       return;
     }
+    if (paymentLines.length === 0) {
+      setError('Nenhuma forma de pagamento disponível nesta loja.');
+      return;
+    }
+    if (!paymentsMatchTotal(paymentLines, saleTotal)) {
+      setError('A soma dos pagamentos deve ser igual ao total da venda.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -413,7 +467,7 @@ export default function NewSaleScreen() {
           fulfillmentType: fulfillment,
           notes: notes.trim() || undefined,
           items: [{ productId, quantity: qty, unitPrice }],
-          payments: [{ method: paymentMethod, amount: saleTotal }],
+          payments: paymentLinesToPayload(paymentLines),
           deliveryStreet: fulfillment === 'DELIVERY' ? deliveryStreet : undefined,
           deliveryNumber: fulfillment === 'DELIVERY' ? deliveryNumber : undefined,
           deliveryNeighborhood: fulfillment === 'DELIVERY' ? deliveryNeighborhood : undefined,
@@ -424,7 +478,7 @@ export default function NewSaleScreen() {
       });
       setSuccess('Venda enviada — aguardando aprovação da loja.');
       setNotes('');
-      setPaymentMethod('CASH');
+      setPaymentLines(createDefaultPaymentLines(paymentMethods, saleTotal));
       clearCustomerSelection();
       await loadData();
     } catch (err) {
@@ -624,20 +678,16 @@ export default function NewSaleScreen() {
       </Card>
 
       <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Forma de pagamento</Text>
-        <View style={styles.chips}>
-          {MOBILE_PAYMENT_METHODS.map((method) => (
-            <Pressable
-              key={method}
-              onPress={() => setPaymentMethod(method)}
-              style={[styles.chip, paymentMethod === method && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, paymentMethod === method && styles.chipTextActive]}>
-                {PAYMENT_METHOD_LABELS[method]}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        <Text style={styles.sectionTitle}>Formas de pagamento</Text>
+        <SalePaymentsEditor
+          methods={paymentMethods}
+          lines={paymentLines}
+          onChange={setPaymentLines}
+          saleTotal={saleTotal}
+          disabled={submitting || saleTotal <= 0}
+          loadingMethods={loadingPaymentMethods}
+          methodsError={paymentMethodsError}
+        />
       </Card>
 
       <Card style={styles.section}>
