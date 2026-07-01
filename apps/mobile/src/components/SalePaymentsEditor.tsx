@@ -1,5 +1,10 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  PAYMENT_METHOD_LABELS,
+  formatPaymentSumHint,
+  paymentsLinesMatchTotal,
+} from '@gas-erp/shared';
 import { Button } from '@/components/ui';
 import { colors, radius, spacing } from '@/theme';
 
@@ -23,6 +28,7 @@ interface SalePaymentsEditorProps {
   disabled?: boolean;
   loadingMethods?: boolean;
   methodsError?: string;
+  gdpLocked?: boolean;
 }
 
 export function newPaymentLineKey() {
@@ -40,9 +46,20 @@ export function createDefaultPaymentLines(
   return [{ key: newPaymentLineKey(), storePaymentMethodId: method.id, amount: saleTotal }];
 }
 
+export function createGdpPaymentLines(
+  gdpMethodId: string | undefined,
+  methods: StorePaymentMethodOption[],
+  saleTotal: number,
+): PaymentLine[] {
+  const gdpMethod =
+    (gdpMethodId ? methods.find((m) => m.id === gdpMethodId) : undefined)
+    ?? methods.find((m) => m.systemCode === 'GDP');
+  if (!gdpMethod) return [];
+  return [{ key: newPaymentLineKey(), storePaymentMethodId: gdpMethod.id, amount: saleTotal }];
+}
+
 export function paymentsMatchTotal(lines: PaymentLine[], saleTotal: number): boolean {
-  const paid = lines.reduce((sum, line) => sum + (line.amount || 0), 0);
-  return Math.abs(paid - saleTotal) <= 0.009;
+  return paymentsLinesMatchTotal(lines, saleTotal);
 }
 
 export function paymentLinesToPayload(lines: PaymentLine[]) {
@@ -50,6 +67,16 @@ export function paymentLinesToPayload(lines: PaymentLine[]) {
     storePaymentMethodId: line.storePaymentMethodId,
     amount: line.amount,
   }));
+}
+
+export function resolveEditorMethods(
+  methods: StorePaymentMethodOption[],
+  gdpLocked: boolean,
+): StorePaymentMethodOption[] {
+  if (gdpLocked) {
+    return methods.filter((m) => m.systemCode === 'GDP');
+  }
+  return methods.filter((m) => m.systemCode !== 'GDP');
 }
 
 export function SalePaymentsEditor({
@@ -60,18 +87,20 @@ export function SalePaymentsEditor({
   disabled = false,
   loadingMethods = false,
   methodsError,
+  gdpLocked = false,
 }: SalePaymentsEditorProps) {
   const availableMethods = useMemo(
-    () => methods.filter((m) => m.systemCode !== 'GDP'),
-    [methods],
+    () => resolveEditorMethods(methods, gdpLocked),
+    [methods, gdpLocked],
   );
 
   const paidTotal = useMemo(
     () => lines.reduce((sum, line) => sum + (line.amount || 0), 0),
     [lines],
   );
-  const remaining = saleTotal - paidTotal;
-  const mismatch = saleTotal > 0 && Math.abs(remaining) > 0.009;
+  const sumHint = !gdpLocked
+    ? formatPaymentSumHint(paidTotal, saleTotal, formatBrl)
+    : null;
 
   function updateLine(key: string, patch: Partial<PaymentLine>) {
     onChange(lines.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -80,6 +109,7 @@ export function SalePaymentsEditor({
   function addLine() {
     const method = availableMethods[0];
     if (!method) return;
+    const remaining = saleTotal - paidTotal;
     onChange([
       ...lines,
       {
@@ -101,6 +131,21 @@ export function SalePaymentsEditor({
 
   if (methodsError) {
     return <Text style={styles.error}>{methodsError}</Text>;
+  }
+
+  if (gdpLocked) {
+    const gdpLabel =
+      availableMethods[0]?.label
+      ?? PAYMENT_METHOD_LABELS.GDP;
+    return (
+      <View style={styles.gdpBanner}>
+        <Text style={styles.gdpTitle}>Benefício Gás do Povo</Text>
+        <Text style={styles.gdpText}>
+          Esta venda foi registrada com benefício Gás do Povo. O pagamento deve ser 100%{' '}
+          <Text style={styles.gdpStrong}>{gdpLabel}</Text> — {formatBrl(saleTotal)}.
+        </Text>
+      </View>
+    );
   }
 
   if (availableMethods.length === 0) {
@@ -157,10 +202,15 @@ export function SalePaymentsEditor({
         <Button label="+ Adicionar forma" variant="secondary" onPress={addLine} />
       ) : null}
 
-      <Text style={[styles.totalHint, mismatch && styles.totalHintError]}>
-        Informado: {formatBrl(paidTotal)}
-        {mismatch ? ` · faltam ${formatBrl(Math.abs(remaining))}` : ''}
-      </Text>
+      <View style={styles.summary}>
+        <Text style={styles.totalHint}>
+          Total da venda: <Text style={styles.totalValue}>{formatBrl(saleTotal)}</Text>
+        </Text>
+        <Text style={[styles.totalHint, sumHint && styles.totalHintError]}>
+          Informado: <Text style={styles.totalValue}>{formatBrl(paidTotal)}</Text>
+        </Text>
+        {sumHint ? <Text style={styles.sumHintError}>{sumHint}</Text> : null}
+      </View>
     </View>
   );
 }
@@ -174,6 +224,17 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, color: colors.textMuted },
   error: { fontSize: 13, color: colors.dangerText },
   warning: { fontSize: 13, color: colors.warningText },
+  gdpBanner: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: '#FFF4ED',
+    gap: spacing.xs,
+  },
+  gdpTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
+  gdpText: { fontSize: 13, lineHeight: 20, color: colors.textMuted },
+  gdpStrong: { fontWeight: '700', color: colors.text },
   line: {
     padding: spacing.md,
     borderRadius: radius.md,
@@ -208,6 +269,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   remove: { fontSize: 13, color: colors.dangerText, fontWeight: '600' },
+  summary: { gap: 4, marginTop: spacing.xs },
   totalHint: { fontSize: 13, color: colors.textMuted },
-  totalHintError: { color: colors.warningText, fontWeight: '600' },
+  totalValue: { fontWeight: '700', color: colors.text },
+  totalHintError: { color: colors.warningText },
+  sumHintError: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.warningText,
+    lineHeight: 18,
+  },
 });

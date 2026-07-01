@@ -15,8 +15,12 @@ export function updateDeliveryStatus(
 export function updateSalePayments(
   saleId: string,
   payments: { storePaymentMethodId: string; amount: number }[],
+  unitPrice?: number,
 ): Promise<unknown> {
-  return api(`/sales/${saleId}/payments`, { method: 'PATCH', body: { payments } });
+  return api(`/sales/${saleId}/payments`, {
+    method: 'PATCH',
+    body: { payments, ...(unitPrice !== undefined ? { unitPrice } : {}) },
+  });
 }
 
 /** Monta o endereço de entrega a partir dos campos da venda (fallback do backend). */

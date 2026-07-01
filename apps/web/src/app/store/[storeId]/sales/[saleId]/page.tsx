@@ -21,6 +21,7 @@ import {
   MOBILE_APPROVAL_LABELS,
   canManageSales,
   canApproveMobileSales,
+  getPaymentLinesSumErrorMessage,
   hasScreenPermission,
   formatSaleDateLabel,
   getSaleDisplayStatus,
@@ -117,29 +118,48 @@ export default function SaleDetailPage() {
     s: SaleDetail,
     methods: StorePaymentMethodOption[],
   ): SalePaymentLine[] {
+    const saleTotal = parsePrice(s.total);
+    if (s.gasDoPovoBenefit) {
+      const gdpMethod = methods.find((m) => m.systemCode === 'GDP');
+      const fromSale = s.payments[0];
+      if (fromSale?.storePaymentMethodId) {
+        return [{
+          key: 'gdp-0',
+          storePaymentMethodId: fromSale.storePaymentMethodId,
+          amount: parsePrice(fromSale.amount) || saleTotal,
+        }];
+      }
+      if (gdpMethod) {
+        return [{ key: 'gdp-0', storePaymentMethodId: gdpMethod.id, amount: saleTotal }];
+      }
+      return [];
+    }
+
+    const regularMethods = methods.filter((m) => m.systemCode !== 'GDP');
     if (!s.payments.length) {
-      return createDefaultPaymentLines(
-        methods.filter((m) => m.systemCode !== 'GDP'),
-        parsePrice(s.total),
-      );
+      return createDefaultPaymentLines(regularMethods, saleTotal);
     }
     return s.payments.map((p, index) => ({
       key: `pay-${index}`,
       storePaymentMethodId:
         p.storePaymentMethodId
-        ?? methods.find((m) => m.systemCode === p.method)?.id
-        ?? methods[0]?.id
+        ?? regularMethods.find((m) => m.systemCode === p.method)?.id
+        ?? regularMethods[0]?.id
         ?? '',
       amount: parsePrice(p.amount),
     }));
   }
 
   async function load() {
-    const [s, d, methods] = await Promise.all([
+    const [s, d] = await Promise.all([
       api<SaleDetail>(`/sales/${saleId}`, {}, getToken()),
       api<Deliverer[]>(`/deliverers?storeId=${storeId}`, {}, getToken()),
-      api<StorePaymentMethodOption[]>(`/stores/${storeId}/payment-methods?activeOnly=true`, {}, getToken()),
     ]);
+    const methods = await api<StorePaymentMethodOption[]>(
+      `/stores/${storeId}/payment-methods?activeOnly=false`,
+      {},
+      getToken(),
+    );
     setSale(s);
     setPaymentMethods(methods);
     setPaymentLines(mapSalePaymentsToLines(s, methods));
@@ -255,7 +275,7 @@ export default function SaleDetailPage() {
     if (!sale) return;
     const saleTotal = parsePrice(sale.total);
     if (!paymentsMatchTotal(paymentLines, saleTotal)) {
-      setError('A soma dos pagamentos deve ser igual ao total da venda.');
+      setError(getPaymentLinesSumErrorMessage(paymentLines, saleTotal));
       return;
     }
     setError('');
@@ -565,7 +585,10 @@ export default function SaleDetailPage() {
                     type="button"
                     variant="secondary"
                     className="mt-3"
-                    onClick={() => setEditingPayments(true)}
+                    onClick={() => {
+                      setPaymentLines(mapSalePaymentsToLines(sale, paymentMethods));
+                      setEditingPayments(true);
+                    }}
                   >
                     Editar pagamentos
                   </Button>

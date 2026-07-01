@@ -23,6 +23,7 @@ import {
   PAYMENT_METHOD_LABELS,
   SALE_CHANNELS,
   SALE_CHANNEL_LABELS,
+  getPaymentLinesSumErrorMessage,
   canManageSales,
   isPastBusinessDay,
   todayBusinessDateKey,
@@ -370,7 +371,7 @@ export default function NewSalePage() {
         return;
       }
       if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
-        setError('A soma dos pagamentos deve ser igual ao total da venda.');
+        setError(getPaymentLinesSumErrorMessage(paymentLines, total));
         return;
       }
       setStep(3);
@@ -393,7 +394,7 @@ export default function NewSalePage() {
       return;
     }
     if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
-      setError('A soma dos pagamentos deve ser igual ao total da venda.');
+      setError(getPaymentLinesSumErrorMessage(paymentLines, total));
       return;
     }
 
@@ -600,15 +601,21 @@ export default function NewSalePage() {
                       +
                     </Button>
                   </div>
-                  <div className="ml-auto">
+                  <div className="ml-auto text-right">
                     <Label>Preço unit.</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      className="w-28"
-                      value={draft.unitPrice}
-                      onChange={(e) => setDraft({ ...draft, unitPrice: Number(e.target.value) })}
-                    />
+                    {draft.gasDoPovoBenefit ? (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="mt-1 w-28"
+                        value={draft.unitPrice}
+                        onChange={(e) => setDraft({ ...draft, unitPrice: Number(e.target.value) })}
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm font-medium text-slate-900">
+                        {formatCurrency(draft.unitPrice)}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -617,7 +624,14 @@ export default function NewSalePage() {
                 <Label>Benefício Gás do Povo</Label>
                 <button
                   type="button"
-                  onClick={() => setDraft((d) => ({ ...d, gasDoPovoBenefit: !d.gasDoPovoBenefit }))}
+                  onClick={() => setDraft((d) => {
+                    const nextGdp = !d.gasDoPovoBenefit;
+                    return {
+                      ...d,
+                      gasDoPovoBenefit: nextGdp,
+                      unitPrice: nextGdp ? d.unitPrice : resolveProductUnitPrice(d.productId),
+                    };
+                  })}
                   className={cn(
                     'mt-2 w-full rounded-xl border px-4 py-3 text-left text-sm transition',
                     draft.gasDoPovoBenefit

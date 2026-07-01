@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { getPaymentLinesSumErrorMessage } from '@gas-erp/shared';
 import { Button } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, radius, spacing } from '@/theme';
 import {
   SalePaymentsEditor,
   createDefaultPaymentLines,
+  createGdpPaymentLines,
   paymentLinesToPayload,
   paymentsMatchTotal,
   type PaymentLine,
@@ -17,9 +19,15 @@ interface FinishPaymentsModalProps {
   saleId: string;
   storeId: string;
   saleTotal: number;
+  gasDoPovoBenefit?: boolean;
+  itemQuantity?: number;
+  initialUnitPrice?: number;
   initialPayments?: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
   onClose: () => void;
-  onConfirm: (payments: { storePaymentMethodId: string; amount: number }[]) => Promise<void>;
+  onConfirm: (
+    payments: { storePaymentMethodId: string; amount: number }[],
+    unitPrice?: number,
+  ) => Promise<void>;
 }
 
 function parseAmount(value: number | string | null | undefined): number {
@@ -28,11 +36,51 @@ function parseAmount(value: number | string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function buildInitialLines(
+  methods: StorePaymentMethodOption[],
+  saleTotal: number,
+  gasDoPovoBenefit: boolean,
+  initialPayments?: FinishPaymentsModalProps['initialPayments'],
+): PaymentLine[] {
+  if (gasDoPovoBenefit) {
+    const gdpMethod = methods.find((m) => m.systemCode === 'GDP');
+    const fromSale = initialPayments?.[0];
+    if (fromSale?.storePaymentMethodId) {
+      return [{
+        key: 'gdp-0',
+        storePaymentMethodId: fromSale.storePaymentMethodId,
+        amount: parseAmount(fromSale.amount) || saleTotal,
+      }];
+    }
+    if (gdpMethod) {
+      return createGdpPaymentLines(gdpMethod.id, methods, saleTotal);
+    }
+    return [];
+  }
+
+  const regular = methods.filter((m) => m.systemCode !== 'GDP');
+  if (initialPayments?.length) {
+    return initialPayments.map((p, index) => ({
+      key: `init-${index}`,
+      storePaymentMethodId:
+        p.storePaymentMethodId
+        ?? regular.find((m) => m.systemCode === p.method)?.id
+        ?? regular[0]?.id
+        ?? '',
+      amount: parseAmount(p.amount),
+    }));
+  }
+  return createDefaultPaymentLines(regular, saleTotal);
+}
+
 export function FinishPaymentsModal({
   visible,
   saleId,
   storeId,
-  saleTotal,
+  saleTotal: initialSaleTotal,
+  gasDoPovoBenefit = false,
+  itemQuantity = 1,
+  initialUnitPrice,
   initialPayments,
   onClose,
   onConfirm,
@@ -43,47 +91,97 @@ export function FinishPaymentsModal({
   const [loading, setLoading] = useState(false);
   const [methodsError, setMethodsError] = useState('');
   const [error, setError] = useState('');
+  const [gdpUnitPrice, setGdpUnitPrice] = useState('');
+  const openSessionRef = useRef<string | null>(null);
+
+  const parsedUnitPrice = Math.max(0, Number(gdpUnitPrice.replace(',', '.')) || 0);
+  const deliveryFee = gasDoPovoBenefit && initialUnitPrice != null
+    ? Math.max(0, initialSaleTotal - initialUnitPrice * itemQuantity)
+    : 0;
+  const saleTotal = gasDoPovoBenefit && parsedUnitPrice > 0
+    ? parsedUnitPrice * itemQuantity + deliveryFee
+    : initialSaleTotal;
+
+  const gdpMethodId = methods.find((m) => m.systemCode === 'GDP')?.id;
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      openSessionRef.current = null;
+      return;
+    }
+
+    const sessionKey = `${saleId}:${saleTotal}:${gasDoPovoBenefit}`;
+    if (openSessionRef.current === sessionKey) return;
+    openSessionRef.current = sessionKey;
+
     setError('');
     setMethodsError('');
     setLoadingMethods(true);
-    api<StorePaymentMethodOption[]>(`/stores/${storeId}/payment-methods?activeOnly=true`)
+    if (gasDoPovoBenefit && initialUnitPrice != null) {
+      setGdpUnitPrice(String(initialUnitPrice));
+    }
+
+    const activeOnly = gasDoPovoBenefit ? 'false' : 'true';
+    let cancelled = false;
+
+    api<StorePaymentMethodOption[]>(
+      `/stores/${storeId}/payment-methods?activeOnly=${activeOnly}`,
+    )
       .then((rows) => {
-        const regular = rows.filter((m) => m.systemCode !== 'GDP');
-        setMethods(regular);
-        if (initialPayments?.length) {
-          setLines(
-            initialPayments.map((p, index) => ({
-              key: `init-${index}`,
-              storePaymentMethodId:
-                p.storePaymentMethodId
-                ?? regular.find((m) => m.systemCode === p.method)?.id
-                ?? regular[0]?.id
-                ?? '',
-              amount: parseAmount(p.amount),
-            })),
-          );
-        } else {
-          setLines(createDefaultPaymentLines(regular, saleTotal));
-        }
+        if (cancelled) return;
+        setMethods(rows);
+        setLines(buildInitialLines(rows, saleTotal, gasDoPovoBenefit, initialPayments));
       })
       .catch((err) => {
+        if (cancelled) return;
+        setMethods([]);
+        setLines([]);
         setMethodsError(err instanceof Error ? err.message : 'Erro ao carregar formas de pagamento');
       })
-      .finally(() => setLoadingMethods(false));
-  }, [visible, storeId, saleId, saleTotal, initialPayments]);
+      .finally(() => {
+        if (!cancelled) setLoadingMethods(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // initialPayments é lido apenas na abertura do modal (guardado por openSessionRef).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, storeId, saleId, initialSaleTotal, gasDoPovoBenefit, initialUnitPrice]);
+
+  useEffect(() => {
+    if (!visible || !gasDoPovoBenefit || !gdpMethodId) return;
+    setLines(createGdpPaymentLines(gdpMethodId, methods, saleTotal));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saleTotal, visible, gasDoPovoBenefit, gdpMethodId, methods]);
 
   async function handleConfirm() {
-    if (!paymentsMatchTotal(lines, saleTotal)) {
-      setError('A soma dos pagamentos deve ser igual ao total da venda.');
+    if (gasDoPovoBenefit) {
+      if (!gdpMethodId) {
+        setError('Forma GDP não configurada nesta loja. Contate o gestor.');
+        return;
+      }
+      if (parsedUnitPrice <= 0) {
+        setError('Informe um preço válido para o benefício Gás do Povo.');
+        return;
+      }
+      if (!paymentsMatchTotal([{ key: 'gdp', storePaymentMethodId: gdpMethodId, amount: saleTotal }], saleTotal)) {
+        setError('O valor do benefício Gás do Povo deve ser igual ao total da venda.');
+        return;
+      }
+    } else if (!paymentsMatchTotal(lines, saleTotal)) {
+      setError(getPaymentLinesSumErrorMessage(lines, saleTotal));
       return;
     }
+
     setLoading(true);
     setError('');
     try {
-      await onConfirm(paymentLinesToPayload(lines));
+      const payload = gasDoPovoBenefit && gdpMethodId
+        ? [{ storePaymentMethodId: gdpMethodId, amount: saleTotal }]
+        : paymentLinesToPayload(lines);
+      const unitPricePayload = gasDoPovoBenefit && parsedUnitPrice > 0 ? parsedUnitPrice : undefined;
+      await onConfirm(payload, unitPricePayload);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar os pagamentos.');
     } finally {
@@ -101,6 +199,22 @@ export function FinishPaymentsModal({
           </Text>
 
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+            {gasDoPovoBenefit ? (
+              <View style={styles.priceSection}>
+                <Text style={styles.priceLabel}>Preço unitário (GDP)</Text>
+                <TextInput
+                  style={styles.priceInput}
+                  keyboardType="decimal-pad"
+                  value={gdpUnitPrice}
+                  onChangeText={setGdpUnitPrice}
+                  placeholder="0,00"
+                  placeholderTextColor={colors.textFaint}
+                />
+                <Text style={styles.priceHint}>
+                  Total: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </Text>
+              </View>
+            ) : null}
             <SalePaymentsEditor
               methods={methods}
               lines={lines}
@@ -108,6 +222,7 @@ export function FinishPaymentsModal({
               saleTotal={saleTotal}
               loadingMethods={loadingMethods}
               methodsError={methodsError}
+              gdpLocked={gasDoPovoBenefit}
             />
           </ScrollView>
 
@@ -145,6 +260,19 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800', color: colors.text },
   subtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
   scroll: { marginTop: spacing.md, maxHeight: 320 },
+  priceSection: { marginBottom: spacing.md, gap: spacing.xs },
+  priceLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  priceInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.bg,
+  },
+  priceHint: { fontSize: 13, color: colors.textMuted },
   error: { marginTop: spacing.sm, fontSize: 13, color: colors.dangerText },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   flex: { flex: 1 },

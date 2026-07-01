@@ -52,6 +52,7 @@ export interface Sale {
   deliveryCity?: string | null;
   deliveryState?: string | null;
   deliveryLandmark?: string | null;
+  gasDoPovoBenefit?: boolean;
   payments?: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
 }
 

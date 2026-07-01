@@ -17,6 +17,8 @@ import {
   toNumber,
   isDelivererAssignableForSale,
   assertSalePaymentsTotal,
+  assertSaleUnitPriceOverrideAllowed,
+  SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE,
 } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -148,6 +150,7 @@ export class SalesService {
     }
 
     await this.validateSaleReferences(user, data);
+    await this.validateItemUnitPrices(data.storeId, data.customerId, data.items, gasDoPovoBenefit);
 
     if (data.channel === 'IN_STORE' && data.fulfillmentType === 'DELIVERY') {
       throw new BadRequestException('Vendas pelo canal portaria não permitem entrega.');
@@ -314,14 +317,24 @@ export class SalesService {
     );
     const total = itemsTotal + deliveryFee;
 
-    const payments = data.payments?.length
+    const gasDoPovoBenefit = data.gasDoPovoBenefit ?? false;
+
+    let payments = data.payments?.length
       ? data.payments
       : [{ method: 'CASH' as const, amount: total }];
+
+    if (gasDoPovoBenefit) {
+      payments = [{ method: 'GDP' as const, amount: total }];
+    } else if (payments.some((p) => p.method === 'GDP')) {
+      throw new BadRequestException(
+        'Forma de pagamento GDP só é permitida com benefício Gás do Povo.',
+      );
+    }
 
     const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
       data.storeId,
       payments,
-      false,
+      gasDoPovoBenefit,
     );
 
     const paidTotal = resolvedPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -332,6 +345,7 @@ export class SalesService {
     }
 
     await this.validateMobileSaleReferences(user, data);
+    await this.validateItemUnitPrices(data.storeId, data.customerId, data.items, gasDoPovoBenefit);
 
     const unitCostByProduct = await this.resolveItemUnitCosts(data.storeId, data.items);
 
@@ -344,6 +358,7 @@ export class SalesService {
         channel: isPickup ? 'IN_STORE' : 'APP',
         status: SaleStatus.DRAFT,
         total,
+        gasDoPovoBenefit,
         deliveryFee,
         notes: data.notes,
         mobileApproval: 'PENDING' as MobileApprovalStatus,
@@ -850,6 +865,48 @@ export class SalesService {
     return new Map(settings.map((setting) => [setting.productId, toNumber(setting.supplierCost)]));
   }
 
+  private async resolveExpectedUnitPrice(
+    storeId: string,
+    customerId: string | undefined | null,
+    productId: string,
+  ): Promise<number> {
+    if (customerId) {
+      const customerPrice = await this.prisma.customerProductPrice.findUnique({
+        where: {
+          customerId_productId_storeId: { customerId, productId, storeId },
+        },
+        select: { price: true },
+      });
+      if (customerPrice) {
+        return toNumber(customerPrice.price);
+      }
+    }
+
+    const storeSetting = await this.prisma.productStoreSetting.findUnique({
+      where: { productId_storeId: { productId, storeId } },
+      select: { price: true },
+    });
+    return storeSetting ? toNumber(storeSetting.price) : 0;
+  }
+
+  private async validateItemUnitPrices(
+    storeId: string,
+    customerId: string | undefined | null,
+    items: { productId: string; unitPrice: number }[],
+    gasDoPovoBenefit: boolean,
+  ) {
+    for (const item of items) {
+      const expected = await this.resolveExpectedUnitPrice(storeId, customerId, item.productId);
+      try {
+        assertSaleUnitPriceOverrideAllowed(item.unitPrice, expected, gasDoPovoBenefit);
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE,
+        );
+      }
+    }
+  }
+
   private async validateSaleReferences(user: AuthUser, data: CreateSaleInput) {
     const attendant = await this.prisma.user.findFirst({
       where: { id: user.id, organizationId: user.organizationId, active: true },
@@ -1095,12 +1152,13 @@ export class SalesService {
   }
 
   async updatePayments(user: AuthUser, id: string, input: unknown) {
-    const { payments } = updateSalePaymentsSchema.parse(input);
+    const { payments, unitPrice: submittedUnitPrice } = updateSalePaymentsSchema.parse(input);
     const sale = await this.prisma.sale.findUnique({
       where: { id },
       include: {
         store: { select: { organizationId: true } },
         payments: true,
+        items: true,
         delivery: { include: { deliverer: { select: { userId: true } } } },
       },
     });
@@ -1115,7 +1173,29 @@ export class SalesService {
       throw new BadRequestException('Não é possível alterar pagamentos de venda cancelada.');
     }
 
-    const saleTotal = toNumber(sale.total);
+    const gasDoPovoBenefit = sale.gasDoPovoBenefit;
+
+    if (submittedUnitPrice !== undefined) {
+      if (!gasDoPovoBenefit) {
+        throw new BadRequestException(SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE);
+      }
+      if (sale.items.length !== 1) {
+        throw new BadRequestException(
+          'Ajuste de preço GDP só é suportado para vendas com um produto.',
+        );
+      }
+    }
+
+    let saleTotal = toNumber(sale.total);
+
+    if (submittedUnitPrice !== undefined && gasDoPovoBenefit) {
+      const deliveryFee = toNumber(sale.deliveryFee);
+      const item = sale.items[0];
+      const discount = toNumber(item.discount);
+      const itemTotal = item.quantity * submittedUnitPrice - discount;
+      saleTotal = itemTotal + deliveryFee;
+    }
+
     try {
       assertSalePaymentsTotal(payments, saleTotal);
     } catch (error) {
@@ -1125,6 +1205,12 @@ export class SalesService {
     const isDelivererOwner =
       user.role === 'DELIVERER'
       && sale.delivery?.deliverer.userId === user.id;
+
+    if (submittedUnitPrice !== undefined && !isDelivererOwner) {
+      throw new ForbiddenException(
+        'Apenas o entregador pode ajustar o preço GDP ao concluir a entrega.',
+      );
+    }
 
     if (isDelivererOwner) {
       if (sale.delivery?.status !== DeliveryStatus.IN_PROGRESS) {
@@ -1146,7 +1232,6 @@ export class SalesService {
       }
     }
 
-    const gasDoPovoBenefit = sale.gasDoPovoBenefit;
     if (gasDoPovoBenefit) {
       if (payments.length !== 1 || payments.some((p) => p.method && p.method !== 'GDP')) {
         throw new BadRequestException('Com benefício Gás do Povo, o pagamento deve ser 100% GDP.');
@@ -1169,6 +1254,23 @@ export class SalesService {
     }));
 
     await this.prisma.$transaction(async (tx) => {
+      if (submittedUnitPrice !== undefined && gasDoPovoBenefit) {
+        const item = sale.items[0];
+        const discount = toNumber(item.discount);
+        const itemTotal = item.quantity * submittedUnitPrice - discount;
+        await tx.saleItem.update({
+          where: { id: item.id },
+          data: {
+            unitPrice: submittedUnitPrice,
+            total: itemTotal,
+          },
+        });
+        await tx.sale.update({
+          where: { id },
+          data: { total: saleTotal },
+        });
+      }
+
       await tx.salePayment.deleteMany({ where: { saleId: id } });
       await tx.salePayment.createMany({
         data: resolvedPayments.map((p) => ({

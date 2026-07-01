@@ -118,11 +118,12 @@ export default function DeliveryDetailScreen() {
 
   async function finishRoute(
     payments: { storePaymentMethodId: string; amount: number }[],
+    unitPrice?: number,
   ) {
     if (!delivery) return;
     setBusy(true);
     try {
-      await updateSalePayments(delivery.sale.id, payments);
+      await updateSalePayments(delivery.sale.id, payments, unitPrice);
       await updateDeliveryStatus(delivery.id, 'DELIVERED');
       await stopDeliveryTracking().catch(() => undefined);
       setPaymentsOpen(false);
@@ -176,10 +177,14 @@ export default function DeliveryDetailScreen() {
           {delivery.sale.payments && delivery.sale.payments.length > 0 ? (
             <Text style={styles.payment}>
               Pagamento:{' '}
-              {delivery.sale.payments
-                .map((p) => PAYMENT_METHOD_LABELS[p.method] ?? p.method)
-                .join(', ')}
+              {delivery.sale.gasDoPovoBenefit
+                ? PAYMENT_METHOD_LABELS.GDP
+                : delivery.sale.payments
+                    .map((p) => PAYMENT_METHOD_LABELS[p.method as keyof typeof PAYMENT_METHOD_LABELS] ?? p.method)
+                    .join(', ')}
             </Text>
+          ) : delivery.sale.gasDoPovoBenefit ? (
+            <Text style={styles.payment}>Pagamento: {PAYMENT_METHOD_LABELS.GDP}</Text>
           ) : null}
         </Card>
 
@@ -230,6 +235,13 @@ export default function DeliveryDetailScreen() {
         saleId={delivery.sale.id}
         storeId={delivery.sale.storeId ?? user?.storeIds[0] ?? ''}
         saleTotal={Number(delivery.sale.total ?? 0)}
+        gasDoPovoBenefit={delivery.sale.gasDoPovoBenefit}
+        itemQuantity={delivery.sale.items[0]?.quantity ?? 1}
+        initialUnitPrice={
+          delivery.sale.items[0]?.unitPrice != null
+            ? Number(delivery.sale.items[0].unitPrice)
+            : undefined
+        }
         initialPayments={delivery.sale.payments}
         onClose={() => setPaymentsOpen(false)}
         onConfirm={finishRoute}

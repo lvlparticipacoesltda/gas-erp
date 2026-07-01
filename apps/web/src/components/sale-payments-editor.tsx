@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { formatPaymentSumHint, paymentsLinesMatchTotal } from '@gas-erp/shared';
 import { Button, Input, Label, Select } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
 import { parsePrice } from '@/lib/sale-utils';
@@ -60,12 +61,18 @@ export function SalePaymentsEditor({
     () => lines.reduce((sum, line) => sum + (line.amount || 0), 0),
     [lines],
   );
-  const remaining = saleTotal - paidTotal;
-  const mismatch = Math.abs(remaining) > 0.009;
+  const sumHint = !gdpLocked ? formatPaymentSumHint(paidTotal, saleTotal, formatCurrency) : null;
 
-  const availableMethods = gdpLocked && gdpMethodId
-    ? methods.filter((m) => m.id === gdpMethodId)
-    : methods.filter((m) => m.systemCode !== 'GDP');
+  const availableMethods = useMemo(() => {
+    const base = gdpLocked
+      ? methods.filter((m) => m.systemCode === 'GDP')
+      : methods.filter((m) => m.systemCode !== 'GDP');
+    const baseIds = new Set(base.map((m) => m.id));
+    const extras = methods.filter(
+      (m) => lines.some((line) => line.storePaymentMethodId === m.id) && !baseIds.has(m.id),
+    );
+    return [...base, ...extras];
+  }, [methods, lines, gdpLocked]);
 
   function updateLine(key: string, patch: Partial<SalePaymentLine>) {
     onChange(lines.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -74,6 +81,7 @@ export function SalePaymentsEditor({
   function addLine() {
     const method = availableMethods[0];
     if (!method) return;
+    const remaining = saleTotal - paidTotal;
     const amount = Math.max(0, Number(remaining.toFixed(2)));
     onChange([
       ...lines,
@@ -86,11 +94,12 @@ export function SalePaymentsEditor({
     onChange(lines.filter((line) => line.key !== key));
   }
 
-  if (gdpLocked && gdpMethodId) {
+  if (gdpLocked) {
+    const gdpLabel = availableMethods[0]?.label ?? 'GDP';
     return (
       <div className={className}>
         <p className="rounded-lg border border-brand bg-brand-muted px-3 py-2 text-sm text-brand-dark">
-          Pagamento registrado como <strong>GDP</strong> (Benefício Gás do Povo) —{' '}
+          Pagamento registrado como <strong>{gdpLabel}</strong> (Benefício Gás do Povo) —{' '}
           {formatCurrency(saleTotal)}
         </p>
       </div>
@@ -151,13 +160,12 @@ export function SalePaymentsEditor({
         </Button>
       ) : null}
 
-      <div className="mt-3 text-sm">
-        <span className="font-medium text-slate-900">Total da venda: {formatCurrency(saleTotal)}</span>
-        <span className="mx-2 text-slate-400">·</span>
-        <span className={mismatch ? 'font-medium text-amber-800' : 'text-slate-600'}>
+      <div className="mt-3 space-y-1 text-sm">
+        <p className="font-medium text-slate-900">Total da venda: {formatCurrency(saleTotal)}</p>
+        <p className={sumHint ? 'font-medium text-amber-800' : 'text-slate-600'}>
           Informado: {formatCurrency(paidTotal)}
-          {mismatch ? ` (faltam ${formatCurrency(Math.abs(remaining))})` : ''}
-        </span>
+        </p>
+        {sumHint ? <p className="font-medium text-amber-800">{sumHint}</p> : null}
       </div>
     </div>
   );
@@ -171,6 +179,5 @@ export function salePaymentLinesToPayload(lines: SalePaymentLine[]) {
 }
 
 export function paymentsMatchTotal(lines: SalePaymentLine[], saleTotal: number): boolean {
-  const paid = lines.reduce((sum, line) => sum + line.amount, 0);
-  return Math.abs(paid - saleTotal) <= 0.009;
+  return paymentsLinesMatchTotal(lines, saleTotal);
 }

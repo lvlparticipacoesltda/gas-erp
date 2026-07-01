@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FULFILLMENT_TYPES, PAYMENT_METHODS, SALE_CHANNELS } from '../enums';
+import { getPaymentSumErrorMessage } from '../payment-sum-hint';
 import { optionalId } from './helpers';
 
 export const saleItemSchema = z.object({
@@ -28,9 +29,7 @@ export function assertSalePaymentsTotal(
 ): void {
   const paid = payments.reduce((sum, p) => sum + p.amount, 0);
   if (saleTotal > 0 && Math.abs(paid - saleTotal) > PAYMENT_SUM_TOLERANCE) {
-    throw new Error(
-      `A soma dos pagamentos (${paid.toFixed(2)}) deve ser igual ao total da venda (${saleTotal.toFixed(2)}).`,
-    );
+    throw new Error(getPaymentSumErrorMessage(paid, saleTotal));
   }
 }
 
@@ -74,6 +73,8 @@ export const createSaleSchema = z.object({
 
 export const updateSalePaymentsSchema = z.object({
   payments: z.array(salePaymentSchema).min(1, 'Informe ao menos uma forma de pagamento'),
+  /** Ajuste de preço unitário — permitido apenas com benefício Gás do Povo (validado na API). */
+  unitPrice: z.number().nonnegative().optional(),
 });
 
 export type UpdateSalePaymentsInput = z.infer<typeof updateSalePaymentsSchema>;

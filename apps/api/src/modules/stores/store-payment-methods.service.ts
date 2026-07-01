@@ -227,11 +227,12 @@ export class StorePaymentMethodsService {
         throw new BadRequestException('Forma de pagamento inválida ou indisponível para esta loja.');
       }
 
-      if (!methodRecord.enabled) {
+      const systemCode = methodRecord.systemCode as PaymentMethod | null;
+
+      if (!methodRecord.enabled && !(gasDoPovoBenefit && systemCode === 'GDP')) {
         throw new BadRequestException(`Forma de pagamento "${methodRecord.label}" está desativada.`);
       }
 
-      const systemCode = methodRecord.systemCode as PaymentMethod | null;
       const method =
         systemCode ??
         (payment.method as PaymentMethod | undefined) ??
