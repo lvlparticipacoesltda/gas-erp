@@ -56,13 +56,13 @@ Ao subir o app, em **Política → Permissões de apps → Localização em segu
 
 ## 5. Ficha da loja
 
-- [ ] **URL da Política de Privacidade** (publicar `docs/privacy-policy.md` em uma URL
-      pública, ex.: página no site da distribuidora).
+- [x] **URL da Política de Privacidade:** https://thlgasdopovo.com.br/privacidade-entregador
+      (página pública em `apps/web/src/app/privacidade-entregador/`)
 - [ ] Categoria: Negócios / Produtividade.
 - [ ] Público-alvo: adultos (uso profissional). Não direcionado a crianças.
 - [ ] Capturas de tela, ícone (512×512) e feature graphic.
-- [ ] **URL de exclusão de conta** (exigida pelo Google): página explicando como o
-      entregador exclui a conta/dados (ver seção 5 da política de privacidade).
+- [x] **URL de exclusão de conta:** https://thlgasdopovo.com.br/exclusao-conta-entregador
+      (página em `apps/web/src/app/exclusao-conta-entregador/`)
 
 ## 6. Build e envio
 
