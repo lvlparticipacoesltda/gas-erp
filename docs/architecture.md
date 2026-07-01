@@ -9,7 +9,7 @@ Monorepo Gas ERP — gestão multi-loja para distribuidoras de GLP.
 | `apps/web` | Next.js (App Router) | Painel master e de loja |
 | `apps/api` | NestJS (`/api/v1`) | API REST |
 | `apps/mobile` | Expo SDK 56 + `expo-router` (React Native) | App do entregador (Android primeiro) |
-| `packages/shared` | TypeScript | Tipos, schemas Zod, labels, permissões, métricas (`delivery-metrics.ts`), dia operacional (`business-day.ts`), data retroativa (`sale-backdate.ts`) |
+| `packages/shared` | TypeScript | Tipos, schemas Zod, labels, permissões, métricas (`delivery-metrics.ts`), dia operacional (`business-day.ts`), data retroativa (`sale-backdate.ts`), venda mobile (`sale-mobile.ts`) |
 | `packages/database` | Prisma | Schema, client e migrations |
 
 `apps/web`, `apps/api` e `apps/mobile` consomem `@gas-erp/shared` (tipos, `getSaleDisplayStatus`, helpers de métrica) garantindo regras consistentes entre web, API e app.
@@ -20,11 +20,17 @@ Monorepo Gas ERP — gestão multi-loja para distribuidoras de GLP.
 - **Store** = unidade física
 - **User** + **UserStore** = RBAC por loja (N:N — um usuário pode ter várias lojas)
 - **User.permissions** = telas customizadas (`String[]`; vazio = padrão do papel)
+- **Customer** = **por loja** (`storeId`); endereços e **CustomerProductPrice** (preço negociado por cliente/produto/loja)
+- **Supplier** = fornecedores da organização (PJ/PF)
+- **PurchaseInvoice** + itens = notas de compra (entrada de estoque)
+- **StorePaymentMethod** = formas de pagamento por loja com taxas (`PaymentFeeMode`)
 - **StockBalance** por loja; **StockTransfer** entre lojas
-- **Sale** → baixa estoque; cancelamento repõe; `saleDate` (dia operacional); `backdateApproval` para lançamentos retroativos
+- **ProductStoreSetting.supplierCost** = custo fornecedor por loja; **SaleItem.unitCost** = snapshot na venda (margem histórica)
+- **Sale** → baixa estoque; cancelamento repõe; `saleDate` (dia operacional); `backdateApproval` para lançamentos retroativos; `mobileApproval` para vendas criadas pelo app do entregador
 - **SaleBackdateLog** — auditoria de solicitação/aprovação/rejeição de data anterior
-- **Delivery** + **DeliveryTrackingPoint** para GPS (app entregador)
-- **DelivererStore** = entregador N:N com unidades (mesmo `DELIVERER` pode atender várias lojas)
+- **SaleMobileApprovalLog** — auditoria de aprovação de venda mobile
+- **Delivery** + **DeliveryTrackingPoint** para GPS (app entregador); `pendingReminderSentAt` para lembrete push
+- **Deliverer** + **DelivererStore** = entregador N:N com unidades; `lastLatitude`/`lastSeenAt`/bateria para mapa de presença
 - **PasswordResetToken** para recuperação de senha
 
 ## Autenticação
@@ -68,12 +74,17 @@ Header `X-Store-Id` ou query `storeId` para operações por loja na API.
   /master/go-to-store                         escolher loja
   /master/users, /master/stores               CRUD
 /store/[storeId]/*                            usuários com acesso à loja
+  /daily-summary                              tela inicial (dashboard antigo redireciona aqui)
+  /suppliers, /purchases, /reports            novos módulos
+  /deliverers/map                             mapa de presença
+  /settings/payment-methods                   formas de pagamento
   layout.tsx                                  guard por permissão de tela
 /settings                                     redirect conforme papel
 ```
 
 - `AppShell` filtra menu da loja com `hasScreenPermission`
 - Master não tem seletor de loja na sidebar; entra na loja via dashboard ou "Ir para loja"
+- Dashboard master e resumo diário usam `useLiveQuery` com polling a cada 15s
 
 Componentes relevantes:
 
@@ -86,23 +97,28 @@ Componentes relevantes:
 | `loading-overlay.tsx` | Overlay de carregamento ao trocar período no resumo |
 | `pagination.tsx` / `paginated-list.tsx` | Paginação reutilizável (server e client) |
 | `customer-picker.tsx` | Combobox de cliente na nova venda |
+| `payment-methods-content.tsx` | CRUD de formas de pagamento por loja |
+| `settings-content.tsx` | Perfil e troca de senha |
 
 ## App do entregador (Expo — `apps/mobile`)
 
-App React Native (Expo SDK 56 + `expo-router`) para os entregadores. Consome a mesma API (`/api/v1`).
+App React Native (Expo SDK 56 + `expo-router`) para os entregadores. Consome a mesma API (`/api/v1`). Nome no dispositivo: **Gás do Povo Entregador**.
 
 | Recurso | Implementação |
 |---------|---------------|
 | Auth | Login restrito ao papel `DELIVERER`; JWT em `expo-secure-store` |
-| Listas | **Aguardando** / **Em rota** via `GET /deliveries/my` (pull-to-refresh + polling) |
+| Entregas | Abas **Aguardando** / **Em rota** via `GET /deliveries/my` (pull-to-refresh + polling) |
+| Nova venda | Aba **Venda** — `POST /sales/mobile`; aguarda aprovação na loja (`mobileApproval`) |
+| Histórico | Aba **Histórico** — vendas/entregas do entregador |
 | Iniciar rota | `PATCH /deliveries/:id/status` → `IN_PROGRESS` (exclusivo do entregador) e abre o Google Maps via deep link |
 | Rota ativa | Timer + `Concluir entrega` (`PATCH` → `DELIVERED`) |
-| GPS | `expo-location` + `expo-task-manager` → `POST /deliveries/:id/tracking` em background durante `IN_PROGRESS` (requer permissão "o tempo todo") |
-| Push | `expo-notifications` — alertas de nova entrega e cancelamento (Expo Push) |
+| GPS | `expo-location` + `expo-task-manager` → `POST /deliveries/:id/tracking` em background durante `IN_PROGRESS` |
+| Presença | `POST /deliverers/me/position` — posição no mapa da loja mesmo sem rota ativa |
+| Push | `expo-notifications` + **FCM** — nova rota, cancelamento, lembrete de aceite; som customizado `rota_entrega.wav` |
 | Branding | Nome da organização no header após login |
 | Divulgação GPS | Aviso destacado antes do prompt de background (requisito Play Store) |
-| Config | `EXPO_PUBLIC_API_URL` (default aponta para produção) |
-| Estado global | `DeliveriesProvider` no `_layout.tsx` raiz (todas as rotas) |
+| Config | `EXPO_PUBLIC_API_URL`; `google-services.json` via EAS secret (não commitado) |
+| Estado global | `DeliveriesProvider` no `_layout.tsx` raiz |
 
 Estrutura principal em `apps/mobile/src/`:
 
@@ -111,19 +127,19 @@ Estrutura principal em `apps/mobile/src/`:
 | `lib/api.ts` | Cliente HTTP + JWT |
 | `lib/auth.tsx` | Contexto de autenticação |
 | `lib/deliveries-context.tsx` | Cache e refresh das entregas |
-| `lib/location.ts` | Task de GPS em background |
-| `hooks/useDeliveries.ts` | Polling e pull-to-refresh |
+| `lib/location.ts` | Task de GPS em background + presença |
 
-Build, emulador e comandos: [development.md](development.md) · EAS: [deployment.md](deployment.md) · Play Store: [playstore-checklist.md](playstore-checklist.md).
+Build, emulador e comandos: [development.md](development.md) · Push FCM: [mobile-push-fcm.md](mobile-push-fcm.md) · EAS: [deployment.md](deployment.md) · Play Store: [playstore-checklist.md](playstore-checklist.md).
 
 ## Dia operacional e resumo diário
 
 O fuso das lojas é `America/Sao_Paulo` (`packages/shared/src/business-day.ts`):
 
-- Dia operacional = meia-noite a meia-noite no fuso da loja
+- Dia operacional = meia-noite a meia-noite no fuso da loja (offset fixo UTC-3)
 - Dashboard e resumo filtram vendas por **`saleDate`**, não por `createdAt`
 - Query `date`, `dateFrom`, `dateTo` em `GET /dashboard/store` e `GET /dashboard/master`
 - Vendas com `backdateApproval` `PENDING` ou `REJECTED` **não entram** nos totais do resumo
+- Vendas com `mobileApproval` pendente/rejeitada também ficam fora dos totais até aprovadas
 
 ## Data retroativa (vendas)
 
@@ -138,6 +154,18 @@ Fluxo em `packages/shared/src/sale-backdate.ts` + `sales.service.ts`:
 
 Aprovação/rejeição: `POST /sales/:id/backdate/approve` e `POST /sales/:id/backdate/reject` (papéis com `canManageSales`).
 
+## Venda pelo app do entregador
+
+Fluxo em `packages/shared/src/sale-mobile.ts` + `sales.service.ts`:
+
+| Cenário | `mobileApproval` | Comportamento |
+|---------|------------------|---------------|
+| Venda criada no app | `PENDING` | Sem estoque/entrega até aprovação na loja |
+| Aprovada | `APPROVED` | Fluxo normal |
+| Rejeitada | `REJECTED` | Venda não contabilizada |
+
+Aprovação: `POST /sales/:id/mobile/approve` (`canApproveMobileSales` — master, gerente, atendente).
+
 ## Métricas de entrega
 
 Calcula quanto tempo uma venda com entrega esperou até a rota começar:
@@ -148,9 +176,9 @@ tempoEspera = delivery.startedAt - sale.createdAt
 
 - `startedAt` é preenchido quando o entregador inicia a rota (`IN_PROGRESS`) no app.
 - Enquanto `PENDING`, mostra-se o tempo decorrido desde `sale.createdAt`.
-- Helpers puros em `packages/shared/src/delivery-metrics.ts` (`getWaitTimeSeconds`, `getRouteDurationSeconds`, `getElapsedWaitingSeconds`, `formatWaitTime`), reutilizados por API, web e app.
+- Helpers puros em `packages/shared/src/delivery-metrics.ts`, reutilizados por API, web e app.
 - Resumo diário inclui **por entregador** (médias de espera e tempo em rota) e entregas lentas com nome do entregador.
-- A API expõe `waitTimeSeconds` / `elapsedWaitingSeconds` nas listas de entregas e o bloco `deliveryMetrics` em `GET /dashboard/store` (ver [api-contracts.md](api-contracts.md)).
+- Margem bruta e receita líquida (após taxas de pagamento) no resumo e relatórios.
 
 ## API
 
@@ -160,16 +188,19 @@ Base URL: `/api/v1`
 |--------|---------|-------|
 | Auth | `/auth` | login, me, change-password, forgot/reset |
 | Health | `/health` | público |
-| Stores | `/stores` | master |
+| Stores | `/stores` | master; `/:storeId/payment-methods` |
 | Users | `/users` | master; `storeIds`, `permissions` |
-| Customers | `/customers` | por loja |
-| Products | `/products` | por loja |
+| Customers | `/customers` | por loja; preços por produto |
+| Products | `/products` | por loja; custo fornecedor |
+| Suppliers | `/suppliers` | fornecedores da organização |
+| Purchase invoices | `/purchase-invoices` | notas de compra |
 | Stock | `/stock` | saldos e movimentações |
 | Stock transfers | `/stock-transfers` | entre lojas |
-| Sales | `/sales` | criar, status, aprovar/rejeitar data retroativa |
-| Deliverers | `/deliverers` | por loja |
+| Sales | `/sales` | criar, status, backdate, **mobile** |
+| Deliverers | `/deliverers` | por loja; posição GPS; push token |
 | Deliveries | `/deliveries` | + tracking GPS |
 | Dashboard | `/dashboard` | master e loja |
+| Reports | `/reports` | vendas, compras, estoque + CSV |
 
 ### Produção
 
@@ -196,23 +227,9 @@ Deploy, DNS, variáveis e roadmap: [deployment.md](deployment.md)
 Contratos REST: [api-contracts.md](api-contracts.md)  
 E-mail (Resend): [resend-setup.md](resend-setup.md)
 
-| `settings-content.tsx` | Perfil e troca de senha |
-
 ## Migrations
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `20250624000000_init` | Schema inicial |
-| `20250624140000_password_reset_tokens` | Tokens de reset |
-| `20250624180000_user_permissions` | Campo `permissions` em User |
-| `20260625120000_deliverer_multi_store` | Tabela `DelivererStore` (entregador N:N unidades) |
-| `20260625140000_deliverer_push_token` | Token Expo Push |
-| `20260625160000_sync_deliverer_stores` | Backfill vínculos entregador-loja |
-| `20260625180000_sale_status_portaria` | Enum `PORTARIA` |
-| `20260625180001_backfill_sale_status_portaria` | Backfill status portaria |
-| `20260625200000_gas_do_povo_benefit_and_delivery_fee` | Benefício Gás do Povo + taxa entrega |
-| `20260625210000_payment_method_gdp` | Pagamento `GDP` |
-| `20260626100000_sale_backdate_approval` | `saleDate`, aprovação retroativa, `SaleBackdateLog` |
+20 migrations até jun/2026. Lista completa em [development.md](development.md#migrations-aplicadas).
 
 Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy. Use `DIRECT_URL` no Neon para migrations (ver [deployment.md](deployment.md)).
 
@@ -221,20 +238,26 @@ Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy. Use `DIRECT_URL
 | Área | Status |
 |------|--------|
 | Web MVP (vendas, estoque, entregas, resumo diário) | ✅ Produção |
+| Fornecedores, compras, relatórios CSV | ✅ |
+| Formas de pagamento + taxas + receita líquida | ✅ |
+| Custo/margem fornecedor | ✅ |
+| Clientes por loja + preço por cliente | ✅ |
+| Mapa de entregadores (presença GPS) | ✅ |
+| Venda mobile com aprovação | ✅ |
 | Status unificado venda/entrega + Portaria | ✅ `packages/shared/src/sale-display.ts` |
 | Benefício Gás do Povo + pagamento GDP | ✅ |
 | Data retroativa com aprovação | ✅ |
-| Filtro De/Até no resumo (loja + master) | ✅ |
+| Filtro De/Até no resumo (loja + master) + auto-refresh 15s | ✅ |
 | Paginação nas listas | ✅ |
 | Métricas tempo até rota + por entregador | ✅ `delivery-metrics.ts` |
 | App entregador MVP | ✅ Emulador + EAS preview APK |
+| Push FCM (nova rota / cancelamento / lembrete) | ✅ |
 | Play Store (AAB) | ⏳ Checklist em [playstore-checklist.md](playstore-checklist.md) |
-| Push notifications | ✅ Expo Push (nova entrega / cancelamento) |
 
 ## Fase 2 (planejado)
 
 - Fiscal (`FiscalProvider` stub em `packages/shared`)
-- Financeiro (contas, fluxo de caixa)
+- Financeiro completo (contas a pagar/receber, fluxo de caixa)
 - Publicação Play Store
 - Redis/filas para real-time
 - CI/CD, staging, monitoramento

@@ -59,6 +59,11 @@ export class SalesController {
     return this.salesService.updateStatus(user, id, body);
   }
 
+  @Patch(':id/payments')
+  updatePayments(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.salesService.updatePayments(user, id, body);
+  }
+
   @Post(':id/backdate/approve')
   approveBackdate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.salesService.approveBackdate(user, id);

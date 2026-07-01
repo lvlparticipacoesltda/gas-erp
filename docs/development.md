@@ -2,7 +2,7 @@
 
 Referência rápida para continuar o Gas ERP no monorepo — comandos, diretórios, emulador Android e builds do app entregador.
 
-**Documentação relacionada:** [architecture.md](architecture.md) · [deployment.md](deployment.md) · [api-contracts.md](api-contracts.md) · [playstore-checklist.md](playstore-checklist.md) · [new-chat-prompt.md](new-chat-prompt.md) (prompt para continuar em novo chat)
+**Documentação relacionada:** [architecture.md](architecture.md) · [deployment.md](deployment.md) · [api-contracts.md](api-contracts.md) · [playstore-checklist.md](playstore-checklist.md) · [mobile-push-fcm.md](mobile-push-fcm.md) · [new-chat-prompt.md](new-chat-prompt.md) (prompt para continuar em novo chat)
 
 ---
 
@@ -93,6 +93,8 @@ pnpm dev
 | Papel | E-mail | Senha |
 |-------|--------|-------|
 | Master | master@gas.com | admin123 |
+| Gerente | gerente@gas.com | admin123 |
+| Atendente | atendente@gas.com | admin123 |
 | Entregador | entregador@gas.com | admin123 |
 
 ---
@@ -124,6 +126,15 @@ pnpm db:studio      # Prisma Studio
 | `20260625200000_gas_do_povo_benefit_and_delivery_fee` | Benefício Gás do Povo + taxa entrega |
 | `20260625210000_payment_method_gdp` | Pagamento `GDP` |
 | `20260626100000_sale_backdate_approval` | Data da venda + aprovação retroativa |
+| `20260626130000_supplier` | Fornecedores (PJ/PF) |
+| `20260626140000_purchase_invoice` | Notas de compra + entrada de estoque |
+| `20260626150000_deliverer_presence` | Posição GPS e bateria no entregador (mapa) |
+| `20260626180000_sale_mobile_approval` | Venda pelo app + `SaleMobileApprovalLog` |
+| `20260627000000_delivery_pending_reminder` | Lembrete push de entrega pendente |
+| `20260627120000_product_supplier_cost` | Custo fornecedor + `unitCost` na venda |
+| `20260627140000_store_payment_methods` | Formas de pagamento por loja + taxas |
+| `20260627160000_customer_product_prices` | Preço negociado por cliente/produto/loja |
+| `20260627180000_customer_per_store` | Clientes vinculados a loja específica |
 
 ### Neon / Railway
 
@@ -147,6 +158,8 @@ Build de produção local:
 pnpm --filter @gas-erp/web build
 ```
 
+Tela inicial da loja: `/store/[storeId]/daily-summary` (rota `/dashboard` redireciona).
+
 ---
 
 ## API (`apps/api`)
@@ -162,7 +175,7 @@ Produção: https://gas-erpapi-production.up.railway.app/api/v1
 
 ## App entregador (`apps/mobile`)
 
-Stack: Expo SDK 56, `expo-router`, JWT em `expo-secure-store`, GPS com `expo-location` + `expo-task-manager`.
+Stack: Expo SDK 56, `expo-router`, JWT em `expo-secure-store`, GPS com `expo-location` + `expo-task-manager`, push via FCM.
 
 ### Variáveis
 
@@ -171,7 +184,9 @@ cd /Users/zeroummobilidade/gas-erp/apps/mobile
 cp .env.example .env
 ```
 
-Default em `.env.example` aponta para **API de produção**. Para API local no emulador use `http://10.0.2.2:3001/api/v1` (alias do host no emulador Android).
+Default em `.env.example` aponta para **API de produção**. Para API local no emulador use `http://10.0.2.2:3001/api/v1`.
+
+Push em APK exige FCM — ver [mobile-push-fcm.md](mobile-push-fcm.md).
 
 ### Modo 1 — Dev build no emulador (recomendado para debug)
 
@@ -199,13 +214,9 @@ npx expo start --dev-client
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-No emulador: abra **Gas Entregador**. Pressione **`r`** no Metro para recarregar JS.
-
-> **Dev build precisa do Metro rodando.** Erro "Unable to load script" = Metro parado ou emulador sem rede com o Mac. Solução: `npx expo start --dev-client` + RELOAD.
+No emulador: abra **Gás do Povo Entregador**. Pressione **`r`** no Metro para recarregar JS.
 
 ### Modo 2 — APK preview (EAS, sem Metro)
-
-Para testar no celular dos entregadores ou validar GPS sem depender do Mac:
 
 ```bash
 cd /Users/zeroummobilidade/gas-erp/apps/mobile
@@ -217,33 +228,20 @@ npx eas build -p android --profile preview    # APK interno
 npx eas build -p android --profile production # AAB Play Store
 ```
 
-Após o build, baixe o APK pelo link do [expo.dev](https://expo.dev). Instale com:
-
-```bash
-adb install -r ~/Downloads/seu-apk.apk
-```
-
-Se der `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, desinstale o app anterior (assinaturas diferentes):
-
-```bash
-adb uninstall com.gaserp.entregador
-```
-
 ### Login no app
 
 - Apenas usuários com papel **`DELIVERER`**
-- Use `entregador@gas.com` / `admin123` (seed) ou entregador cadastrado no painel
-- O nome da **organização** aparece no topo após login
+- Use `entregador@gas.com` / `admin123` (seed)
+- Abas: **Entregas**, **Venda** (criar pedido), **Histórico**
 
 ### Fluxo testado (jun/2026)
 
 1. Login entregador
 2. Lista **Aguardando** / **Em rota** (`GET /deliveries/my`)
-3. Clicar entrega → tela de detalhe (endereço, itens, Maps/Waze)
-4. **Iniciar rota** → API `IN_PROGRESS` → abre Google Maps → GPS opcional
+3. Clicar entrega → detalhe (endereço, itens, Maps/Waze)
+4. **Iniciar rota** → API `IN_PROGRESS` → Maps → GPS
 5. **Concluir entrega** → `DELIVERED`
-
-Criar entrega de teste: painel web → nova venda com entrega + entregador atribuído.
+6. **Nova venda** na aba Venda → aprovação na loja web
 
 ---
 
@@ -265,7 +263,7 @@ git push
 | `packages/database` migration nova | Rodar `pnpm db:deploy` **antes** do push da API |
 | `apps/mobile` | Novo `eas build` (não é automático no push) |
 
-**Não commitar:** `.env`, `.pnpm-store/`, `apps/mobile/android/build/`, `node_modules/`
+**Não commitar:** `.env`, `google-services.json`, `.pnpm-store/`, `apps/mobile/android/build/`, `node_modules/`
 
 **Commitar:** `patches/` (fix Gradle 9), código fonte, `pnpm-lock.yaml`
 
@@ -273,41 +271,12 @@ git push
 
 ## Troubleshooting mobile
 
-### "Unable to locate a Java Runtime"
+Ver seção completa em versões anteriores deste doc. Principais:
 
-Configure `JAVA_HOME` (seção pré-requisitos) no terminal atual ou no `~/.zshrc`.
-
-### Gradle: `IBM_SEMERU` / `JvmVendorSpec`
-
-Incompatibilidade Gradle 9 + plugin antigo do React Native. O repo já inclui patch em `patches/@react-native__gradle-plugin@0.85.3.patch`. Rode `pnpm install` na raiz.
-
-### Metro: `Cannot find module 'babel-preset-expo'`
-
-`babel-preset-expo` deve estar em `apps/mobile/package.json` (dependência direta). Já corrigido no repo.
-
-### EAS bundle: `@gas-erp/shared` dist não encontrado
-
-O pacote shared expõe `"react-native": "./src/index.ts"` para o Metro usar source direto no build EAS. Hook `eas-build-post-install` compila shared como fallback.
-
-### "Unable to load script" (tela vermelha)
-
-Dev build sem Metro. Rode `npx expo start --dev-client` e RELOAD. Ou use APK `preview` do EAS.
-
-### App crasha ao "Iniciar rota"
-
-Corrigido: GPS em background só ativa com permissão "o tempo todo"; rota na API antes do GPS; limpeza de tracking órfão na abertura. Rebuild dev ou novo APK EAS.
-
-### Conflito de assinatura ao instalar
-
-```bash
-adb uninstall com.gaserp.entregador
-```
-
-### Ver logs no emulador
-
-```bash
-adb logcat ReactNativeJS:V AndroidRuntime:E *:S
-```
+- **Java Runtime** — configure `JAVA_HOME`
+- **Gradle IBM_SEMERU** — patch em `patches/@react-native__gradle-plugin@0.85.3.patch`
+- **Push sem token** — configure FCM ([mobile-push-fcm.md](mobile-push-fcm.md))
+- **Unable to load script** — Metro parado; rode `npx expo start --dev-client`
 
 ---
 
@@ -320,50 +289,45 @@ adb logcat ReactNativeJS:V AndroidRuntime:E *:S
 | Deploy Vercel + Railway + Neon | ✅ |
 | Domínio thlgasdopovo.com.br | ✅ |
 | Vendas, estoque, clientes, RBAC | ✅ |
-| Wizard de venda + sidebar entregas + Portaria | ✅ |
-| Benefício Gás do Povo + pagamento GDP + taxa entrega | ✅ |
-| **Data retroativa** com aprovação gerente + `SaleBackdateLog` | ✅ |
-| Status unificado venda/entrega | ✅ |
-| Resumo diário com filtro De/Até + métricas por entregador | ✅ |
-| Dashboard master consolidado (todas as unidades) | ✅ |
-| Paginação server-side (20/pág) nas listas principais | ✅ |
-| Loading overlay ao trocar período no resumo | ✅ |
-| Entregador N:N unidades (`DelivererStore`) | ✅ |
-| Push Expo (nova entrega / cancelamento) | ✅ |
+| Fornecedores + compras (notas de entrada) | ✅ |
+| Relatórios (vendas, compras, estoque) + CSV | ✅ |
+| Formas de pagamento + taxas + receita líquida | ✅ |
+| Custo fornecedor + margem bruta | ✅ |
+| Clientes por loja + preço por cliente | ✅ |
+| Mapa de entregadores (presença GPS) | ✅ |
+| Venda mobile com aprovação na loja | ✅ |
+| Wizard de venda + Portaria + GDP | ✅ |
+| Data retroativa com aprovação gerente | ✅ |
+| Resumo diário De/Até + auto-refresh 15s | ✅ |
+| Dashboard master consolidado | ✅ |
+| Paginação server-side (20/pág) | ✅ |
+| Entregador N:N unidades | ✅ |
+| Push FCM (nova rota / cancelamento / lembrete) | ✅ |
 
 ### App entregador (`apps/mobile`)
 
 | Item | Status |
 |------|--------|
-| Login DELIVERER + listas + detalhe | ✅ Testado emulador |
-| Iniciar rota / Maps / concluir | ✅ Testado emulador |
-| GPS background (com permissão "sempre") | ✅ Implementado; testar em dispositivo real |
-| Push notifications (nova entrega / cancelamento) | ✅ |
-| Branding por organização no header | ✅ |
-| Divulgação destacada GPS (Play Store) | ✅ |
-| Build EAS preview (APK) | ✅ Funcionando |
-| Build dev local (`expo run:android`) | ✅ Funcionando |
+| Login DELIVERER + entregas + detalhe | ✅ |
+| Iniciar rota / Maps / concluir | ✅ |
+| GPS background + presença no mapa | ✅ |
+| Push FCM + som customizado | ✅ |
+| Criar venda (aba Venda) | ✅ |
+| Build EAS preview (APK) | ✅ |
 | Publicação Play Store (AAB) | ⏳ Ver [playstore-checklist.md](playstore-checklist.md) |
 
 ### Commits recentes (referência)
 
 | Commit | Descrição |
 |--------|-----------|
-| `5edbe93` | Data retroativa com aprovação de gerente |
-| `bc84474` | Paginação nas listas + loading ao filtrar período |
-| `aefac8e` | Filtro De/Até no resumo diário e painel master |
-| `891b1b5` | Resumo diário consolidado no master |
-| `a6435ce` | GDP, métricas por entregador, DIRECT_URL |
-| `1335208` | Benefício Gás do Povo, taxa entrega, entregadores |
-
-### Próximos passos sugeridos
-
-1. `git push` + `pnpm db:deploy` em produção (migrations pendentes, incl. `sale_backdate_approval`)
-2. Configurar `DIRECT_URL` no Railway se migrations travarem
-3. Gerar APK preview atualizado (`eas build --profile preview`) para entregadores
-4. Testar fluxo completo web → app em dispositivo físico
-5. Política de privacidade pública + formulário Play Store ([privacy-policy.md](privacy-policy.md))
-6. CI/CD (GitHub Actions), staging, módulo fiscal
+| `82fe86e` | Fix botão cancelar venda entregue |
+| `43d33b9` | Clientes por loja (não mais por organização) |
+| `317226e` | Preço por cliente/produto |
+| `54c4e83` | Formas de pagamento + taxas + receita líquida |
+| `6711585` | Custo fornecedor + margem bruta |
+| `42fc24d` | Presença em background + alocação sem trava |
+| `2cf01ee` | Relatório de vendas CSV |
+| `7151fd5` | Paginação web + push FCM |
 
 ---
 
@@ -394,6 +358,5 @@ eas submit -p android --latest
 # === ADB ===
 adb devices
 adb uninstall com.gaserp.entregador
-adb install -r apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-adb logcat ReactNativeJS:V AndroidRuntime:E *:S
+adb logcat | grep -i '\[push\]'
 ```

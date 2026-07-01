@@ -7,12 +7,21 @@ import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { formatSaleAddress } from '@/lib/sale-utils';
+import { formatSaleAddress, parsePrice } from '@/lib/sale-utils';
+import {
+  SalePaymentsEditor,
+  createDefaultPaymentLines,
+  paymentsMatchTotal,
+  salePaymentLinesToPayload,
+  type SalePaymentLine,
+  type StorePaymentMethodOption,
+} from '@/components/sale-payments-editor';
 import {
   BACKDATE_APPROVAL_LABELS,
   MOBILE_APPROVAL_LABELS,
   canManageSales,
   canApproveMobileSales,
+  hasScreenPermission,
   formatSaleDateLabel,
   getSaleDisplayStatus,
   PAYMENT_METHOD_LABELS,
@@ -57,7 +66,7 @@ interface SaleDetail {
   deliverer?: { id: string; user: { name: string } } | null;
   attendant?: { id: string; name: string; email?: string } | null;
   items: { quantity: number; unitPrice: number | string; product: { name: string } }[];
-  payments: { method: string; amount: number | string }[];
+  payments: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
   delivery?: { id: string; status: string; startedAt?: string | null; completedAt?: string | null } | null;
   statusLogs: {
     status: string;
@@ -99,13 +108,42 @@ export default function SaleDetailPage() {
   const [saving, setSaving] = useState(false);
   const [backdateAction, setBackdateAction] = useState<'approve' | 'reject' | null>(null);
   const [mobileAction, setMobileAction] = useState<'approve' | 'reject' | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
+  const [paymentLines, setPaymentLines] = useState<SalePaymentLine[]>([]);
+  const [editingPayments, setEditingPayments] = useState(false);
+  const [savingPayments, setSavingPayments] = useState(false);
+
+  function mapSalePaymentsToLines(
+    s: SaleDetail,
+    methods: StorePaymentMethodOption[],
+  ): SalePaymentLine[] {
+    if (!s.payments.length) {
+      return createDefaultPaymentLines(
+        methods.filter((m) => m.systemCode !== 'GDP'),
+        parsePrice(s.total),
+      );
+    }
+    return s.payments.map((p, index) => ({
+      key: `pay-${index}`,
+      storePaymentMethodId:
+        p.storePaymentMethodId
+        ?? methods.find((m) => m.systemCode === p.method)?.id
+        ?? methods[0]?.id
+        ?? '',
+      amount: parsePrice(p.amount),
+    }));
+  }
 
   async function load() {
-    const [s, d] = await Promise.all([
+    const [s, d, methods] = await Promise.all([
       api<SaleDetail>(`/sales/${saleId}`, {}, getToken()),
       api<Deliverer[]>(`/deliverers?storeId=${storeId}`, {}, getToken()),
+      api<StorePaymentMethodOption[]>(`/stores/${storeId}/payment-methods?activeOnly=true`, {}, getToken()),
     ]);
     setSale(s);
+    setPaymentMethods(methods);
+    setPaymentLines(mapSalePaymentsToLines(s, methods));
+    setEditingPayments(false);
     const terminal = s.status === 'DELIVERED' || s.status === 'PORTARIA';
     const current = getStoredUser<{ role: string }>();
     const manager = current ? canManageSales(current.role) : false;
@@ -213,6 +251,28 @@ export default function SaleDetailPage() {
     }
   }
 
+  async function savePayments() {
+    if (!sale) return;
+    const saleTotal = parsePrice(sale.total);
+    if (!paymentsMatchTotal(paymentLines, saleTotal)) {
+      setError('A soma dos pagamentos deve ser igual ao total da venda.');
+      return;
+    }
+    setError('');
+    setSavingPayments(true);
+    try {
+      await api(`/sales/${saleId}/payments`, {
+        method: 'PATCH',
+        body: JSON.stringify({ payments: salePaymentLinesToPayload(paymentLines) }),
+      }, getToken());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar pagamentos');
+    } finally {
+      setSavingPayments(false);
+    }
+  }
+
   if (!sale) {
     return <PageLoader />;
   }
@@ -225,8 +285,12 @@ export default function SaleDetailPage() {
     state: sale.deliveryState,
   });
   const display = getSaleDisplayStatus(sale);
-  const currentUser = getStoredUser<{ role: string }>();
+  const currentUser = getStoredUser<{ role: string; permissions?: string[] }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
+  const isFinance = currentUser?.role === 'FINANCE';
+  const hasSalesScreen = currentUser
+    ? hasScreenPermission(currentUser.role, currentUser.permissions, 'store.sales')
+    : false;
   const canApproveMobile = currentUser ? canApproveMobileSales(currentUser.role) : false;
   const isPendingBackdate = sale.backdateApproval === 'PENDING';
   const isPendingMobile = sale.mobileApproval === 'PENDING';
@@ -247,9 +311,13 @@ export default function SaleDetailPage() {
   const statusChanged = statusSelectValue !== sale.status;
   const cancelReasonReady = statusSelectValue !== 'CANCELLED' || cancelReason.trim().length > 0;
 
+  const canEditPayments =
+    sale.status !== 'CANCELLED'
+    && (isManager || isFinance || (hasSalesScreen && !isTerminal));
   const assignableDeliverers = deliverers.filter(
     (d) => isDelivererAssignableForSale(d).assignable || d.id === sale.deliverer?.id,
   );
+  const saleTotal = parsePrice(sale.total);
 
   return (
     <>
@@ -452,11 +520,58 @@ export default function SaleDetailPage() {
             </ul>
 
             <h3 className="mb-2 mt-4 font-medium">Pagamentos</h3>
-            <ul className="space-y-1 text-sm">
-              {sale.payments.map((p, i) => (
-                <li key={i}>{PAYMENT_METHOD_LABELS[p.method] ?? p.method}: {formatCurrency(p.amount)}</li>
-              ))}
-            </ul>
+            {canEditPayments && editingPayments ? (
+              <div className="space-y-3">
+                <SalePaymentsEditor
+                  methods={paymentMethods}
+                  lines={paymentLines}
+                  onChange={setPaymentLines}
+                  saleTotal={saleTotal}
+                  gdpLocked={sale.gasDoPovoBenefit}
+                  gdpMethodId={paymentMethods.find((m) => m.systemCode === 'GDP')?.id}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={savingPayments}
+                    onClick={savePayments}
+                  >
+                    {savingPayments ? 'Salvando...' : 'Salvar pagamentos'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={savingPayments}
+                    onClick={() => {
+                      setPaymentLines(mapSalePaymentsToLines(sale, paymentMethods));
+                      setEditingPayments(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <ul className="space-y-1 text-sm">
+                  {sale.payments.map((p, i) => (
+                    <li key={i}>
+                      {PAYMENT_METHOD_LABELS[p.method] ?? p.method}: {formatCurrency(p.amount)}
+                    </li>
+                  ))}
+                </ul>
+                {canEditPayments ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-3"
+                    onClick={() => setEditingPayments(true)}
+                  >
+                    Editar pagamentos
+                  </Button>
+                ) : null}
+              </>
+            )}
           </Card>
 
           <Card>

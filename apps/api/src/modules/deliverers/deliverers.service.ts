@@ -3,11 +3,12 @@ import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@gas-erp/database';
 import { DeliveryStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS, canManageDeliverers, canToggleDelivererAvailability } from '@gas-erp/shared';
+import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS, canManageDeliverers, canToggleDelivererAvailability, delivererSuggestQuerySchema, haversineDistanceMeters, isDelivererAssignableForSale } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { AuditService } from '../../common/audit/audit.service';
+import { GeocodingService } from '../../common/geocoding/geocoding.service';
 
 function buildDeliveryAddress(sale: {
   deliveryStreet: string | null;
@@ -36,6 +37,7 @@ export class DeliverersService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private geocoding: GeocodingService,
   ) {}
 
   private readonly include = {
@@ -71,6 +73,95 @@ export class DeliverersService {
           pendingDeliveryCount: _count.deliveries,
         })),
       );
+  }
+
+  async suggestDeliverers(user: AuthUser, query: unknown) {
+    const params = delivererSuggestQuerySchema.parse(query);
+    assertStoreAccess(user, params.storeId);
+
+    let lat = params.latitude;
+    let lng = params.longitude;
+    let destination: { latitude: number; longitude: number; displayName?: string } | null = null;
+
+    if (lat != null && lng != null) {
+      destination = { latitude: lat, longitude: lng };
+    } else if (params.deliveryStreet && params.deliveryCity && params.deliveryState) {
+      const geo = await this.geocoding.geocodeAddress({
+        street: params.deliveryStreet,
+        number: params.deliveryNumber,
+        neighborhood: params.deliveryNeighborhood,
+        city: params.deliveryCity,
+        state: params.deliveryState,
+      });
+      if (geo) {
+        lat = geo.latitude;
+        lng = geo.longitude;
+        destination = geo;
+      }
+    }
+
+    const deliverers = await this.findAll(user, params.storeId);
+    const now = Date.now();
+
+    const suggestions = deliverers
+      .map((d) => {
+        const { assignable, reason } = isDelivererAssignableForSale({
+          status: d.status,
+          user: d.user,
+          pendingDeliveryCount: d.pendingDeliveryCount,
+        });
+
+        let distanceMeters: number | null = null;
+        let stale = true;
+        let lastSeenAt: string | null = null;
+
+        const deliverer = d as typeof d & {
+          lastLatitude?: number | null;
+          lastLongitude?: number | null;
+          lastSeenAt?: Date | null;
+        };
+
+        if (
+          lat != null
+          && lng != null
+          && deliverer.lastLatitude != null
+          && deliverer.lastLongitude != null
+          && deliverer.lastSeenAt
+        ) {
+          lastSeenAt = deliverer.lastSeenAt.toISOString();
+          stale = now - deliverer.lastSeenAt.getTime() > DELIVERER_POSITION_STALE_MS;
+          if (!stale) {
+            distanceMeters = haversineDistanceMeters(
+              lat,
+              lng,
+              deliverer.lastLatitude,
+              deliverer.lastLongitude,
+            );
+          }
+        }
+
+        return {
+          delivererId: d.id,
+          name: d.user.name,
+          status: d.status,
+          distanceMeters,
+          lastSeenAt,
+          stale,
+          assignable,
+          assignableReason: reason,
+        };
+      })
+      .sort((a, b) => {
+        if (a.assignable !== b.assignable) return a.assignable ? -1 : 1;
+        if (a.distanceMeters == null && b.distanceMeters == null) {
+          return a.name.localeCompare(b.name, 'pt-BR');
+        }
+        if (a.distanceMeters == null) return 1;
+        if (b.distanceMeters == null) return -1;
+        return a.distanceMeters - b.distanceMeters;
+      });
+
+    return { destination, suggestions };
   }
 
   async getPositions(user: AuthUser, storeId: string) {

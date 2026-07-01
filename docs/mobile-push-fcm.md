@@ -47,9 +47,17 @@ E **não** aparece `Push token registrado para entregador ...`.
 
 ---
 
-## EAS — google-services.json (build na nuvem)
+## EAS — google-services.json (só se usar `eas build` na nuvem)
 
-O arquivo está no `.gitignore`. Para `eas build` funcionar, crie um secret no projeto Expo:
+O arquivo **não está no Git** (`.gitignore`). Isso **não exige trocar a API key** — é só para o repositório público não expor o JSON.
+
+| Como você builda | Precisa de secret no EAS? |
+|------------------|---------------------------|
+| `eas build` (servidor Expo clona o GitHub) | **Sim** — o clone não traz `google-services.json` |
+| `expo run:android` no seu Mac | **Não** — usa o arquivo local em `apps/mobile/` |
+| APK já instalado no celular | **Não** — nada muda |
+
+Se um dia rodar `eas build` sem o secret, o build falha por falta do `google-services.json`. Até lá, pode ignorar esta seção.
 
 ```bash
 cd apps/mobile
@@ -58,16 +66,9 @@ npx eas env:create \
   --value "$(base64 -i google-services.json | tr -d '\n')" \
   --environment preview \
   --visibility secret
-
-# Repita para production se usar perfil production
-npx eas env:create \
-  --name GOOGLE_SERVICES_JSON_BASE64 \
-  --value "$(base64 -i google-services.json | tr -d '\n')" \
-  --environment production \
-  --visibility secret
 ```
 
-O `app.config.js` grava o arquivo a partir do secret antes do build.
+Repita para `production` se usar esse perfil. O `app.config.js` recria o arquivo a partir do secret no build.
 
 ---
 

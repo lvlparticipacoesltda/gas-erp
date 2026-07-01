@@ -12,6 +12,13 @@ export function updateDeliveryStatus(
   return api(`/deliveries/${id}/status`, { method: 'PATCH', body: { status } });
 }
 
+export function updateSalePayments(
+  saleId: string,
+  payments: { storePaymentMethodId: string; amount: number }[],
+): Promise<unknown> {
+  return api(`/sales/${saleId}/payments`, { method: 'PATCH', body: { payments } });
+}
+
 /** Monta o endereço de entrega a partir dos campos da venda (fallback do backend). */
 export function buildAddress(sale: Sale): string {
   const parts: string[] = [];

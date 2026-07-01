@@ -37,6 +37,11 @@ export class DeliverersController {
     return this.service.clearPushToken(user);
   }
 
+  @Get('suggest')
+  suggest(@CurrentUser() user: AuthUser, @Query() query: Record<string, string>) {
+    return this.service.suggestDeliverers(user, query);
+  }
+
   @Get('positions')
   getPositions(@CurrentUser() user: AuthUser, @Query('storeId') storeId: string) {
     return this.service.getPositions(user, storeId);

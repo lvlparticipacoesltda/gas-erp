@@ -19,6 +19,21 @@ export const salePaymentSchema = z
     message: 'Informe a forma de pagamento.',
   });
 
+const PAYMENT_SUM_TOLERANCE = 0.009;
+
+/** Valida soma dos pagamentos contra o total da venda (uso na API). */
+export function assertSalePaymentsTotal(
+  payments: { amount: number }[],
+  saleTotal: number,
+): void {
+  const paid = payments.reduce((sum, p) => sum + p.amount, 0);
+  if (saleTotal > 0 && Math.abs(paid - saleTotal) > PAYMENT_SUM_TOLERANCE) {
+    throw new Error(
+      `A soma dos pagamentos (${paid.toFixed(2)}) deve ser igual ao total da venda (${saleTotal.toFixed(2)}).`,
+    );
+  }
+}
+
 export const createSaleSchema = z.object({
   storeId: z.string(),
   customerId: optionalId,
@@ -56,6 +71,12 @@ export const createSaleSchema = z.object({
     });
   }
 });
+
+export const updateSalePaymentsSchema = z.object({
+  payments: z.array(salePaymentSchema).min(1, 'Informe ao menos uma forma de pagamento'),
+});
+
+export type UpdateSalePaymentsInput = z.infer<typeof updateSalePaymentsSchema>;
 
 export const rejectSaleBackdateSchema = z.object({
   reason: z.string().min(3, 'Informe o motivo da rejeição'),

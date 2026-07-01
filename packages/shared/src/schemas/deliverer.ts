@@ -106,3 +106,50 @@ export const DELIVERER_POSITION_LIVE_MS = 90_000;
 
 /** Posição considerada desatualizada após este intervalo (ms). */
 export const DELIVERER_POSITION_STALE_MS = 5 * 60 * 1000;
+
+export const geocodeAddressQuerySchema = z.object({
+  street: z.string().min(1),
+  number: z.string().optional(),
+  neighborhood: z.string().optional(),
+  city: z.string().min(1),
+  state: z.string().min(2).max(2),
+  zipCode: z.string().optional(),
+});
+
+export const geocodeResultSchema = z.object({
+  latitude: z.number(),
+  longitude: z.number(),
+  displayName: z.string().optional(),
+});
+
+export const delivererSuggestQuerySchema = z.object({
+  storeId: z.string().min(1),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  deliveryStreet: z.string().optional(),
+  deliveryNumber: z.string().optional(),
+  deliveryNeighborhood: z.string().optional(),
+  deliveryCity: z.string().optional(),
+  deliveryState: z.string().optional(),
+});
+
+export const delivererSuggestionSchema = z.object({
+  delivererId: z.string(),
+  name: z.string(),
+  status: z.enum(DELIVERER_STATUSES),
+  distanceMeters: z.number().nullable(),
+  lastSeenAt: z.string().nullable(),
+  stale: z.boolean(),
+  assignable: z.boolean(),
+  assignableReason: z.string().nullable(),
+});
+
+export const delivererSuggestResponseSchema = z.object({
+  destination: geocodeResultSchema.nullable(),
+  suggestions: z.array(delivererSuggestionSchema),
+});
+
+export type GeocodeAddressQuery = z.infer<typeof geocodeAddressQuerySchema>;
+export type GeocodeResult = z.infer<typeof geocodeResultSchema>;
+export type DelivererSuggestion = z.infer<typeof delivererSuggestionSchema>;
+export type DelivererSuggestResponse = z.infer<typeof delivererSuggestResponseSchema>;

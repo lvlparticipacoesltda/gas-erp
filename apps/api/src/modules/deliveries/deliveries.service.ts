@@ -87,7 +87,13 @@ export class DeliveriesService {
     const deliveries = await this.prisma.delivery.findMany({
       where: { delivererId: deliverer.id },
       include: {
-        sale: { include: { customer: true, items: { include: { product: true } }, payments: true } },
+        sale: {
+          include: {
+            customer: true,
+            items: { include: { product: true } },
+            payments: true,
+          },
+        },
         trackingPoints: { orderBy: { recordedAt: 'desc' }, take: 5 },
       },
       orderBy: { createdAt: 'desc' },

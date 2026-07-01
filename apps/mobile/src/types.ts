@@ -38,6 +38,7 @@ export interface SaleCustomer {
 
 export interface Sale {
   id: string;
+  storeId?: string;
   status: string;
   createdAt: string;
   notes?: string | null;
@@ -51,7 +52,7 @@ export interface Sale {
   deliveryCity?: string | null;
   deliveryState?: string | null;
   deliveryLandmark?: string | null;
-  payments?: { method: string; amount: number | string }[];
+  payments?: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
 }
 
 export interface TrackingPoint {

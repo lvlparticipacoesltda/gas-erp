@@ -7,6 +7,14 @@ import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { CustomerAddressFields, type CustomerAddressForm } from '@/components/customer-address-fields';
 import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-picker';
+import {
+  SalePaymentsEditor,
+  createDefaultPaymentLines,
+  paymentsMatchTotal,
+  salePaymentLinesToPayload,
+  type SalePaymentLine,
+  type StorePaymentMethodOption,
+} from '@/components/sale-payments-editor';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { parsePrice } from '@/lib/sale-utils';
@@ -19,15 +27,10 @@ import {
   isPastBusinessDay,
   todayBusinessDateKey,
   isDelivererAssignableForSale,
+  formatDistanceMeters,
   type PaginatedResponse,
+  type DelivererSuggestResponse,
 } from '@gas-erp/shared';
-
-interface StorePaymentMethodOption {
-  id: string;
-  label: string;
-  systemCode: string | null;
-  enabled: boolean;
-}
 
 interface Product {
   id: string;
@@ -56,6 +59,10 @@ export default function NewSalePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
+  const [paymentLines, setPaymentLines] = useState<SalePaymentLine[]>([]);
+  const [delivererDistances, setDelivererDistances] = useState<Record<string, string>>({});
+  const [suggestNote, setSuggestNote] = useState('');
+  const [suggestLoading, setSuggestLoading] = useState(false);
   const [customerPriceByProduct, setCustomerPriceByProduct] = useState<Record<string, number>>({});
   const [customerPriceError, setCustomerPriceError] = useState('');
   const [customerPick, setCustomerPick] = useState<CustomerPickerValue>({ kind: 'none' });
@@ -72,7 +79,6 @@ export default function NewSalePage() {
     quantity: 1,
     unitPrice: 0,
     channel: 'PHONE',
-    storePaymentMethodId: '',
     fulfillmentType: 'DELIVERY' as 'PICKUP' | 'DELIVERY',
     delivererId: '',
     notes: '',
@@ -122,10 +128,7 @@ export default function NewSalePage() {
         setPaymentMethods(methods);
         const regular = methods.filter((m) => m.systemCode !== 'GDP');
         if (regular[0]) {
-          setDraft((current) => ({
-            ...current,
-            storePaymentMethodId: current.storePaymentMethodId || regular[0].id,
-          }));
+          setPaymentLines(createDefaultPaymentLines(regular, 0, regular[0].id));
         }
       })
       .finally(() => setReady(true));
@@ -181,8 +184,67 @@ export default function NewSalePage() {
   const gdpPaymentMethod = paymentMethods.find((m) => m.systemCode === 'GDP')
     ?? null;
   const regularPaymentMethods = paymentMethods.filter((m) => m.systemCode !== 'GDP');
-  const selectedPaymentMethod =
-    regularPaymentMethods.find((m) => m.id === draft.storePaymentMethodId) ?? regularPaymentMethods[0];
+
+  useEffect(() => {
+    if (step !== 3 || isPortariaChannel || draft.fulfillmentType !== 'DELIVERY') return;
+    if (!draft.deliveryStreet.trim() || !draft.deliveryCity.trim() || !draft.deliveryState.trim()) return;
+
+    const params = new URLSearchParams({
+      storeId,
+      deliveryStreet: draft.deliveryStreet,
+      deliveryNumber: draft.deliveryNumber,
+      deliveryNeighborhood: draft.deliveryNeighborhood,
+      deliveryCity: draft.deliveryCity,
+      deliveryState: draft.deliveryState,
+    });
+
+    let cancelled = false;
+    setSuggestLoading(true);
+    api<DelivererSuggestResponse>(`/deliverers/suggest?${params}`, {}, getToken())
+      .then((res) => {
+        if (cancelled) return;
+        const distances: Record<string, string> = {};
+        for (const s of res.suggestions) {
+          if (s.distanceMeters != null) {
+            distances[s.delivererId] = formatDistanceMeters(s.distanceMeters);
+          }
+        }
+        setDelivererDistances(distances);
+        const best = res.suggestions.find((s) => s.assignable && s.distanceMeters != null);
+        if (best) {
+          setDraft((d) => ({ ...d, delivererId: best.delivererId }));
+          setSuggestNote(
+            `Entregador mais próximo sugerido: ${best.name} (${formatDistanceMeters(best.distanceMeters!)})`,
+          );
+        } else if (!res.destination) {
+          setSuggestNote('Endereço não localizado no mapa. Selecione o entregador manualmente.');
+        } else {
+          setSuggestNote('Nenhum entregador com GPS recente. Selecione manualmente.');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSuggestNote('Sugestão por distância indisponível. Selecione o entregador manualmente.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSuggestLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    step,
+    isPortariaChannel,
+    draft.fulfillmentType,
+    draft.deliveryStreet,
+    draft.deliveryNumber,
+    draft.deliveryNeighborhood,
+    draft.deliveryCity,
+    draft.deliveryState,
+    storeId,
+  ]);
 
   function applyCustomerPick(value: CustomerPickerValue) {
     setCustomerPick(value);
@@ -269,6 +331,20 @@ export default function NewSalePage() {
     : 0;
   const total = itemsSubtotal + deliveryFee;
 
+  useEffect(() => {
+    if (!regularPaymentMethods.length || draft.gasDoPovoBenefit) return;
+    setPaymentLines((current) => {
+      if (current.length === 0) {
+        return createDefaultPaymentLines(regularPaymentMethods, total);
+      }
+      if (current.length === 1) {
+        return [{ ...current[0], amount: total }];
+      }
+      return current;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync single-line amount with sale total
+  }, [total, draft.gasDoPovoBenefit, regularPaymentMethods.length]);
+
   const assignableDeliverers = deliverers.filter(
     (d) => isDelivererAssignableForSale(d).assignable,
   );
@@ -293,6 +369,10 @@ export default function NewSalePage() {
         setError('Informe um preço válido para o produto.');
         return;
       }
+      if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
+        setError('A soma dos pagamentos deve ser igual ao total da venda.');
+        return;
+      }
       setStep(3);
     }
   }
@@ -310,6 +390,10 @@ export default function NewSalePage() {
     }
     if (needsBackdateApproval && !draft.backdateRequestNotes.trim()) {
       setError('Informe o motivo para registrar a venda com data anterior.');
+      return;
+    }
+    if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
+      setError('A soma dos pagamentos deve ser igual ao total da venda.');
       return;
     }
 
@@ -342,9 +426,7 @@ export default function NewSalePage() {
             ? gdpPaymentMethod
               ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: total }]
               : [{ method: 'GDP', amount: total }]
-            : selectedPaymentMethod
-              ? [{ storePaymentMethodId: selectedPaymentMethod.id, amount: total }]
-              : [{ method: 'CASH', amount: total }],
+            : salePaymentLinesToPayload(paymentLines),
         }),
       }, getToken());
       router.push(`/store/${storeId}/sales`);
@@ -554,25 +636,15 @@ export default function NewSalePage() {
 
               <div className="mt-6">
                 <Label>Pagamento</Label>
-                {draft.gasDoPovoBenefit ? (
-                  <p className="mt-2 rounded-lg border border-brand bg-brand-muted px-3 py-2 text-sm text-brand-dark">
-                    Pagamento registrado como <strong>GDP</strong> (Benefício Gás do Povo)
-                  </p>
-                ) : regularPaymentMethods.length === 0 ? (
-                  <p className="mt-2 text-sm text-amber-800">
-                    Nenhuma forma de pagamento ativa. Configure em Formas de pagamento.
-                  </p>
-                ) : (
-                  <Select
-                    className="mt-2"
-                    value={draft.storePaymentMethodId}
-                    onChange={(e) => setDraft({ ...draft, storePaymentMethodId: e.target.value })}
-                  >
-                    {regularPaymentMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </Select>
-                )}
+                <SalePaymentsEditor
+                  className="mt-2"
+                  methods={paymentMethods}
+                  lines={paymentLines}
+                  onChange={setPaymentLines}
+                  saleTotal={total}
+                  gdpLocked={draft.gasDoPovoBenefit}
+                  gdpMethodId={gdpPaymentMethod?.id}
+                />
               </div>
             </Card>
 
@@ -593,7 +665,10 @@ export default function NewSalePage() {
                 Pagamento:{' '}
                 {draft.gasDoPovoBenefit
                   ? PAYMENT_METHOD_LABELS.GDP
-                  : (selectedPaymentMethod?.label ?? '—')}
+                  : paymentLines.map((line) => {
+                      const method = regularPaymentMethods.find((m) => m.id === line.storePaymentMethodId);
+                      return `${method?.label ?? '—'} ${formatCurrency(line.amount)}`;
+                    }).join(' + ') || '—'}
               </p>
               <p className="mt-4 text-xl font-bold text-slate-900">{formatCurrency(total)}</p>
               <div className="mt-6 flex gap-2">
@@ -655,6 +730,13 @@ export default function NewSalePage() {
                 </div>
 
                 <h3 className="mb-3 font-medium">Escolha o entregador</h3>
+                {suggestLoading ? (
+                  <p className="mb-3 text-sm text-slate-500">Calculando entregador mais próximo...</p>
+                ) : suggestNote ? (
+                  <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {suggestNote}
+                  </p>
+                ) : null}
                 {assignableDeliverers.length === 0 ? (
                   <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     Nenhum entregador disponível no momento. Verifique o mapa de entregadores.
@@ -672,6 +754,9 @@ export default function NewSalePage() {
                       >
                         <span className="text-lg">🛵</span>
                         <div className="mt-1 font-medium">{d.user.name}</div>
+                        {delivererDistances[d.id] ? (
+                          <div className="mt-0.5 text-xs text-slate-500">{delivererDistances[d.id]}</div>
+                        ) : null}
                       </button>
                     ))}
                   </div>

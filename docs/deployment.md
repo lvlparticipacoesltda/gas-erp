@@ -9,7 +9,7 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Item | Status | Detalhe |
 |------|--------|---------|
 | Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
-| Banco PostgreSQL (Neon) | ✅ | 11 migrations (ver abaixo); rodar `pnpm db:deploy` após push com migration nova |
+| Banco PostgreSQL (Neon) | ✅ | 20 migrations aplicadas em produção |
 | API (Railway) | ✅ | `https://gas-erpapi-production.up.railway.app` |
 | Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
 | Domínio customizado | ✅ | `https://thlgasdopovo.com.br` → Vercel (DNS Hostinger) |
@@ -22,16 +22,23 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Usuário ↔ múltiplas lojas | ✅ | `StoreMultiSelect` com checkboxes |
 | Subdomínio `api.` | ⏳ | API ainda na URL `*.up.railway.app` (opcional) |
 | Subdomínio `www` | ⏳ | Redirecionar `www` → apex ou incluir no CORS |
-| Domínio Resend verificado | ⏳ | DNS na Hostinger pode estar pendente |
+| Domínio Resend verificado | ✅ | E-mails de recuperação de senha funcionando |
 | Senhas demo | ⏳ | Ainda `admin123` — trocar em produção |
 | CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
 | Módulo fiscal | ⏳ | Fase 2 |
 | Sidebar entregas + métricas espera/rota + por entregador | ✅ | `delivery-metrics.ts` no dashboard e listagens |
-| Resumo diário filtro De/Até (loja + master consolidado) | ✅ | `business-day.ts`, `DailySummaryDateFilter` |
+| Resumo diário filtro De/Até (loja + master consolidado) + auto-refresh 15s | ✅ | `business-day.ts`, `useLiveQuery` |
 | Paginação nas listas + loading ao filtrar período | ✅ | Server-side 20/pág; resumo client-side 15/pág |
 | Venda: Portaria, GDP, Gás do Povo, data retroativa | ✅ | Ver migrations jun/2026 |
+| Fornecedores + compras (notas de entrada) | ✅ | Migrations `supplier`, `purchase_invoice` |
+| Relatórios (vendas, compras, estoque) + CSV | ✅ | `apps/api/src/modules/reports` |
+| Formas de pagamento por loja + taxas + receita líquida | ✅ | Migration `store_payment_methods` |
+| Custo fornecedor + margem bruta | ✅ | Migration `product_supplier_cost` |
+| Clientes por loja + preço por cliente | ✅ | Migrations `customer_per_store`, `customer_product_prices` |
+| Mapa de entregadores (presença GPS) | ✅ | Migration `deliverer_presence` |
+| Venda pelo app entregador com aprovação | ✅ | Migration `sale_mobile_approval` |
 | Entregador N:N unidades (`DelivererStore`) | ✅ | Migration `20260625120000_deliverer_multi_store` |
-| Push notifications (Expo) | ✅ | Nova entrega / cancelamento |
+| Push notifications (Expo + FCM) | ✅ | Nova rota / cancelamento / lembrete — ver [mobile-push-fcm.md](mobile-push-fcm.md) |
 | App entregador (Expo) | 🟡 | MVP testado (emulador + EAS preview APK); Play Store pendente |
 | App cliente | ⏳ | Fase 2 |
 
@@ -41,14 +48,14 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 
 | Commit | Descrição |
 |--------|-----------|
-| `5edbe93` | Data retroativa com aprovação de gerente + `SaleBackdateLog` |
-| `bc84474` | Paginação nas listas + loading ao filtrar período |
-| `aefac8e` | Filtro De/Até no resumo diário e painel master |
-| `891b1b5` | Resumo diário consolidado de todas as unidades (master) |
-| `a6435ce` | GDP como pagamento, métricas por entregador, `DIRECT_URL` |
-| `1335208` | Benefício Gás do Povo, taxa entrega, cadastro entregadores |
-| `d044e6e` | Status Portaria, auditoria, edição por gerente/master |
-| `c2642d7` | Push notifications Expo para entregador |
+| `82fe86e` | Fix botão cancelar venda entregue |
+| `43d33b9` | Clientes por loja |
+| `317226e` | Preço por cliente/produto |
+| `54c4e83` | Formas de pagamento + taxas + receita líquida |
+| `6711585` | Custo fornecedor + margem bruta |
+| `42fc24d` | Presença em background no mapa de entregadores |
+| `2cf01ee` | Relatório de vendas CSV |
+| `7151fd5` | Paginação web + push FCM |
 
 ### URLs de produção
 
@@ -64,7 +71,7 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Variável | Onde | Valor atual |
 |----------|------|-------------|
 | `DATABASE_URL` | Railway | Neon pooler (`sslmode=require`) |
-| `DIRECT_URL` | Railway | Neon **sem** `-pooler` (migrations Prisma) |
+| `DIRECT_URL` | Railway | ✅ Neon sem `-pooler` (migrations) |
 | `JWT_SECRET` | Railway | gerado (`openssl rand -base64 48`) |
 | `JWT_EXPIRES_IN` | Railway | `7d` |
 | `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
@@ -365,7 +372,7 @@ Depois:
 - [x] DevTools → Network: sem erro de CORS nas telas principais
 - [x] Cadastro de usuário com múltiplas lojas (checkboxes)
 - [x] Permissões por tela refletem no menu da loja
-- [ ] E-mail de recuperação de senha entregue (depende Resend + DNS)
+- [x] E-mail de recuperação de senha entregue (Resend + DNS verificados)
 
 ### Fase F — Segurança pós-MVP
 
@@ -469,13 +476,13 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 
 ### Imediato
 
-1. **`git push`** — commit `5edbe93` (data retroativa) e anteriores se ainda não no remoto
-2. **`pnpm db:deploy`** em produção — aplicar migrations até `20260626100000_sale_backdate_approval`
-3. **`DIRECT_URL`** no Railway — obrigatório para migrations estáveis no Neon
-4. **Finalizar Resend** — verificar domínio `thlgasdopovo.com.br` na Resend + DNS Hostinger ([resend-setup.md](resend-setup.md))
-5. **Trocar senhas demo** — Minha conta ou recuperação por e-mail
-6. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
-7. **Novo APK EAS** — `eas build --profile preview` para entregadores testarem push + GPS
+1. **`pnpm db:deploy`** em produção — confirmar que as **20 migrations** estão aplicadas (última: `20260627180000_customer_per_store`)
+2. **`DIRECT_URL`** no Railway — obrigatório para migrations estáveis no Neon
+3. **Finalizar Resend** — verificar domínio `thlgasdopovo.com.br` na Resend + DNS Hostinger ([resend-setup.md](resend-setup.md))
+4. **Trocar senhas demo** — Minha conta ou recuperação por e-mail
+5. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
+6. **FCM + novo APK EAS** — ver [mobile-push-fcm.md](mobile-push-fcm.md); `eas build --profile preview`
+7. **Play Store** — AAB + política de privacidade ([playstore-checklist.md](playstore-checklist.md))
 
 ### Refinamentos MVP (concluídos — jun/2026)
 
@@ -497,6 +504,14 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 - [x] Benefício Gás do Povo + pagamento GDP
 - [x] Data retroativa de venda com aprovação gerente
 - [x] Push notifications Expo (entregador)
+- [x] Fornecedores + compras (notas de entrada)
+- [x] Relatórios + exportação CSV
+- [x] Formas de pagamento por loja + taxas
+- [x] Custo fornecedor + margem bruta
+- [x] Clientes por loja + preço por cliente
+- [x] Mapa de entregadores (presença GPS)
+- [x] Venda pelo app entregador com aprovação na loja
+- [x] Auto-refresh 15s no resumo diário e dashboard master
 
 ### Infraestrutura (curto prazo)
 
@@ -515,7 +530,7 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 | **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub já existe em `packages/shared`) | Alta |
 | **Financeiro** | Contas a pagar/receber, fluxo de caixa | Alta |
 | **Relatórios** | Exportação PDF/Excel, filtros avançados | Média |
-| **App entregador** | **MVP entregue** em `apps/mobile` (login, rotas, GPS, push, EAS preview APK). Falta publicação Play Store — ver [playstore-checklist.md](playstore-checklist.md) | Alta |
+| **App entregador** | **MVP entregue** em `apps/mobile` (entregas, venda mobile, GPS, presença, push FCM, EAS preview APK). Falta publicação Play Store — ver [playstore-checklist.md](playstore-checklist.md) | Alta |
 | **App cliente** | Pedido online, rastreamento, pagamento (Pix/cartão) | Média |
 | **WhatsApp** | Notificações e pedidos via API Business | Média |
 | **Redis / filas** | Entregas em tempo real, jobs assíncronos (Upstash) | Média |

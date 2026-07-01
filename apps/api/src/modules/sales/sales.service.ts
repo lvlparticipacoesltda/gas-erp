@@ -5,15 +5,18 @@ import {
   createSaleSchema,
   createMobileSaleSchema,
   updateSaleStatusSchema,
+  updateSalePaymentsSchema,
   rejectSaleBackdateSchema,
   rejectSaleMobileSchema,
   type CreateSaleInput,
   type CreateMobileSaleInput,
   canManageSales,
   canApproveMobileSales,
+  hasScreenPermission,
   resolveSaleBackdateInput,
   toNumber,
   isDelivererAssignableForSale,
+  assertSalePaymentsTotal,
 } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -1086,6 +1089,120 @@ export class SalesService {
       void this.push
         .notifyDeliveryCancelled(result.pushCancelled.delivererId, result.pushCancelled.deliveryId)
         .catch(() => undefined);
+    }
+
+    return this.findOne(user, id);
+  }
+
+  async updatePayments(user: AuthUser, id: string, input: unknown) {
+    const { payments } = updateSalePaymentsSchema.parse(input);
+    const sale = await this.prisma.sale.findUnique({
+      where: { id },
+      include: {
+        store: { select: { organizationId: true } },
+        payments: true,
+        delivery: { include: { deliverer: { select: { userId: true } } } },
+      },
+    });
+
+    if (!sale || sale.store.organizationId !== user.organizationId) {
+      throw new NotFoundException('Venda não encontrada');
+    }
+
+    assertStoreAccess(user, sale.storeId);
+
+    if (sale.status === SaleStatus.CANCELLED) {
+      throw new BadRequestException('Não é possível alterar pagamentos de venda cancelada.');
+    }
+
+    const saleTotal = toNumber(sale.total);
+    try {
+      assertSalePaymentsTotal(payments, saleTotal);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Pagamentos inválidos.');
+    }
+
+    const isDelivererOwner =
+      user.role === 'DELIVERER'
+      && sale.delivery?.deliverer.userId === user.id;
+
+    if (isDelivererOwner) {
+      if (sale.delivery?.status !== DeliveryStatus.IN_PROGRESS) {
+        throw new ForbiddenException('Pagamentos só podem ser alterados durante a rota ativa.');
+      }
+    } else {
+      const isFinance = user.role === 'FINANCE';
+      const isManager = canManageSales(user.role);
+      const hasSalesScreen = hasScreenPermission(user.role, user.permissions, 'store.sales');
+      const terminal = sale.status === SaleStatus.DELIVERED || sale.status === SaleStatus.PORTARIA;
+
+      if (!isManager && !isFinance && !hasSalesScreen) {
+        throw new ForbiddenException('Sem permissão para alterar pagamentos desta venda.');
+      }
+      if (terminal && !isManager && !isFinance) {
+        throw new ForbiddenException(
+          'Apenas gerente ou financeiro podem alterar pagamentos de venda finalizada.',
+        );
+      }
+    }
+
+    const gasDoPovoBenefit = sale.gasDoPovoBenefit;
+    if (gasDoPovoBenefit) {
+      if (payments.length !== 1 || payments.some((p) => p.method && p.method !== 'GDP')) {
+        throw new BadRequestException('Com benefício Gás do Povo, o pagamento deve ser 100% GDP.');
+      }
+    } else if (payments.some((p) => p.method === 'GDP')) {
+      throw new BadRequestException('GDP só é permitido com benefício Gás do Povo.');
+    }
+
+    const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
+      sale.storeId,
+      payments,
+      gasDoPovoBenefit,
+    );
+
+    const previousPayments = sale.payments.map((p) => ({
+      method: p.method,
+      amount: toNumber(p.amount),
+      storePaymentMethodId: p.storePaymentMethodId,
+      processingFee: toNumber(p.processingFee),
+    }));
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.salePayment.deleteMany({ where: { saleId: id } });
+      await tx.salePayment.createMany({
+        data: resolvedPayments.map((p) => ({
+          saleId: id,
+          method: p.method,
+          amount: p.amount,
+          storePaymentMethodId: p.storePaymentMethodId,
+          processingFee: p.processingFee,
+        })),
+      });
+      await tx.saleStatusLog.create({
+        data: {
+          saleId: id,
+          status: sale.status,
+          userId: user.id,
+          notes: 'Pagamentos atualizados',
+        },
+      });
+    });
+
+    try {
+      await this.audit.log(user, 'UPDATE_PAYMENTS', 'Sale', id, {
+        storeId: sale.storeId,
+        previousPayments,
+        newPayments: resolvedPayments.map((p) => ({
+          method: p.method,
+          amount: p.amount,
+          storePaymentMethodId: p.storePaymentMethodId,
+          processingFee: p.processingFee,
+        })),
+        total: saleTotal,
+      });
+    } catch {
+      // auditoria não bloqueia
     }
 
     return this.findOne(user, id);

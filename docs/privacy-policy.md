@@ -1,6 +1,6 @@
 # Política de Privacidade — App Gas Entregador
 
-_Última atualização: 25/06/2026_
+_Última atualização: 30/06/2026_
 
 Esta política descreve como o aplicativo **Gas Entregador** (o "App") coleta, usa e
 protege os dados dos entregadores que o utilizam. O App é uma ferramenta de uso
@@ -20,7 +20,7 @@ entrega.
 | Dado | Finalidade | Quando |
 |------|------------|--------|
 | Nome, e-mail e telefone | Identificação e autenticação do entregador | No login |
-| **Localização precisa (GPS)**, inclusive em segundo plano | Acompanhar o trajeto da entrega em tempo real e medir o tempo de rota | **Somente durante uma rota ativa** |
+| **Localização precisa (GPS)**, inclusive em segundo plano | Acompanhar o trajeto da entrega e exibir posição no mapa da loja | **Durante rota ativa** e, com consentimento, para presença no mapa |
 | Dados das entregas atribuídas (cliente, endereço, itens) | Permitir a realização da entrega | Enquanto há entregas atribuídas |
 | Token de notificação push (Expo) | Alertar sobre novas entregas e cancelamentos | Após conceder permissão de notificações |
 

@@ -10,8 +10,8 @@ Controle de acesso do Gas ERP: papéis, lojas vinculadas e permissões granulare
 | ORG_MASTER | Painel admin master | Todas (automático) |
 | STORE_MANAGER | Operação da loja | Uma ou mais (UserStore) |
 | ATTENDANT | Vendas e clientes | Uma ou mais |
-| FINANCE | Vendas, resumo, clientes | Uma ou mais |
-| DELIVERER | Dashboard (app mobile na fase 2) | Uma ou mais |
+| FINANCE | Vendas, resumo, fornecedores, compras, relatórios | Uma ou mais |
+| DELIVERER | App mobile (entregas + venda) | Uma ou mais |
 
 Token JWT contém `organizationId`, `storeIds[]` e `permissions[]` (telas efetivas após `resolveUserPermissions`).
 
@@ -20,10 +20,8 @@ Token JWT contém `organizationId`, `storeIds[]` e `permissions[]` (telas efetiv
 - Relação **N:N** via tabela `UserStore`
 - **ORG_MASTER** não precisa de lojas vinculadas — acesso implícito a todas
 - Demais papéis precisam de **ao menos uma loja**
-- UI: **Master → Usuários → Lojas** — componente `StoreMultiSelect` (checkboxes, Todas/Limpar, contador)
+- UI: **Master → Usuários → Lojas** — componente `StoreMultiSelect` (checkboxes)
 - Na loja, o usuário alterna entre lojas vinculadas pelo seletor no painel
-
-> Antes usava `<select multiple>` (exigia Cmd+clique no Mac). Substituído por checkboxes em jun/2026.
 
 ## Permissões por tela (loja)
 
@@ -31,15 +29,20 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 
 | Chave | Tela |
 |-------|------|
-| `store.dashboard` | Dashboard |
+| `store.daily-summary` | Resumo diário (tela inicial padrão) |
 | `store.sales` | Vendas |
 | `store.sales.new` | Nova venda |
 | `store.customers` | Clientes |
 | `store.products` | Produtos |
+| `store.suppliers` | Fornecedores |
+| `store.purchases` | Compras |
 | `store.stock` | Estoque |
 | `store.stock.transfers` | Transferências |
 | `store.deliverers` | Entregadores |
-| `store.daily-summary` | Resumo diário |
+| `store.deliverers.map` | Mapa de entregadores |
+| `store.reports` | Relatórios |
+
+> `store.dashboard` foi renomeado para `store.daily-summary`. Valores antigos no banco são normalizados automaticamente.
 
 ### Regras
 
@@ -52,31 +55,37 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 | Papel | Telas padrão |
 |-------|----------------|
 | STORE_MANAGER | Todas |
-| ATTENDANT | dashboard, sales, sales.new, customers, **deliverers.map** (disponibilidade no mapa) |
-| FINANCE | dashboard, sales, daily-summary, customers |
-| DELIVERER | dashboard |
+| ATTENDANT | daily-summary, sales, sales.new, customers, deliverers.map |
+| FINANCE | daily-summary, sales, customers, suppliers, purchases, reports |
+| DELIVERER | daily-summary (app mobile é o canal principal) |
 
 Configuração: **Master → Usuários → Editar → Telas permitidas** (`permission-checkboxes.tsx`).
+
+Formas de pagamento: `/store/[storeId]/settings/payment-methods` — acesso via `canManagePaymentMethods` (não é chave de menu separada).
 
 ## Ações restritas por papel
 
 | Ação | Quem pode |
 |------|-----------|
 | Aprovar/rejeitar venda com data anterior | `ORG_MASTER`, `STORE_MANAGER`, `PLATFORM_ADMIN` (`canManageSales`) |
+| Aprovar/rejeitar venda criada no app | `ORG_MASTER`, `STORE_MANAGER`, `ATTENDANT`, `PLATFORM_ADMIN` (`canApproveMobileSales`) |
 | Cancelar venda finalizada (Portaria/Entregue) | `canManageSales` |
+| Ver custo fornecedor e margem bruta | `ORG_MASTER`, `STORE_MANAGER`, `FINANCE`, `PLATFORM_ADMIN` (`canViewFinancialMargins`) |
+| Configurar formas de pagamento e taxas | `ORG_MASTER`, `STORE_MANAGER`, `FINANCE`, `PLATFORM_ADMIN` (`canManagePaymentMethods`) |
 | Iniciar rota de entrega (`IN_PROGRESS`) | Apenas o entregador dono (app mobile) |
 | Concluir entrega (`DELIVERED`) | Entregador dono ou equipe da loja |
-| Marcar entregador disponível / indisponível (mapa) | Gerente, master ou atendente com `store.deliverers.map` |
+| Marcar entregador disponível / indisponível (mapa) | Gerente, master ou atendente com `store.deliverers.map` (`canToggleDelivererAvailability`) |
+| Criar venda no app mobile | Papel `DELIVERER` |
 
-Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canManageDeliverers`, `hasScreenPermission`.
+Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canApproveMobileSales`, `canManageDeliverers`, `canViewFinancialMargins`, `canManagePaymentMethods`, `canToggleDelivererAvailability`, `hasScreenPermission`.
 
 ## Onde é aplicado
 
 | Camada | Arquivo | Comportamento |
 |--------|---------|---------------|
-| Shared | `packages/shared/src/permissions.ts` | Chaves, defaults, `hasScreenPermission` |
+| Shared | `packages/shared/src/permissions.ts` | Chaves, defaults, helpers |
 | API | `auth.service.ts`, `users.service.ts` | JWT e CRUD com `permissions` |
-| Web nav | `app-shell.tsx` | Filtra itens do menu da loja |
+| Web nav | `app-shell.tsx`, `store-nav.ts` | Filtra itens do menu da loja |
 | Web guard | `store/[storeId]/layout.tsx` | Bloqueia URL sem permissão |
 | Formulário | `master/users/page.tsx` | Checkboxes de tela + lojas |
 

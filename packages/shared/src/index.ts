@@ -25,6 +25,7 @@ export * from './schemas/payment-method';
 export * from './payment-methods-catalog';
 export * from './delivery-metrics';
 export * from './deliverer-availability';
+export * from './geo-distance';
 export * from './business-day';
 export * from './types';
 export * from './fiscal/fiscal-provider';

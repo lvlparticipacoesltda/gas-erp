@@ -4,7 +4,7 @@ Guia prático para publicar o app de entregadores na Play Store. O ponto mais se
 a **permissão de localização em segundo plano** (`ACCESS_BACKGROUND_LOCATION`), que o
 Google revisa manualmente.
 
-Comandos de dev/emulador/EAS: [development.md](development.md)
+Comandos de dev/emulador/EAS: [development.md](development.md) · Push FCM: [mobile-push-fcm.md](mobile-push-fcm.md)
 
 ## 1. Pré-requisitos do projeto (já implementados)
 
@@ -16,6 +16,7 @@ Comandos de dev/emulador/EAS: [development.md](development.md)
       a permissão de background (tela de detalhe da entrega, ao iniciar a rota).
 - [x] Coleta de localização **somente durante rota ativa**; encerra ao concluir/logout.
 - [x] Perfis de build EAS em `apps/mobile/eas.json`.
+- [x] Push via Expo + FCM (`google-services.json` via EAS secret) — ver [mobile-push-fcm.md](mobile-push-fcm.md).
 
 ## 2. Divulgação destacada — requisito obrigatório
 

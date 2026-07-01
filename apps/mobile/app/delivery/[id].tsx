@@ -13,7 +13,9 @@ import {
 } from '@gas-erp/shared';
 import { Badge, Button, Card, Loading, StateMessage } from '@/components/ui';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
-import { deliveryAddress, updateDeliveryStatus } from '@/lib/deliveries';
+import { deliveryAddress, updateDeliveryStatus, updateSalePayments } from '@/lib/deliveries';
+import { FinishPaymentsModal } from '@/components/FinishPaymentsModal';
+import { useAuth } from '@/lib/auth';
 import { startDeliveryTracking, stopDeliveryTracking } from '@/lib/location';
 import { callPhone, openGoogleMaps, openWaze } from '@/lib/navigation';
 import { colors, radius, spacing } from '@/theme';
@@ -32,7 +34,9 @@ export default function DeliveryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getById, refresh, hasActiveRoute, loading } = useDeliveriesContext();
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
 
   const delivery = id ? getById(id) : undefined;
 
@@ -109,22 +113,23 @@ export default function DeliveryDetailScreen() {
   }
 
   function confirmFinish() {
-    Alert.alert('Concluir entrega', 'Confirmar que a entrega foi realizada?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Concluir', style: 'default', onPress: finishRoute },
-    ]);
+    setPaymentsOpen(true);
   }
 
-  async function finishRoute() {
+  async function finishRoute(
+    payments: { storePaymentMethodId: string; amount: number }[],
+  ) {
     if (!delivery) return;
     setBusy(true);
     try {
+      await updateSalePayments(delivery.sale.id, payments);
       await updateDeliveryStatus(delivery.id, 'DELIVERED');
       await stopDeliveryTracking().catch(() => undefined);
+      setPaymentsOpen(false);
       await refresh();
       router.back();
     } catch (err) {
-      Alert.alert('Erro', err instanceof Error ? err.message : 'Não foi possível concluir.');
+      throw err;
     } finally {
       setBusy(false);
     }
@@ -219,6 +224,16 @@ export default function DeliveryDetailScreen() {
           </View>
         ) : null}
       </View>
+
+      <FinishPaymentsModal
+        visible={paymentsOpen}
+        saleId={delivery.sale.id}
+        storeId={delivery.sale.storeId ?? user?.storeIds[0] ?? ''}
+        saleTotal={Number(delivery.sale.total ?? 0)}
+        initialPayments={delivery.sale.payments}
+        onClose={() => setPaymentsOpen(false)}
+        onConfirm={finishRoute}
+      />
     </SafeAreaView>
   );
 }
