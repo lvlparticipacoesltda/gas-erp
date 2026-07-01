@@ -454,12 +454,13 @@ model Deliverer {
   status             DelivererStatus @default(AVAILABLE)
   expoPushToken      String?
   pushTokenUpdatedAt DateTime?
-  lastLatitude       Float?
-  lastLongitude      Float?
-  lastAccuracy       Float?
-  lastSeenAt         DateTime?
-  batteryLevel       Int?
-  batteryCharging    Boolean?
+  lastLatitude           Float?
+  lastLongitude          Float?
+  lastAccuracy           Float?
+  lastSeenAt             DateTime?
+  gpsStaleReminderSentAt DateTime?
+  batteryLevel           Int?
+  batteryCharging        Boolean?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 

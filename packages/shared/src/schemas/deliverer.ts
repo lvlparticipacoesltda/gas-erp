@@ -107,6 +107,12 @@ export const DELIVERER_POSITION_LIVE_MS = 90_000;
 /** Posição considerada desatualizada após este intervalo (ms). */
 export const DELIVERER_POSITION_STALE_MS = 5 * 60 * 1000;
 
+/** Sem posição há este tempo → push ao entregador (ms). */
+export const DELIVERER_GPS_STALE_PUSH_AFTER_MS = 3 * 60 * 1000;
+
+/** Intervalo mínimo entre pushes de GPS parado para o mesmo entregador (ms). */
+export const DELIVERER_GPS_STALE_PUSH_COOLDOWN_MS = 15 * 60 * 1000;
+
 export const geocodeAddressQuerySchema = z.object({
   street: z.string().min(1),
   number: z.string().optional(),

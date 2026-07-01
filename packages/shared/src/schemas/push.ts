@@ -22,7 +22,12 @@ export const DELIVERY_PUSH_DEFAULT_CHANNEL_ID = 'deliveries';
 export const DELIVERY_PUSH_SOUND = 'rota_entrega.wav';
 
 export const pushNotificationDataSchema = z.object({
-  type: z.enum(['NEW_DELIVERY', 'DELIVERY_CANCELLED', 'PENDING_DELIVERY_REMINDER']),
+  type: z.enum([
+    'NEW_DELIVERY',
+    'DELIVERY_CANCELLED',
+    'PENDING_DELIVERY_REMINDER',
+    'GPS_STALE',
+  ]),
   deliveryId: z.string().min(1).optional(),
 });
 

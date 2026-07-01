@@ -122,6 +122,7 @@ export class DeliveriesService {
       lastLongitude: data.longitude,
       lastAccuracy: data.accuracy,
       lastSeenAt: recordedAt,
+      gpsStaleReminderSentAt: null,
       ...(data.batteryLevel !== undefined ? { batteryLevel: data.batteryLevel } : {}),
       ...(data.batteryCharging !== undefined ? { batteryCharging: data.batteryCharging } : {}),
     };

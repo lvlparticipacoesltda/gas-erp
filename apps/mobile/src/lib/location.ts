@@ -5,9 +5,11 @@ import type { LocationTaskOptions } from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as SecureStore from 'expo-secure-store';
 import { api } from './api';
+import { LOCATION_TASK } from './location-constants';
+import { ensureLocationTrackingNotificationChannel } from './location-notifications';
 import { getToken } from './storage';
 
-export const LOCATION_TASK = 'gas-delivery-location-tracking';
+export { LOCATION_TASK } from './location-constants';
 const ACTIVE_DELIVERY_KEY = 'gas_active_delivery';
 
 /** Intervalo de envio em background (ms) — abaixo do limite "ao vivo" na API. */
@@ -325,16 +327,24 @@ function buildTrackingOptions(
   };
 
   if (Platform.OS === 'android') {
+    const foregroundServiceBase = {
+      notificationColor: '#F97316',
+      /** Mantém o serviço ativo ao remover o app dos recentes (padrão nativo já é false). */
+      killServiceOnDestroy: false,
+    } as const;
+
     base.foregroundService = onDelivery
       ? {
+          ...foregroundServiceBase,
           notificationTitle: 'Entrega em andamento',
-          notificationBody: 'Compartilhando sua localização com a loja durante a rota.',
-          notificationColor: '#F97316',
+          notificationBody:
+            'Sua localização está sendo enviada à loja. Mantenha esta notificação ativa até concluir a rota.',
         }
       : {
-          notificationTitle: 'Compartilhando localização',
-          notificationBody: 'Compartilhando localização com a loja',
-          notificationColor: '#F97316',
+          ...foregroundServiceBase,
+          notificationTitle: 'Rastreamento ativo',
+          notificationBody:
+            'Sua posição aparece no mapa da loja. Não feche o app nem desligue esta notificação.',
         };
   } else if (backgroundGranted) {
     base.showsBackgroundLocationIndicator = true;
@@ -365,6 +375,8 @@ async function ensureLocationUpdatesOnce(onDelivery: boolean): Promise<Permissio
   if (await isTrackingActive()) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
   }
+
+  await ensureLocationTrackingNotificationChannel().catch(() => undefined);
 
   try {
     await Location.startLocationUpdatesAsync(LOCATION_TASK, options);

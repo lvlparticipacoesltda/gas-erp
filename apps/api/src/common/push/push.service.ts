@@ -106,6 +106,22 @@ export class PushService {
     return result === 'sent';
   }
 
+  /** Alerta entregador quando o GPS parou de enviar posição. Retorna true se enviou. */
+  async notifyGpsStale(delivererId: string): Promise<boolean> {
+    const result = await this.sendToDeliverer(
+      delivererId,
+      {
+        title: 'Localização parou de atualizar',
+        body: 'Abra o app para voltar a aparecer no mapa da loja. Verifique se a notificação de rastreamento está ativa.',
+        data: { type: 'GPS_STALE' },
+      },
+      'GPS_STALE',
+      undefined,
+      { sound: 'default', channelId: DELIVERY_PUSH_DEFAULT_CHANNEL_ID },
+    );
+    return result === 'sent';
+  }
+
   private async sendToDeliverer(
     delivererId: string,
     message: { title: string; body: string; data: Record<string, string> },

@@ -6,6 +6,7 @@ import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { DELIVERY_PUSH_CHANNEL_ID, DELIVERY_PUSH_DEFAULT_CHANNEL_ID, DELIVERY_PUSH_SOUND } from '@gas-erp/shared';
 import { syncDelivererAvailabilityFromServer } from './deliverer-availability-context';
+import { recoverStaleLocationTracking } from './location';
 import { api } from './api';
 import { getToken } from './storage';
 
@@ -190,6 +191,15 @@ function getDeliveryIdFromNotification(
   return typeof deliveryId === 'string' ? deliveryId : undefined;
 }
 
+async function handleGpsStalePush(): Promise<void> {
+  await recoverStaleLocationTracking().catch(() => undefined);
+  await syncDelivererAvailabilityFromServer().catch(() => undefined);
+}
+
+function isGpsStaleNotification(data: Record<string, unknown> | undefined): boolean {
+  return data?.type === 'GPS_STALE';
+}
+
 export function useNotificationPermissionOnAppOpen() {
   const started = useRef(false);
 
@@ -206,12 +216,21 @@ export function usePushNotifications(onRefresh: () => void | Promise<void>) {
   onRefreshRef.current = onRefresh;
 
   useEffect(() => {
-    const received = Notifications.addNotificationReceivedListener(() => {
+    const received = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as Record<string, unknown>;
+      if (isGpsStaleNotification(data)) {
+        void handleGpsStalePush();
+      }
       void Promise.resolve(onRefreshRef.current());
     });
 
     const response = Notifications.addNotificationResponseReceivedListener((event) => {
       const data = event.notification.request.content.data as Record<string, unknown>;
+      if (isGpsStaleNotification(data)) {
+        void handleGpsStalePush();
+        void onRefreshRef.current();
+        return;
+      }
       const deliveryId = getDeliveryIdFromNotification(data);
       if (deliveryId) {
         router.push(`/delivery/${deliveryId}`);

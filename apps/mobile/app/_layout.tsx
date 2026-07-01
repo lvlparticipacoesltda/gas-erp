@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import { DeliveriesProvider } from '@/lib/deliveries-context';
 import { DelivererAvailabilityProvider } from '@/lib/deliverer-availability-context';
 import { PushNotificationsBridge } from '@/components/PushNotificationsBridge';
+import { DevicePowerSetupBridge } from '@/components/DevicePowerSetupBridge';
 import { NotificationPermissionOnLaunch } from '@/components/NotificationPermissionOnLaunch';
 import { initForegroundPresence, teardownForegroundPresence } from '@/lib/location';
 import { colors } from '@/theme';
@@ -29,6 +30,7 @@ function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
     <DeliveriesProvider>
       <DelivererAvailabilityProvider>
         <PushNotificationsBridge />
+        <DevicePowerSetupBridge />
         {children}
       </DelivererAvailabilityProvider>
     </DeliveriesProvider>
