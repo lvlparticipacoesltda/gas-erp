@@ -14,7 +14,8 @@
     "db:studio": "pnpm --filter @gas-erp/database studio",
     "verify:deploy": "bash scripts/verify-deploy-ready.sh",
     "benchmark:api": "bash scripts/benchmark-api.sh",
-    "ci:build": "pnpm db:generate && pnpm turbo build --filter=@gas-erp/api --filter=@gas-erp/web"
+    "ci:build": "pnpm db:generate && pnpm turbo build --filter=@gas-erp/api --filter=@gas-erp/web",
+    "fly:deploy": "bash scripts/fly-deploy.sh"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

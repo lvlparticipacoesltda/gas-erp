@@ -88,7 +88,7 @@ MVP **em produção** e funcional. Além do ciclo inicial (vendas, resumo diári
 | App entregador (`apps/mobile`) | ✅ Publicado na Google Play |
 | Módulo fiscal / financeiro completo | ⏳ Fase 2 |
 
-Documentação: [docs/development.md](docs/development.md) · [docs/deployment.md](docs/deployment.md) · [docs/architecture.md](docs/architecture.md) · [docs/api-contracts.md](docs/api-contracts.md) · [docs/roadmap.md](docs/roadmap.md) · [docs/infrastructure-plan.md](docs/infrastructure-plan.md)
+Documentação: [docs/development.md](docs/development.md) · [docs/deployment.md](docs/deployment.md) · [docs/fly-migration.md](docs/fly-migration.md) · [docs/infrastructure-plan.md](docs/infrastructure-plan.md)
 
 ## Módulos MVP
 

@@ -68,6 +68,7 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | **App (login)** | https://thlgasdopovo.com.br/login |
 | **API** | https://gas-erpapi-production.up.railway.app/api/v1 |
 | **Health** | https://gas-erpapi-production.up.railway.app/api/v1/health |
+| **API (Fly GRU — migração)** | https://gas-erp-api.fly.dev/api/v1 — ver [fly-migration.md](fly-migration.md) |
 | **Vercel (backup)** | https://gas-erp-web.vercel.app |
 
 ### Variáveis configuradas

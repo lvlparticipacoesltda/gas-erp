@@ -56,7 +56,7 @@ Planejamento de fases e sprints do projeto. Atualizado em **jul/2026**.
 | 2.0.1 | Confirmar região Railway vs Neon sa-east-1 | ⏳ |
 | 2.0.2 | Baseline latência (health, login, dashboard) | ⏳ |
 | 2.1.1 | Subdomínio `api.thlgasdopovo.com.br` | ⏳ |
-| 2.1.2 | API colocalizada com banco (Fly GRU ou região SA) | ⏳ |
+| 2.1.1 | Fly.io GRU (`Dockerfile` + `fly.toml`) | ⏳ Ver [fly-migration.md](fly-migration.md) |
 | 2.2.1 | GitHub Actions (lint + build + verify:deploy) | ⏳ |
 | 2.2.2 | Deploy seletivo (API vs web) | ⏳ |
 | 2.2.3 | Ambiente staging | ⏳ |

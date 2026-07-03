@@ -41,7 +41,12 @@ jobs:
               - 'packages/database/**'
               - 'packages/shared/**'
               - 'railway.toml'
+              - 'Dockerfile'
+              - 'fly.toml'
+              - '.dockerignore'
               - 'scripts/railway-release.sh'
+              - 'scripts/release-migrate.sh'
+              - 'scripts/fly-release.sh'
             web:
               - 'apps/web/**'
               - 'packages/shared/**'

@@ -19,7 +19,7 @@ Documento de planejamento para **Sprint 2** e fases seguintes. Atualizado jul/20
 | CI com path filter | `.github/workflows/ci.yml` |
 | Benchmark | `pnpm benchmark:api` |
 
-**Próximo passo B (maior ROI restante):** API na mesma região do Neon (Fly.io GRU).
+**Próximo passo B (maior ROI restante):** migrar API para Fly.io GRU — ver [fly-migration.md](fly-migration.md).
 
 ---
 
@@ -120,8 +120,8 @@ Sem métricas, otimização vira chute.
 
 | # | Tarefa | Notas |
 |---|--------|-------|
-| 2.1.1 | Se Railway **não** estiver em região próxima ao Neon sa-east-1, planejar **Fly.io GRU** para a API | Dockerfile simples: `node apps/api/dist/main.js` |
-| 2.1.2 | Subdomínio **`api.thlgasdopovo.com.br`** → novo host da API | Atualizar `NEXT_PUBLIC_API_URL` na Vercel + redeploy |
+| 2.1.1 | Deploy API no **Fly.io GRU** | ✅ Arquivos prontos — seguir [fly-migration.md](fly-migration.md) |
+| 2.1.2 | Subdomínio **`api.thlgasdopovo.com.br`** → Fly | Atualizar `NEXT_PUBLIC_API_URL` na Vercel + redeploy |
 | 2.1.3 | Manter Neon sa-east-1; `DATABASE_URL` continua pooler | `DIRECT_URL` só migrations |
 | 2.1.4 | Smoke test: login, venda, dashboard, mobile | Mesma URL base `/api/v1` |
 
