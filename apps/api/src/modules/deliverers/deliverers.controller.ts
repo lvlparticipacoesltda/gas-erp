@@ -65,4 +65,11 @@ export class DeliverersController {
   update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     return this.service.update(user, id, body);
   }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles('ORG_MASTER', 'PLATFORM_ADMIN', 'STORE_MANAGER')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.remove(user, id);
+  }
 }

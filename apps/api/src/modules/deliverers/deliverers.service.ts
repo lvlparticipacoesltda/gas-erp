@@ -632,6 +632,65 @@ export class DeliverersService {
     return updated;
   }
 
+  async remove(user: AuthUser, id: string) {
+    if (!canManageDeliverers(user.role)) {
+      throw new ForbiddenException('Sem permissão para excluir entregadores');
+    }
+
+    const deliverer = await this.prisma.deliverer.findUnique({
+      where: { id },
+      include: { stores: { include: { store: true } } },
+    });
+    if (
+      !deliverer ||
+      !deliverer.stores.some((s) => s.store.organizationId === user.organizationId)
+    ) {
+      throw new NotFoundException('Entregador não encontrado');
+    }
+    deliverer.stores.forEach((s) => assertStoreAccess(user, s.storeId));
+
+    const activeRoutes = await this.prisma.delivery.count({
+      where: {
+        delivererId: id,
+        status: { in: [DeliveryStatus.IN_PROGRESS, DeliveryStatus.PENDING] },
+      },
+    });
+    if (activeRoutes > 0) {
+      throw new BadRequestException(
+        'Entregador com rota em andamento não pode ser excluído. Conclua, reatribua ou cancele a entrega primeiro.',
+      );
+    }
+
+    const userId = deliverer.userId;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.delivery.deleteMany({ where: { delivererId: id } });
+      await tx.sale.updateMany({ where: { delivererId: id }, data: { delivererId: null } });
+      await tx.sale.updateMany({
+        where: { createdByDelivererId: id },
+        data: { createdByDelivererId: null },
+      });
+      await tx.sale.updateMany({ where: { attendantId: userId }, data: { attendantId: null } });
+      await tx.sale.updateMany({
+        where: { backdateApprovedById: userId },
+        data: { backdateApprovedById: null },
+      });
+      await tx.sale.updateMany({
+        where: { mobileApprovedById: userId },
+        data: { mobileApprovedById: null },
+      });
+      await tx.saleStatusLog.updateMany({ where: { userId }, data: { userId: null } });
+      await tx.saleBackdateLog.updateMany({ where: { userId }, data: { userId: null } });
+      await tx.saleMobileApprovalLog.updateMany({ where: { userId }, data: { userId: null } });
+      await tx.stockMovement.updateMany({ where: { userId }, data: { userId: null } });
+      await tx.auditLog.updateMany({ where: { userId }, data: { userId: null } });
+      await tx.user.delete({ where: { id: userId } });
+    });
+
+    await this.audit.log(user, 'DELETE', 'Deliverer', id);
+    return { ok: true };
+  }
+
   async registerPushToken(user: AuthUser, input: unknown) {
     if (user.role !== 'DELIVERER') {
       throw new ForbiddenException('Apenas entregadores podem registrar push token');

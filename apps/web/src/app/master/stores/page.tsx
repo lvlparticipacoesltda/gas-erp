@@ -91,7 +91,7 @@ export default function MasterStoresPage() {
   async function handleDelete(store: Store) {
     if (
       !window.confirm(
-        `Excluir permanentemente a loja "${store.name}"?\n\nEsta ação não pode ser desfeita. Só é possível se não houver vendas registradas.`,
+        `Excluir permanentemente a loja "${store.name}"?\n\nTodos os dados desta unidade serão apagados: vendas, clientes, estoque, entregas, notas de compra e transferências. Esta ação não pode ser desfeita.`,
       )
     ) {
       return;

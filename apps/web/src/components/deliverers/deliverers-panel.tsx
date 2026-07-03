@@ -55,6 +55,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createStores, setCreateStores] = useState<Set<string>>(() => new Set());
   const [createError, setCreateError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [creating, setCreating] = useState(false);
 
   const listStoreId = storeId ?? (showStoreFilter && storeFilter ? storeFilter : undefined);
@@ -116,12 +117,58 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
     }
   }
 
+  async function handleDeactivate(deliverer: DelivererRow) {
+    if (!deliverer.user.active) return;
+    if (
+      !window.confirm(
+        `Inativar o entregador "${deliverer.user.name}"?\n\nEle não poderá mais usar o aplicativo, mas continuará listado como inativo.`,
+      )
+    ) {
+      return;
+    }
+    setActionError('');
+    try {
+      await api(
+        `/deliverers/${deliverer.id}`,
+        { method: 'PATCH', body: JSON.stringify({ active: false }) },
+        getToken(),
+      );
+      if (editing?.id === deliverer.id) setEditing(null);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao inativar entregador');
+    }
+  }
+
+  async function handleDelete(deliverer: DelivererRow) {
+    if (
+      !window.confirm(
+        `Excluir permanentemente o entregador "${deliverer.user.name}"?\n\nO cadastro será removido. As vendas antigas permanecem, mas sem vínculo com este entregador.`,
+      )
+    ) {
+      return;
+    }
+    setActionError('');
+    try {
+      await api(`/deliverers/${deliverer.id}`, { method: 'DELETE' }, getToken());
+      if (editing?.id === deliverer.id) setEditing(null);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao excluir entregador');
+    }
+  }
+
   if (!ready) {
     return <PageLoader />;
   }
 
   return (
     <>
+      {actionError && (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {actionError}
+        </p>
+      )}
       <div className={canManage ? 'grid gap-6 lg:grid-cols-2' : ''}>
         {canManage && (
           <Card>
@@ -269,9 +316,19 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
                   </td>
                   {canManage && (
                     <td className="p-3 text-right">
-                      <Button variant="secondary" onClick={() => setEditing(d)}>
-                        Editar
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="secondary" onClick={() => setEditing(d)}>
+                          Editar
+                        </Button>
+                        {d.user.active ? (
+                          <Button variant="secondary" onClick={() => handleDeactivate(d)}>
+                            Inativar
+                          </Button>
+                        ) : null}
+                        <Button variant="danger" onClick={() => handleDelete(d)}>
+                          Excluir
+                        </Button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -355,7 +412,7 @@ function EditDelivererModal({
     }
     if (deliverer.user.active && !active) {
       const ok = confirm(
-        `Desativar o entregador "${deliverer.user.name}"?\n\nEle não poderá mais fazer login no aplicativo.`,
+        `Inativar o entregador "${deliverer.user.name}"?\n\nEle não poderá mais fazer login no aplicativo, mas continuará listado como inativo.`,
       );
       if (!ok) return;
     }
