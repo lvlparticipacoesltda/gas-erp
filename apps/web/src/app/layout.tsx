@@ -4,7 +4,10 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Gás do Povo',
   description: 'Gestão para distribuidoras de gás',
-  icons: { icon: '/icon.png', apple: '/icon.png' },
+  icons: {
+    icon: [{ url: '/brand/app-icon.png', type: 'image/png' }],
+    apple: [{ url: '/brand/app-icon.png', type: 'image/png' }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
