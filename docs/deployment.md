@@ -2,14 +2,14 @@
 
 Guia para colocar o Gas ERP em produção e evoluir a infraestrutura conforme o negócio cresce.
 
-## Status atual (jun/2026)
+## Status atual (jul/2026)
 
 Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Povo.
 
 | Item | Status | Detalhe |
 |------|--------|---------|
 | Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
-| Banco PostgreSQL (Neon) | ✅ | 20 migrations aplicadas em produção |
+| Banco PostgreSQL (Neon) | ✅ | 21 migrations aplicadas em produção |
 | API (Railway) | ✅ | `https://gas-erpapi-production.up.railway.app` |
 | Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
 | Domínio customizado | ✅ | `https://thlgasdopovo.com.br` → Vercel (DNS Hostinger) |
@@ -23,7 +23,7 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Subdomínio `api.` | ⏳ | API ainda na URL `*.up.railway.app` (opcional) |
 | Subdomínio `www` | ⏳ | Redirecionar `www` → apex ou incluir no CORS |
 | Domínio Resend verificado | ✅ | E-mails de recuperação de senha funcionando |
-| Senhas demo | ⏳ | Ainda `admin123` — trocar em produção |
+| Senhas demo | ✅ | Trocadas em produção (jul/2026) |
 | CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
 | Módulo fiscal | ⏳ | Fase 2 |
 | Sidebar entregas + métricas espera/rota + por entregador | ✅ | `delivery-metrics.ts` no dashboard e listagens |
@@ -39,7 +39,11 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 | Venda pelo app entregador com aprovação | ✅ | Migration `sale_mobile_approval` |
 | Entregador N:N unidades (`DelivererStore`) | ✅ | Migration `20260625120000_deliverer_multi_store` |
 | Push notifications (Expo + FCM) | ✅ | Nova rota / cancelamento / lembrete — ver [mobile-push-fcm.md](mobile-push-fcm.md) |
-| App entregador (Expo) | 🟡 | MVP testado (emulador + EAS preview APK); Play Store pendente |
+| Pagamentos múltiplos + geocoding + sugestão entregador | ✅ | jul/2026 |
+| Inativar vs excluir cadastros | ✅ | Usuários, lojas, clientes, entregadores — jul/2026 |
+| Aba entregadores no painel master | ✅ | `/master/deliverers` — jul/2026 |
+| Páginas privacidade e exclusão de conta | ✅ | Play Store — jul/2026 |
+| App entregador (Expo) | ✅ | Publicado na Google Play (jul/2026) |
 | App cliente | ⏳ | Fase 2 |
 
 > **Guia de desenvolvimento local e mobile:** [development.md](development.md)
@@ -48,14 +52,14 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 
 | Commit | Descrição |
 |--------|-----------|
-| `82fe86e` | Fix botão cancelar venda entregue |
+| `e65fc5a` | Exclusão de entregadores; cascade ao excluir loja |
+| `d01cd41` | Separa inativar e excluir (usuários, lojas, clientes) |
+| `9a0aa5f` | Aba entregadores no painel master |
+| `5806b96` | GPS stale + alerta quando posição para |
+| `c77b799` | Pagamentos múltiplos, geocoding, sugestão entregador |
+| `ddc7810` | Páginas públicas privacidade e exclusão de conta |
 | `43d33b9` | Clientes por loja |
-| `317226e` | Preço por cliente/produto |
 | `54c4e83` | Formas de pagamento + taxas + receita líquida |
-| `6711585` | Custo fornecedor + margem bruta |
-| `42fc24d` | Presença em background no mapa de entregadores |
-| `2cf01ee` | Relatório de vendas CSV |
-| `7151fd5` | Paginação web + push FCM |
 
 ### URLs de produção
 
@@ -376,7 +380,7 @@ Depois:
 
 ### Fase F — Segurança pós-MVP
 
-- [ ] Trocar senha do usuário master e demais contas demo
+- [x] Trocar senha do usuário master e demais contas demo
 - [x] Não rodar `pnpm db:seed` em produção (`NODE_ENV=production` bloqueia)
 - [ ] Confirmar `JWT_SECRET` único e não versionado no git
 - [x] HTTPS ativo no app (`thlgasdopovo.com.br`)
@@ -474,17 +478,41 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 
 ## Próximos passos
 
-### Imediato
+Roadmap detalhado com sprints: **[roadmap.md](roadmap.md)**
 
-1. **`pnpm db:deploy`** em produção — confirmar que as **20 migrations** estão aplicadas (última: `20260627180000_customer_per_store`)
-2. **`DIRECT_URL`** no Railway — obrigatório para migrations estáveis no Neon
-3. **Finalizar Resend** — verificar domínio `thlgasdopovo.com.br` na Resend + DNS Hostinger ([resend-setup.md](resend-setup.md))
-4. **Trocar senhas demo** — Minha conta ou recuperação por e-mail
-5. **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
-6. **FCM + novo APK EAS** — ver [mobile-push-fcm.md](mobile-push-fcm.md); `eas build --profile preview`
-7. **Play Store** — AAB + política de privacidade ([playstore-checklist.md](playstore-checklist.md))
+### Sprint 1 — Publicação mobile e segurança
 
-### Refinamentos MVP (concluídos — jun/2026)
+**Status:** 🟡 Quase concluído — falta apenas redirect `www` (1.7).
+
+- [x] **21 migrations** em produção (`20260701120000_deliverer_gps_stale_reminder`)
+- [x] **`DIRECT_URL`** no Railway (migrations estáveis no Neon)
+- [x] **Senhas demo** trocadas em produção
+- [x] **Build AAB produção** (`eas build --profile production`)
+- [x] **Play Store** — vídeo GPS + Data safety + declaração background location
+- [x] **App publicado** na Google Play (jul/2026)
+- [ ] **Redirect `www`** — na Vercel, `www.thlgasdopovo.com.br` → `thlgasdopovo.com.br`
+
+Ver [playstore-checklist.md](playstore-checklist.md) · [roadmap.md](roadmap.md)
+
+### Sprint 2 — Infraestrutura
+
+| Passo | Descrição |
+|-------|-----------|
+| Subdomínio `api.` | Railway Custom Domain + CNAME na Hostinger; atualizar `NEXT_PUBLIC_API_URL` na Vercel |
+| Ambiente staging | Branch `staging` + projeto Neon/Railway/Vercel separados |
+| CI/CD | GitHub Actions: lint, build, `verify:deploy` em cada PR |
+| Monitoramento | Sentry (erros) + uptime no `/api/v1/health` |
+| Backups | Confirmar política de backup automático no Neon |
+
+### Sprint 3 — Refinamentos operacionais
+
+- Badge de pendências (vendas retroativas + mobile aguardando aprovação)
+- Testes E2E Playwright (login → venda → aprovação)
+- Relatórios PDF/Excel além de CSV
+- Expandir `AuditService` para exclusões e ações críticas
+- Revalidar checklist pós-deploy (venda → estoque → resumo diário)
+
+### Refinamentos MVP (concluídos — jun/jul/2026)
 
 - [x] Minha conta — perfil e alteração de senha (`/master/settings`, `/store/[id]/settings`)
 - [x] Recuperação de senha por e-mail (Resend + `PasswordResetToken`)
@@ -512,8 +540,15 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 - [x] Mapa de entregadores (presença GPS)
 - [x] Venda pelo app entregador com aprovação na loja
 - [x] Auto-refresh 15s no resumo diário e dashboard master
+- [x] Pagamentos múltiplos + geocoding + sugestão de entregador por proximidade
+- [x] Inativar vs excluir (usuários, lojas, clientes, entregadores)
+- [x] Aba entregadores no painel master (`/master/deliverers`)
+- [x] Páginas públicas privacidade e exclusão de conta (Play Store)
+- [x] GPS stale + alerta quando posição do entregador para
+- [x] Métricas entregador: rotas realizadas vs canceladas
+- [x] Resend + domínio verificado (recuperação de senha)
 
-### Infraestrutura (curto prazo)
+### Infraestrutura (Sprint 2 — ver [roadmap.md](roadmap.md))
 
 | Passo | Descrição |
 |-------|-----------|
@@ -530,7 +565,7 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 | **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub já existe em `packages/shared`) | Alta |
 | **Financeiro** | Contas a pagar/receber, fluxo de caixa | Alta |
 | **Relatórios** | Exportação PDF/Excel, filtros avançados | Média |
-| **App entregador** | **MVP entregue** em `apps/mobile` (entregas, venda mobile, GPS, presença, push FCM, EAS preview APK). Falta publicação Play Store — ver [playstore-checklist.md](playstore-checklist.md) | Alta |
+| **App entregador** | Publicado na Google Play — `com.gaserp.entregador` | ✅ |
 | **App cliente** | Pedido online, rastreamento, pagamento (Pix/cartão) | Média |
 | **WhatsApp** | Notificações e pedidos via API Business | Média |
 | **Redis / filas** | Entregas em tempo real, jobs assíncronos (Upstash) | Média |

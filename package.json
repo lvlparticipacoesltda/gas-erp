@@ -12,7 +12,9 @@
     "db:deploy:force": "pnpm --filter @gas-erp/database run migrate:deploy:force",
     "db:seed": "pnpm --filter @gas-erp/database seed",
     "db:studio": "pnpm --filter @gas-erp/database studio",
-    "verify:deploy": "bash scripts/verify-deploy-ready.sh"
+    "verify:deploy": "bash scripts/verify-deploy-ready.sh",
+    "benchmark:api": "bash scripts/benchmark-api.sh",
+    "ci:build": "pnpm db:generate && pnpm turbo build --filter=@gas-erp/api --filter=@gas-erp/web"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

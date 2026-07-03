@@ -11,12 +11,10 @@ node -v | grep -E '^v([2-9][0-9])\.' >/dev/null || { echo "Node 20+ necessário"
 echo "==> Verificando pnpm..."
 pnpm -v >/dev/null
 
-echo "==> Build monorepo..."
+echo "==> Build monorepo (turbo)..."
 pnpm install --frozen-lockfile
 pnpm db:generate
-pnpm --filter @gas-erp/shared build
-pnpm --filter @gas-erp/api build
-pnpm --filter @gas-erp/web build
+pnpm turbo build --filter=@gas-erp/api --filter=@gas-erp/web
 
 echo "==> Verificando arquivos de deploy..."
 test -f railway.toml

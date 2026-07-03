@@ -1,10 +1,10 @@
 [build]
 builder = "nixpacks"
 # NODE_ENV=production no Railway faz o pnpm pular devDependencies (prisma, typescript, nest cli).
-buildCommand = "pnpm install --frozen-lockfile --prod=false && pnpm db:generate && pnpm --filter @gas-erp/shared build && pnpm --filter @gas-erp/database build && pnpm --filter @gas-erp/api build"
+buildCommand = "pnpm install --frozen-lockfile --prod=false && pnpm db:generate && pnpm turbo build --filter=@gas-erp/api"
 
 [deploy]
-releaseCommand = "pnpm --filter @gas-erp/database exec prisma migrate deploy"
+releaseCommand = "bash scripts/railway-release.sh"
 startCommand = "node apps/api/dist/main.js"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

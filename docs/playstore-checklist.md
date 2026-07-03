@@ -1,8 +1,8 @@
 # Checklist de publicação — App Gas Entregador (Google Play)
 
-Guia prático para publicar o app de entregadores na Play Store. O ponto mais sensível é
-a **permissão de localização em segundo plano** (`ACCESS_BACKGROUND_LOCATION`), que o
-Google revisa manualmente.
+**Status:** ✅ App publicado na Google Play (jul/2026).
+
+Guia de referência usado na publicação. O ponto mais sensível era a **permissão de localização em segundo plano** (`ACCESS_BACKGROUND_LOCATION`), revisada manualmente pelo Google.
 
 Comandos de dev/emulador/EAS: [development.md](development.md) · Push FCM: [mobile-push-fcm.md](mobile-push-fcm.md)
 
@@ -35,14 +35,16 @@ Google costuma pedir no formulário de declaração de permissão.
 
 Ao subir o app, em **Política → Permissões de apps → Localização em segundo plano**:
 
-- [ ] Justificativa: "O recurso principal de rastreamento de entregas exige a localização
+- [x] Justificativa: "O recurso principal de rastreamento de entregas exige a localização
       em segundo plano para acompanhar o trajeto do entregador até o cliente enquanto o
       app está minimizado."
-- [ ] Anexar vídeo mostrando: (1) a divulgação destacada, (2) o prompt do sistema,
+- [x] Anexar vídeo mostrando: (1) a divulgação destacada, (2) o prompt do sistema,
       (3) o uso do recurso.
-- [ ] Confirmar que a coleta ocorre só com rota ativa.
+- [x] Confirmar que a coleta ocorre só com rota ativa.
 
 ## 4. Segurança de dados (Data safety form)
+
+Preenchido no Play Console (jul/2026).
 
 | Campo | Resposta |
 |-------|----------|
@@ -66,11 +68,15 @@ Ao subir o app, em **Política → Permissões de apps → Localização em segu
 
 ## 6. Build e envio
 
+- [x] Build AAB produção (`eas build -p android --profile production`)
+- [x] Submit e publicação na Google Play (jul/2026)
+
+Comandos de referência para **atualizações** futuras:
+
 ```bash
 cd apps/mobile
-npx eas login
-npx eas build -p android --profile production   # gera o App Bundle (.aab)
-npx eas submit -p android --latest              # envia para o Play Console
+npx eas build -p android --profile production
+npx eas submit -p android --latest
 ```
 
 > O app é **multi-tenant**: um único pacote atende todas as distribuidoras. Empresas

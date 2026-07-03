@@ -1,5 +1,6 @@
 {
-  "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm db:generate && pnpm --filter @gas-erp/shared build && pnpm --filter @gas-erp/web build",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm db:generate && pnpm turbo build --filter=@gas-erp/web",
+  "ignoreCommand": "cd ../.. && bash scripts/vercel-should-build.sh",
   "framework": "nextjs"
 }

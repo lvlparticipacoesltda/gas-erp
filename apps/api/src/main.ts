@@ -5,6 +5,7 @@ import {
   PrismaValidationExceptionFilter,
 } from './common/filters/prisma-exception.filter';
 import { ZodExceptionFilter } from './common/filters/zod-exception.filter';
+import { RequestTimingInterceptor } from './common/interceptors/request-timing.interceptor';
 
 function parseAllowedOrigins(): string[] {
   const raw = process.env.WEB_URL?.trim();
@@ -37,6 +38,7 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix('api/v1');
+  app.useGlobalInterceptors(new RequestTimingInterceptor());
   app.useGlobalFilters(
     new ZodExceptionFilter(),
     new PrismaExceptionFilter(),

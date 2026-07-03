@@ -22,14 +22,17 @@ Base: `/api/v1`
 
 - `GET /users` — lista usuários da organização
 - `POST /users` — `{ email, name, password, role, storeIds?, permissions? }`
-- `PATCH /users/:id` — `{ name?, email?, role?, active?, storeIds?, permissions? }`
-- `DELETE /users/:id` — desativa (soft)
+- `PATCH /users/:id` — `{ name?, email?, role?, active?, storeIds?, permissions? }` — **inativar**: `active: false` (soft)
+- `DELETE /users/:id` — **exclusão permanente** (hard delete; não pode excluir a si mesmo nem entregadores — use `/deliverers/:id`)
 
 `permissions`: array de chaves `store.*` (ver [rbac.md](rbac.md)). Vazio = padrão do papel.
 
 ## Stores (master)
 
-- CRUD em `/stores` — ver `stores.controller.ts`
+- `GET /stores` — lista lojas da organização
+- `POST /stores` — criar loja
+- `PATCH /stores/:id` — `{ name?, active?, ... }` — **inativar**: `active: false`
+- `DELETE /stores/:id` — **exclusão permanente** (remove vendas e transferências da loja; operação irreversível)
 
 ### Formas de pagamento por loja
 
@@ -47,7 +50,8 @@ Operações escopadas por loja (`storeId` obrigatório).
 - `GET /customers?storeId=...` — lista clientes da loja
 - `GET /customers/:id` — detalhe
 - `POST /customers` — criar (vinculado à loja)
-- `PATCH /customers/:id` — atualizar
+- `PATCH /customers/:id` — atualizar (inclui `active: false` para inativar)
+- `DELETE /customers/:id?storeId=...` — **exclusão permanente** (desvincula vendas; remove cliente e endereços)
 - `POST /customers/:id/addresses` — adicionar endereço
 - `GET /customers/:id/product-prices` — preços negociados por produto
 - `GET /customers/:id/product-prices/map` — mapa `{ productId: price }`
@@ -122,6 +126,10 @@ Registra auditoria (`AuditLog` + `SaleStatusLog`).
 - `GET /reports/stock?storeId=...` — posição de estoque
 - `GET /reports/export?type=sales|purchases|stock&storeId=...&format=csv` — download CSV
 
+### Geocoding
+
+- `POST /geocoding/address` — geocodifica endereço brasileiro (Nominatim + cache); usado na sugestão de entregador
+
 ### Deliverers
 
 Um entregador (papel `DELIVERER`) atende **N unidades** da mesma organização (relação
@@ -129,9 +137,9 @@ N:N via `DelivererStore`).
 
 - `GET /deliverers?storeId=...` — entregadores que atendem a unidade
 - `GET /deliverers/suggest?storeId=...` — sugestão por proximidade (lat/lng ou endereço de entrega)
-- `POST /geocoding/address` — geocodifica endereço brasileiro (Nominatim + cache)
 - `POST /deliverers` — `{ userId, storeIds: string[], status? }` (≥ 1 unidade)
 - `PATCH /deliverers/:id` — `{ storeIds?: string[], status? }`
+- `DELETE /deliverers/:id` — **exclusão permanente** (remove entregador e usuário; bloqueado se houver rota `PENDING`/`IN_PROGRESS`)
 - `GET /deliverers/me` — perfil do entregador logado
 - `POST /deliverers/me/position` — `{ latitude, longitude, accuracy?, batteryLevel?, batteryCharging? }` (presença no mapa)
 - `GET /deliverers/positions?storeId=...` — posições atuais dos entregadores da loja

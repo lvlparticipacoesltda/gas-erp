@@ -69,10 +69,11 @@ Header `X-Store-Id` ou query `storeId` para operações por loja na API.
 
 ```
 /login, /forgot-password, /reset-password     público
+/privacidade-entregador, /exclusao-conta-entregador  público (Play Store)
 /master/*                                     ORG_MASTER
   /master/settings                            Minha conta (master)
   /master/go-to-store                         escolher loja
-  /master/users, /master/stores               CRUD
+  /master/users, /master/stores, /master/deliverers  CRUD
 /store/[storeId]/*                            usuários com acesso à loja
   /daily-summary                              tela inicial (dashboard antigo redireciona aqui)
   /suppliers, /purchases, /reports            novos módulos
@@ -98,6 +99,7 @@ Componentes relevantes:
 | `pagination.tsx` / `paginated-list.tsx` | Paginação reutilizável (server e client) |
 | `customer-picker.tsx` | Combobox de cliente na nova venda |
 | `payment-methods-content.tsx` | CRUD de formas de pagamento por loja |
+| `deliverers-panel.tsx` | CRUD de entregadores (master e loja) |
 | `settings-content.tsx` | Perfil e troca de senha |
 
 ## App do entregador (Expo — `apps/mobile`)
@@ -229,11 +231,11 @@ E-mail (Resend): [resend-setup.md](resend-setup.md)
 
 ## Migrations
 
-20 migrations até jun/2026. Lista completa em [development.md](development.md#migrations-aplicadas).
+21 migrations até jul/2026. Lista completa em [development.md](development.md#migrations-aplicadas).
 
 Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy. Use `DIRECT_URL` no Neon para migrations (ver [deployment.md](deployment.md)).
 
-## Status do produto (jun/2026)
+## Status do produto (jul/2026)
 
 | Área | Status |
 |------|--------|
@@ -244,20 +246,26 @@ Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy. Use `DIRECT_URL
 | Clientes por loja + preço por cliente | ✅ |
 | Mapa de entregadores (presença GPS) | ✅ |
 | Venda mobile com aprovação | ✅ |
+| Pagamentos múltiplos + geocoding + sugestão entregador | ✅ |
+| Inativar vs excluir cadastros (usuários, lojas, clientes, entregadores) | ✅ |
+| Aba entregadores no painel master | ✅ |
 | Status unificado venda/entrega + Portaria | ✅ `packages/shared/src/sale-display.ts` |
 | Benefício Gás do Povo + pagamento GDP | ✅ |
 | Data retroativa com aprovação | ✅ |
 | Filtro De/Até no resumo (loja + master) + auto-refresh 15s | ✅ |
 | Paginação nas listas | ✅ |
-| Métricas tempo até rota + por entregador | ✅ `delivery-metrics.ts` |
+| Métricas tempo até rota + por entregador (realizadas/canceladas) | ✅ `delivery-metrics.ts` |
+| GPS stale + alerta quando posição para | ✅ |
 | App entregador MVP | ✅ Emulador + EAS preview APK |
 | Push FCM (nova rota / cancelamento / lembrete) | ✅ |
-| Play Store (AAB) | ⏳ Checklist em [playstore-checklist.md](playstore-checklist.md) |
+| Páginas privacidade e exclusão de conta | ✅ |
+| Play Store (Google Play) | ✅ Publicado jul/2026 |
+
+Roadmap e sprints: [roadmap.md](roadmap.md)
 
 ## Fase 2 (planejado)
 
 - Fiscal (`FiscalProvider` stub em `packages/shared`)
 - Financeiro completo (contas a pagar/receber, fluxo de caixa)
-- Publicação Play Store
 - Redis/filas para real-time
 - CI/CD, staging, monitoramento

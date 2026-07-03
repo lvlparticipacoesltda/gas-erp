@@ -2,7 +2,7 @@
 
 Referência rápida para continuar o Gas ERP no monorepo — comandos, diretórios, emulador Android e builds do app entregador.
 
-**Documentação relacionada:** [architecture.md](architecture.md) · [deployment.md](deployment.md) · [api-contracts.md](api-contracts.md) · [playstore-checklist.md](playstore-checklist.md) · [mobile-push-fcm.md](mobile-push-fcm.md) · [new-chat-prompt.md](new-chat-prompt.md) (prompt para continuar em novo chat)
+**Documentação relacionada:** [architecture.md](architecture.md) · [deployment.md](deployment.md) · [api-contracts.md](api-contracts.md) · [playstore-checklist.md](playstore-checklist.md) · [mobile-push-fcm.md](mobile-push-fcm.md) · [roadmap.md](roadmap.md) · [new-chat-prompt.md](new-chat-prompt.md) (prompt para continuar em novo chat)
 
 ---
 
@@ -135,6 +135,7 @@ pnpm db:studio      # Prisma Studio
 | `20260627140000_store_payment_methods` | Formas de pagamento por loja + taxas |
 | `20260627160000_customer_product_prices` | Preço negociado por cliente/produto/loja |
 | `20260627180000_customer_per_store` | Clientes vinculados a loja específica |
+| `20260701120000_deliverer_gps_stale_reminder` | Lembrete quando GPS do entregador para de atualizar |
 
 ### Neon / Railway
 
@@ -280,7 +281,7 @@ Ver seção completa em versões anteriores deste doc. Principais:
 
 ---
 
-## Progresso atual (jun/2026)
+## Progresso atual (jul/2026)
 
 ### Produção (web + API)
 
@@ -303,6 +304,10 @@ Ver seção completa em versões anteriores deste doc. Principais:
 | Paginação server-side (20/pág) | ✅ |
 | Entregador N:N unidades | ✅ |
 | Push FCM (nova rota / cancelamento / lembrete) | ✅ |
+| Pagamentos múltiplos + geocoding + sugestão entregador | ✅ |
+| Inativar vs excluir (usuários, lojas, clientes, entregadores) | ✅ |
+| Aba entregadores no painel master | ✅ |
+| Páginas privacidade e exclusão de conta (Play Store) | ✅ |
 
 ### App entregador (`apps/mobile`)
 
@@ -314,20 +319,22 @@ Ver seção completa em versões anteriores deste doc. Principais:
 | Push FCM + som customizado | ✅ |
 | Criar venda (aba Venda) | ✅ |
 | Build EAS preview (APK) | ✅ |
-| Publicação Play Store (AAB) | ⏳ Ver [playstore-checklist.md](playstore-checklist.md) |
+| Build EAS production (AAB) | ✅ |
+| Data safety + vídeo GPS (Play Console) | ✅ |
+| Submit / publicação Play Store | ✅ Publicado jul/2026 |
 
 ### Commits recentes (referência)
 
 | Commit | Descrição |
 |--------|-----------|
-| `82fe86e` | Fix botão cancelar venda entregue |
-| `43d33b9` | Clientes por loja (não mais por organização) |
-| `317226e` | Preço por cliente/produto |
+| `e65fc5a` | Exclusão de entregadores; cascade ao excluir loja |
+| `d01cd41` | Separa inativar e excluir (usuários, lojas, clientes) |
+| `9a0aa5f` | Aba entregadores no painel master |
+| `5806b96` | GPS stale + alerta quando posição para |
+| `c77b799` | Pagamentos múltiplos, geocoding, sugestão entregador |
+| `ddc7810` | Páginas públicas privacidade e exclusão de conta |
+| `43d33b9` | Clientes por loja |
 | `54c4e83` | Formas de pagamento + taxas + receita líquida |
-| `6711585` | Custo fornecedor + margem bruta |
-| `42fc24d` | Presença em background + alocação sem trava |
-| `2cf01ee` | Relatório de vendas CSV |
-| `7151fd5` | Paginação web + push FCM |
 
 ---
 

@@ -98,73 +98,112 @@ export class DashboardService {
     });
 
     const storeIds = stores.map((store) => store.id);
-
     const showFinancial = canViewFinancialMargins(user.role);
-    const storeSaleWhere = (storeId: string) => ({
-      storeId,
+
+    const sharedSaleWhere = {
+      storeId: { in: storeIds },
       saleDate: { gte: start, lt: end },
       backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
       mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
       status: { not: SaleStatus.CANCELLED },
-    });
+    };
 
-    const [storeStats, summary] = await Promise.all([
-      Promise.all(
-        stores.map(async (store) => {
-          const saleWhere = storeSaleWhere(store.id);
-          const [salesInPeriod, activeDeliveries, saleItems] = await Promise.all([
-            this.prisma.sale.aggregate({
-              where: saleWhere,
+    const [salesGrouped, activeDeliveries, summary, saleItemsByStore, paymentsByStore] =
+      await Promise.all([
+        storeIds.length
+          ? this.prisma.sale.groupBy({
+              by: ['storeId'],
+              where: sharedSaleWhere,
               _sum: { total: true },
               _count: { _all: true },
-            }),
-            this.prisma.delivery.count({
+            })
+          : Promise.resolve([]),
+        storeIds.length
+          ? this.prisma.delivery.findMany({
               where: {
-                sale: { storeId: store.id },
                 status: { in: ['PENDING', 'IN_PROGRESS'] },
+                sale: { storeId: { in: storeIds } },
               },
-            }),
-            showFinancial
-              ? this.prisma.saleItem.findMany({
-                  where: { sale: saleWhere },
-                  select: { quantity: true, unitCost: true },
-                })
-              : Promise.resolve([]),
-          ]);
+              select: { sale: { select: { storeId: true } } },
+            })
+          : Promise.resolve([]),
+        this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true, user),
+        showFinancial && storeIds.length
+          ? this.prisma.saleItem.findMany({
+              where: { sale: sharedSaleWhere },
+              select: {
+                quantity: true,
+                unitCost: true,
+                sale: { select: { storeId: true } },
+              },
+            })
+          : Promise.resolve([]),
+        showFinancial && storeIds.length
+          ? this.prisma.salePayment.findMany({
+              where: { sale: sharedSaleWhere },
+              select: {
+                processingFee: true,
+                sale: { select: { storeId: true } },
+              },
+            })
+          : Promise.resolve([]),
+      ]);
 
-          const salesTotal = toNumber(salesInPeriod._sum.total);
-          const financialSummary = showFinancial
-            ? await (async () => {
-                const totalCost = computeSaleCogs(saleItems);
-                const grossProfit = computeGrossProfit(salesTotal, totalCost);
-                const feeAgg = await this.prisma.salePayment.aggregate({
-                  where: { sale: saleWhere },
-                  _sum: { processingFee: true },
-                });
-                const totalProcessingFees = toNumber(feeAgg._sum.processingFee);
-                const netRevenue = computeNetRevenue(salesTotal, totalProcessingFees);
-                const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
-                return {
-                  totalCost,
-                  grossProfit,
-                  totalProcessingFees,
-                  netRevenue,
-                  netProfit,
-                };
-              })()
-            : {};
+    const salesByStoreId = new Map(salesGrouped.map((row) => [row.storeId, row]));
+    const activeDeliveriesByStoreId = new Map<string, number>();
+    for (const delivery of activeDeliveries) {
+      const storeId = delivery.sale.storeId;
+      activeDeliveriesByStoreId.set(storeId, (activeDeliveriesByStoreId.get(storeId) ?? 0) + 1);
+    }
 
-          return {
-            store,
-            salesCount: salesInPeriod._count._all,
-            salesTotal,
-            activeDeliveries,
-            ...financialSummary,
-          };
-        }),
-      ),
-      this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true, user),
-    ]);
+    const cogsByStoreId = new Map<string, number>();
+    for (const item of saleItemsByStore) {
+      const storeId = item.sale.storeId;
+      const lineCogs = item.quantity * toNumber(item.unitCost);
+      cogsByStoreId.set(storeId, (cogsByStoreId.get(storeId) ?? 0) + lineCogs);
+    }
+
+    const feesByStoreId = new Map<string, number>();
+    for (const payment of paymentsByStore) {
+      const storeId = payment.sale.storeId;
+      feesByStoreId.set(
+        storeId,
+        (feesByStoreId.get(storeId) ?? 0) + toNumber(payment.processingFee),
+      );
+    }
+
+    const storeStats = stores.map((store) => {
+      const salesInPeriod = salesByStoreId.get(store.id);
+      const salesTotal = toNumber(salesInPeriod?._sum.total);
+      const salesCount = salesInPeriod?._count._all ?? 0;
+      const activeDeliveryCount = activeDeliveriesByStoreId.get(store.id) ?? 0;
+
+      const financialSummary =
+        showFinancial
+          ? (() => {
+              const totalCost = cogsByStoreId.get(store.id) ?? 0;
+              const grossProfit = computeGrossProfit(salesTotal, totalCost);
+              const totalProcessingFees = feesByStoreId.get(store.id) ?? 0;
+              const netRevenue = computeNetRevenue(salesTotal, totalProcessingFees);
+              const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
+              return {
+                totalCost,
+                grossProfit,
+                totalProcessingFees,
+                netRevenue,
+                netProfit,
+              };
+            })()
+          : {};
+
+      return {
+        store,
+        salesCount,
+        salesTotal,
+        activeDeliveries: activeDeliveryCount,
+        ...financialSummary,
+      };
+    });
 
     return { stores: storeStats, date: dateLabel, dateFrom, dateTo, summary };
   }
@@ -269,14 +308,20 @@ export class DashboardService {
             mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
           },
         },
-        include: {
+        select: {
+          status: true,
+          delivererId: true,
+          saleId: true,
+          startedAt: true,
+          completedAt: true,
           sale: {
-            include: {
-              customer: true,
+            select: {
+              createdAt: true,
+              customer: { select: { name: true } },
               store: { select: { id: true, name: true } },
             },
           },
-          deliverer: { include: { user: true } },
+          deliverer: { select: { user: { select: { name: true } } } },
         },
       }),
       showFinancial

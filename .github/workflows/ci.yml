@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Detect changed areas
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+              - 'packages/database/**'
+              - 'packages/shared/**'
+              - 'railway.toml'
+              - 'scripts/railway-release.sh'
+            web:
+              - 'apps/web/**'
+              - 'packages/shared/**'
+              - 'apps/web/vercel.json'
+              - 'scripts/vercel-should-build.sh'
+
+      - name: Build API
+        if: github.event_name == 'pull_request' || steps.changes.outputs.api == 'true'
+        run: pnpm turbo build --filter=@gas-erp/api
+
+      - name: Build Web
+        if: github.event_name == 'pull_request' || steps.changes.outputs.web == 'true'
+        run: pnpm turbo build --filter=@gas-erp/web
+
+      - name: Build both (push without path match)
+        if: github.event_name == 'push' && steps.changes.outputs.api != 'true' && steps.changes.outputs.web != 'true'
+        run: pnpm turbo build --filter=@gas-erp/api --filter=@gas-erp/web

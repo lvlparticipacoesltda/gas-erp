@@ -12,7 +12,7 @@ Estou continuando o Gas ERP — monorepo em /Users/zeroummobilidade/gas-erp (pnp
 - apps/api — NestJS + Prisma (REST /api/v1)
 - apps/mobile — Expo SDK 56 + expo-router (app entregador Android)
 - packages/shared — tipos, Zod, enums, sale-display, delivery-metrics, business-day, sale-backdate, sale-mobile
-- packages/database — Prisma schema + migrations (20 migrations até jun/2026)
+- packages/database — Prisma schema + migrations (21 migrations até jul/2026)
 
 ## Produção
 - Web: https://thlgasdopovo.com.br (Vercel)
@@ -20,38 +20,46 @@ Estou continuando o Gas ERP — monorepo em /Users/zeroummobilidade/gas-erp (pnp
 - Banco: Neon PostgreSQL (sa-east-1) — DATABASE_URL (pooler) + DIRECT_URL (migrations)
 - Cliente piloto: Rede Gás Litoral / THL Gás do Povo
 
-## Estado atual (jun/2026)
+## Estado atual (jul/2026)
 
 ### Web + API (produção)
-- Vendas: wizard 3 passos, CEP, Portaria, GDP, taxa entrega, data retroativa, preço por cliente
+- Vendas: wizard 3 passos, CEP, Portaria, GDP, taxa entrega, data retroativa, preço por cliente, pagamentos múltiplos
 - Venda mobile: entregador cria no app → aprovação na loja (mobileApproval)
 - Fornecedores + compras (notas de entrada de estoque)
 - Relatórios: vendas, compras, estoque + exportação CSV
 - Formas de pagamento por loja + taxas + receita líquida no resumo
 - Custo fornecedor + margem bruta (produtos, resumo, relatório)
-- Clientes por loja (não mais por organização inteira)
-- Mapa de entregadores: presença GPS, disponibilidade, auto-refresh 15s
-- Resumo diário: filtro De/Até, auto-refresh 15s, métricas por entregador
-- Master: dashboard consolidado de todas as lojas
+- Clientes por loja + preço por cliente
+- Mapa de entregadores: presença GPS, disponibilidade, geocoding, sugestão por proximidade
+- Resumo diário: filtro De/Até, auto-refresh 15s, métricas por entregador (realizadas/canceladas)
+- Master: dashboard consolidado, aba Entregadores (/master/deliverers)
+- Inativar vs excluir: usuários, lojas, clientes, entregadores
 - Paginação server-side (20/pág) nas listas principais
 - RBAC com telas: daily-summary, sales, customers, products, suppliers, purchases, stock, deliverers, deliverers.map, reports
 - Recuperação de senha (Resend)
+- Páginas públicas: /privacidade-entregador, /exclusao-conta-entregador
 
 ### App mobile (apps/mobile) — "Gás do Povo Entregador"
 - Login DELIVERER, entregas (aguardando/em rota), detalhe, Maps/Waze, histórico
-- Aba Venda: criar pedido → aprovação na loja
-- GPS background + presença no mapa (POST /deliverers/me/position)
+- Aba Venda: criar pedido com múltiplas formas de pagamento → aprovação na loja
+- GPS background + presença no mapa + alerta GPS stale
 - Push FCM: nova rota, cancelamento, lembrete pendente; som rota_entrega.wav
+- **Publicado na Google Play** (jul/2026)
 - EAS: @lvlparticipacoesltda1/gas-entregador, projectId 165eab5a-801a-45a3-ae81-e0a6ef28e7f3
 - google-services.json via EAS secret (não commitado)
 
 ### Migrations recentes
+- 20260701120000_deliverer_gps_stale_reminder
 - 20260627180000_customer_per_store
 - 20260627160000_customer_product_prices
 - 20260627140000_store_payment_methods
 - 20260627120000_product_supplier_cost
-- 20260626180000_sale_mobile_approval
-- 20260626150000_deliverer_presence
+
+### Próximo foco (roadmap)
+- Sprint 1 (restante): redirect `www`
+- Sprint 2: CI/CD, staging, subdomínio api., Sentry
+- Fase 2: fiscal, financeiro completo
+Ver docs/roadmap.md
 
 ### Dev local Android
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
@@ -67,6 +75,7 @@ gerente@gas.com / admin123 (STORE_MANAGER)
 atendente@gas.com / admin123 (ATTENDANT)
 
 ## Documentação (leia antes de alterar)
+- docs/roadmap.md — sprints e fases
 - docs/development.md — comandos, emulador, EAS, troubleshooting
 - docs/deployment.md — infra, variáveis, DIRECT_URL, deploy
 - docs/architecture.md — modelo de dados, módulos
@@ -96,8 +105,9 @@ atendente@gas.com / admin123 (ATTENDANT)
 ## Dicas
 
 - Se o chat anterior tinha mudanças **não commitadas**, rode `git status` e mencione os arquivos pendentes no prompt.
-- Último commit relevante: `82fe86e` — fix cancelamento de venda entregue.
+- Último commit relevante: `e65fc5a` — exclusão de entregadores e cascade ao excluir loja.
 - Para tarefas só no mobile, peça para ler `apps/mobile/app/` e `apps/mobile/src/lib/`.
 - Para API/web, peça para ler o módulo específico em `apps/api/src/modules/` ou `apps/web/src/app/`.
 - Para vendas retroativas: `packages/shared/src/sale-backdate.ts`
 - Para vendas mobile: `packages/shared/src/sale-mobile.ts` + `sales.service.ts`
+- Para entregadores: `apps/web/src/components/deliverers/deliverers-panel.tsx`

@@ -58,16 +58,16 @@ pnpm dev
 
 > Em produção, troque essas senhas após validar o login.
 
-## Estado atual (jun/2026)
+## Estado atual (jul/2026)
 
-MVP **em produção** e funcional. Além do ciclo inicial (vendas, resumo diário, RBAC, app entregador), o sistema inclui **fornecedores, compras, relatórios, formas de pagamento com taxas, margem/custo, mapa de entregadores, venda pelo app do entregador com aprovação** e **preços por cliente**.
+MVP **em produção** e funcional. Além do ciclo inicial (vendas, resumo diário, RBAC, app entregador), o sistema inclui **fornecedores, compras, relatórios, formas de pagamento com taxas, margem/custo, mapa de entregadores, venda pelo app do entregador com aprovação**, **preços por cliente**, **pagamentos múltiplos**, **geocoding/sugestão de entregador**, **inativar vs excluir cadastros** e **aba de entregadores no painel master**.
 
 | Área | Status |
 |------|--------|
 | Deploy (Vercel + Railway + Neon) | ✅ No ar |
 | Domínio `thlgasdopovo.com.br` | ✅ |
 | Auth + JWT multi-tenant | ✅ |
-| Painel master (lojas, usuários, dashboard consolidado) | ✅ |
+| Painel master (lojas, usuários, entregadores, dashboard consolidado) | ✅ |
 | Painel loja (vendas, clientes, estoque, fornecedores, compras, relatórios) | ✅ |
 | Resumo diário com filtro De/Até + auto-refresh 15s + métricas por entregador | ✅ |
 | Paginação nas listas (vendas, clientes, produtos, estoque, usuários) | ✅ |
@@ -85,10 +85,10 @@ MVP **em produção** e funcional. Além do ciclo inicial (vendas, resumo diári
 | Mapa de entregadores (presença GPS + disponibilidade) | ✅ |
 | Entregador multi-unidade (`DelivererStore`) | ✅ |
 | Push notifications (Expo + FCM) | ✅ Nova rota / cancelamento / lembrete pendente |
-| App entregador (`apps/mobile`) | 🟡 MVP testado; Play Store pendente |
+| App entregador (`apps/mobile`) | ✅ Publicado na Google Play |
 | Módulo fiscal / financeiro completo | ⏳ Fase 2 |
 
-Documentação: [docs/development.md](docs/development.md) · [docs/deployment.md](docs/deployment.md) · [docs/architecture.md](docs/architecture.md) · [docs/api-contracts.md](docs/api-contracts.md)
+Documentação: [docs/development.md](docs/development.md) · [docs/deployment.md](docs/deployment.md) · [docs/architecture.md](docs/architecture.md) · [docs/api-contracts.md](docs/api-contracts.md) · [docs/roadmap.md](docs/roadmap.md) · [docs/infrastructure-plan.md](docs/infrastructure-plan.md)
 
 ## Módulos MVP
 
@@ -101,7 +101,7 @@ Documentação: [docs/development.md](docs/development.md) · [docs/deployment.m
 ### Painel master
 - Dashboard consolidado (cards por unidade + **resumo diário consolidado** de todas as lojas, auto-refresh 15s)
 - Filtro de período **De/Até** no dashboard master
-- CRUD de lojas e usuários (paginação 20/página)
+- CRUD de lojas, usuários e entregadores (paginação 20/página; **inativar** ou **excluir** permanentemente)
 - **Ir para loja** — `/master/go-to-store` (sem seletor fixo na sidebar)
 - Permissões por tela por usuário (checkboxes)
 - Vínculo com **uma ou mais lojas** por usuário (`StoreMultiSelect`)
@@ -130,7 +130,7 @@ Documentação: [docs/development.md](docs/development.md) · [docs/deployment.m
 | `/login` | Público |
 | `/forgot-password`, `/reset-password` | Público |
 | `/master` | ORG_MASTER |
-| `/master/users`, `/master/stores` | ORG_MASTER |
+| `/master/users`, `/master/stores`, `/master/deliverers` | ORG_MASTER |
 | `/master/settings` | ORG_MASTER — Minha conta |
 | `/master/go-to-store` | ORG_MASTER — escolher loja |
 | `/store/[storeId]/daily-summary` | Resumo diário (tela inicial da loja) |
@@ -165,7 +165,7 @@ Guia completo: [docs/deployment.md](docs/deployment.md)
 
 ## Migrations (banco)
 
-20 migrations até `20260627180000_customer_per_store`. Ver lista completa em [docs/development.md](docs/development.md#migrations-aplicadas).
+21 migrations até `20260701120000_deliverer_gps_stale_reminder`. Ver lista completa em [docs/development.md](docs/development.md#migrations-aplicadas).
 
 Aplicar em produção: `pnpm db:deploy` (também roda no `releaseCommand` do Railway).
 
@@ -186,9 +186,14 @@ Guia completo: [docs/development.md](docs/development.md) · Push FCM: [docs/mob
 
 ## Próximos passos
 
-Ver [docs/deployment.md#próximos-passos](docs/deployment.md#próximos-passos) e [docs/development.md](docs/development.md). Resumo:
+Roadmap completo com sprints: **[docs/roadmap.md](docs/roadmap.md)**
 
-1. Confirmar `pnpm db:deploy` em produção (20 migrations)
-2. Finalizar Resend + trocar senhas demo
-3. Publicação Play Store (AAB + política de privacidade)
-4. **Fase 2:** fiscal, financeiro completo, relatórios avançados
+| Sprint | Foco |
+|--------|------|
+| **Sprint 1** | Redirect `www` (único item restante) |
+| **Sprint 2** | Infra: API regional BR, cache, CI/CD, staging — [infrastructure-plan.md](docs/infrastructure-plan.md) |
+| **Sprint 3** | Badges de pendências, E2E, relatórios PDF/Excel |
+| **Fase 2** | Fiscal (NFC-e/NF-e), contas a pagar/receber, fluxo de caixa |
+| **Fase 3** | App cliente, WhatsApp, Redis real-time, SaaS multi-tenant |
+
+Detalhes operacionais: [docs/deployment.md#próximos-passos](docs/deployment.md#próximos-passos)

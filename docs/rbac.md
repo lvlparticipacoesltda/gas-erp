@@ -61,7 +61,20 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 
 Configuração: **Master → Usuários → Editar → Telas permitidas** (`permission-checkboxes.tsx`).
 
+Entregadores são gerenciados em **Master → Entregadores** (`/master/deliverers`) ou **Loja → Entregadores** — componente compartilhado `deliverers-panel.tsx`. Usuários com papel `DELIVERER` não aparecem no CRUD de usuários do master (redirecionados para a aba Entregadores).
+
 Formas de pagamento: `/store/[storeId]/settings/payment-methods` — acesso via `canManagePaymentMethods` (não é chave de menu separada).
+
+## Inativar vs excluir
+
+| Entidade | Inativar | Excluir |
+|----------|----------|---------|
+| Usuário (não entregador) | `PATCH` com `active: false` | `DELETE /users/:id` — hard delete |
+| Loja | `PATCH` com `active: false` | `DELETE /stores/:id` — remove vendas e transferências |
+| Cliente | `PATCH` com `active: false` | `DELETE /customers/:id?storeId=...` |
+| Entregador | status `OFFLINE` no mapa | `DELETE /deliverers/:id` — remove usuário e entregador |
+
+Exclusões são **irreversíveis**. A UI exige confirmação explícita.
 
 ## Ações restritas por papel
 
