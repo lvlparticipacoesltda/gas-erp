@@ -16,7 +16,10 @@ export class UsersService {
 
   async findAll(user: AuthUser, page = 1, pageSize = 20) {
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-    const where = { organizationId: user.organizationId };
+    const where = {
+      organizationId: user.organizationId,
+      role: { not: 'DELIVERER' as const },
+    };
     const [data, total] = await Promise.all([
       this.prisma.user.findMany({
         where,

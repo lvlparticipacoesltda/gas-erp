@@ -133,6 +133,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     { href: '/master/dashboard', label: 'Visão geral' },
     { href: '/master/stores', label: 'Lojas' },
     { href: '/master/users', label: 'Usuários' },
+    { href: '/master/deliverers', label: 'Entregadores' },
     { href: '/master/settings', label: 'Minha conta' },
   ];
 

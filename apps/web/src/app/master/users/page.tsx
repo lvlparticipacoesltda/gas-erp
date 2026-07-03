@@ -207,7 +207,7 @@ export default function MasterUsersPage() {
 
   return (
     <>
-    <PageHeader title="Usuários" subtitle="Papéis, lojas e telas permitidas por usuário" />
+    <PageHeader title="Usuários" subtitle="Acesso ao painel web — papéis, lojas e telas permitidas" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">{editing ? 'Editar usuário' : 'Novo usuário'}</h2>
