@@ -1,7 +1,7 @@
 import { getToken } from './storage';
 
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? 'https://gas-erpapi-production.up.railway.app/api/v1';
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://api.thlgasdopovo.com.br/api/v1';
 
 export class ApiError extends Error {
   status: number;
