@@ -8,8 +8,9 @@ cd "$ROOT"
 PREV="${VERCEL_GIT_PREVIOUS_SHA:-}"
 CURRENT="${VERCEL_GIT_COMMIT_SHA:-HEAD}"
 
-if [[ -z "$PREV" ]]; then
-  echo "Primeiro deploy ou SHA anterior ausente — build necessário"
+# Redeploy do mesmo commit (ex.: só mudou env NEXT_PUBLIC_*) — sempre buildar.
+if [[ -z "$PREV" || "$PREV" == "$CURRENT" ]]; then
+  echo "Redeploy ou primeiro deploy — build necessário"
   exit 1
 fi
 
@@ -20,6 +21,7 @@ PATHS=(
   pnpm-lock.yaml
   turbo.json
   tsconfig.base.json
+  scripts/vercel-should-build.sh
 )
 
 if git diff --quiet "$PREV" "$CURRENT" -- "${PATHS[@]}" 2>/dev/null; then
