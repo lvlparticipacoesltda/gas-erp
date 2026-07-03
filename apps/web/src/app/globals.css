@@ -25,44 +25,27 @@ body {
   font-family: Inter, system-ui, sans-serif;
 }
 
-@keyframes brand-loader-clip {
-  0%,
-  100% {
-    transform: scaleY(0.28);
-  }
-  50% {
-    transform: scaleY(1);
-  }
-}
-
-@keyframes brand-loader-breathe {
+@keyframes brand-loader-pulse {
   0%,
   100% {
     transform: scale(1);
+    opacity: 1;
   }
   50% {
-    transform: scale(1.02);
+    transform: scale(1.12);
+    opacity: 0.72;
   }
 }
 
-.brand-loader-clip {
-  transform-box: fill-box;
-  transform-origin: center bottom;
-  animation: brand-loader-clip 1.6s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
-}
-
-.brand-loader-shell {
-  animation: brand-loader-breathe 1.6s ease-in-out infinite;
+.brand-loader-pulse {
+  animation: brand-loader-pulse 1.2s ease-in-out infinite;
+  transform-origin: center center;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-loader-clip {
+  .brand-loader-pulse {
     animation: none;
-    transform: scaleY(0.85);
-  }
-
-  .brand-loader-shell {
-    animation: none;
+    opacity: 1;
   }
 }
 
