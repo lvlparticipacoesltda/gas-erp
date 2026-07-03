@@ -12,6 +12,8 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 FROM base AS prepare
 COPY . .
+# turbo é devDependency da raiz — precisa de install antes do prune
+RUN pnpm install --frozen-lockfile
 RUN pnpm turbo prune @gas-erp/api --docker
 
 FROM base AS build
