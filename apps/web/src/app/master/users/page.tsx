@@ -146,6 +146,25 @@ export default function MasterUsersPage() {
     }
   }
 
+  async function handleDelete(user: UserRow) {
+    if (!user.active) return;
+    if (
+      !window.confirm(
+        `Excluir o usuário "${user.name}"?\n\nEle não poderá mais fazer login no sistema.`,
+      )
+    ) {
+      return;
+    }
+    setFormError('');
+    try {
+      await api(`/users/${user.id}`, { method: 'DELETE' }, getToken());
+      if (editing?.id === user.id) setEditing(null);
+      loadUsers();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao excluir usuário');
+    }
+  }
+
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
@@ -368,9 +387,16 @@ export default function MasterUsersPage() {
                   <Badge tone={u.active ? 'success' : 'danger'}>{u.active ? 'Ativo' : 'Inativo'}</Badge>
                 </td>
                 <td className="p-3 text-right">
-                  <Button type="button" variant="secondary" onClick={() => startEdit(u)}>
-                    Editar
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="secondary" onClick={() => startEdit(u)}>
+                      Editar
+                    </Button>
+                    {u.active ? (
+                      <Button type="button" variant="danger" onClick={() => handleDelete(u)}>
+                        Excluir
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}

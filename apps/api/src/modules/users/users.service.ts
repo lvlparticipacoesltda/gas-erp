@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createUserSchema, updateUserSchema } from '@gas-erp/shared';
@@ -118,6 +118,21 @@ export class UsersService {
       const storeIds = updated.userStores.map((us) => us.storeId);
       await syncDelivererStoresForUser(this.prisma, updated.id, storeIds);
     }
+    const { passwordHash: _, ...safe } = updated;
+    return safe;
+  }
+
+  async remove(user: AuthUser, id: string) {
+    if (user.id === id) {
+      throw new BadRequestException('Você não pode excluir seu próprio usuário');
+    }
+    await this.findOne(user, id);
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { active: false },
+      include: { userStores: { include: { store: true } } },
+    });
+    await this.audit.log(user, 'DELETE', 'User', id);
     const { passwordHash: _, ...safe } = updated;
     return safe;
   }

@@ -31,6 +31,7 @@ export class CustomersService {
     const where = {
       organizationId: user.organizationId,
       storeId,
+      active: true,
       ...(search
         ? {
             OR: [
@@ -153,6 +154,16 @@ export class CustomersService {
     }
 
     return this.findOne(user, id, storeId ?? customer.storeId);
+  }
+
+  async remove(user: AuthUser, id: string, storeId: string) {
+    if (!storeId) throw new BadRequestException('storeId é obrigatório');
+    assertStoreAccess(user, storeId);
+    await this.getCustomerInOrg(user, id, storeId);
+    return this.prisma.customer.update({
+      where: { id },
+      data: { active: false },
+    });
   }
 
   async addAddress(user: AuthUser, customerId: string, storeId: string | undefined, input: unknown) {

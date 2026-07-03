@@ -290,6 +290,19 @@ export default function CustomersPage() {
     }
   }
 
+  async function handleDelete(customer: Customer) {
+    if (!window.confirm(`Excluir o cliente "${customer.name}"?`)) return;
+    setFormError('');
+    try {
+      await api(`/customers/${customer.id}?storeId=${storeId}`, { method: 'DELETE' }, getToken());
+      if (editing?.id === customer.id) setEditing(null);
+      if (historyCustomer?.id === customer.id) setHistoryCustomer(null);
+      load();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao excluir cliente');
+    }
+  }
+
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
@@ -418,6 +431,9 @@ export default function CustomersPage() {
                         Histórico
                       </Button>
                       <Button type="button" variant="secondary" onClick={() => startEdit(c)}>Editar</Button>
+                      <Button type="button" variant="danger" onClick={() => handleDelete(c)}>
+                        Excluir
+                      </Button>
                     </div>
                   </td>
                 </tr>

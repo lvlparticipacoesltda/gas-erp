@@ -53,4 +53,14 @@ export class StoresService {
     await this.audit.log(user, 'UPDATE', 'Store', id, data as Record<string, unknown>);
     return store;
   }
+
+  async remove(user: AuthUser, id: string) {
+    await this.findOne(user, id);
+    const store = await this.prisma.store.update({
+      where: { id },
+      data: { active: false },
+    });
+    await this.audit.log(user, 'DELETE', 'Store', id);
+    return store;
+  }
 }

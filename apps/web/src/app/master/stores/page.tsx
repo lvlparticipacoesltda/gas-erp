@@ -65,6 +65,25 @@ export default function MasterStoresPage() {
     }
   }
 
+  async function handleDelete(store: Store) {
+    if (!store.active) return;
+    if (
+      !window.confirm(
+        `Excluir a loja "${store.name}"?\n\nUsuários vinculados não poderão operar nesta unidade.`,
+      )
+    ) {
+      return;
+    }
+    setFormError('');
+    try {
+      await api(`/stores/${store.id}`, { method: 'DELETE' }, getToken());
+      if (editing?.id === store.id) setEditing(null);
+      load();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao excluir loja');
+    }
+  }
+
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
@@ -199,9 +218,16 @@ export default function MasterStoresPage() {
                   <Badge tone={s.active ? 'success' : 'danger'}>{s.active ? 'Ativa' : 'Inativa'}</Badge>
                 </td>
                 <td className="p-3 text-right">
-                  <Button type="button" variant="secondary" onClick={() => startEdit(s)}>
-                    Editar
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="secondary" onClick={() => startEdit(s)}>
+                      Editar
+                    </Button>
+                    {s.active ? (
+                      <Button type="button" variant="danger" onClick={() => handleDelete(s)}>
+                        Excluir
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}

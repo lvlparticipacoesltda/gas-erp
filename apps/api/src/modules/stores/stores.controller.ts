@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { StoresService } from './stores.service';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { CurrentUser, Roles } from '../../common/decorators';
@@ -29,5 +29,11 @@ export class StoresController {
   @Roles('ORG_MASTER', 'PLATFORM_ADMIN')
   update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     return this.storesService.update(user, id, body);
+  }
+
+  @Delete(':id')
+  @Roles('ORG_MASTER', 'PLATFORM_ADMIN')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.storesService.remove(user, id);
   }
 }

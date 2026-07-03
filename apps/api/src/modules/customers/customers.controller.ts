@@ -90,6 +90,15 @@ export class CustomersController {
     return this.customersService.update(user, id, storeId, body);
   }
 
+  @Delete(':id')
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('storeId') storeId: string,
+  ) {
+    return this.customersService.remove(user, id, storeId);
+  }
+
   @Post(':id/addresses')
   addAddress(
     @CurrentUser() user: AuthUser,
