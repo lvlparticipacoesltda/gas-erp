@@ -135,6 +135,7 @@ export class CustomersService {
         ...(customerData.document !== undefined ? { document: customerData.document } : {}),
         ...(customerData.notes !== undefined ? { notes: customerData.notes } : {}),
         ...(customerData.categoryId !== undefined ? { categoryId: customerData.categoryId } : {}),
+        ...(customerData.active !== undefined ? { active: customerData.active } : {}),
       },
     });
 
@@ -160,10 +161,12 @@ export class CustomersService {
     if (!storeId) throw new BadRequestException('storeId é obrigatório');
     assertStoreAccess(user, storeId);
     await this.getCustomerInOrg(user, id, storeId);
-    return this.prisma.customer.update({
-      where: { id },
-      data: { active: false },
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.sale.updateMany({ where: { customerId: id }, data: { customerId: null } });
+      await tx.customer.delete({ where: { id } });
     });
+    return { ok: true };
   }
 
   async addAddress(user: AuthUser, customerId: string, storeId: string | undefined, input: unknown) {

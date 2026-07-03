@@ -129,14 +129,23 @@ export class UsersService {
     if (user.id === id) {
       throw new BadRequestException('Você não pode excluir seu próprio usuário');
     }
-    await this.findOne(user, id);
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: { active: false },
-      include: { userStores: { include: { store: true } } },
+    const target = await this.findOne(user, id);
+    if (target.role === 'DELIVERER') {
+      throw new BadRequestException('Entregadores devem ser gerenciados na aba Entregadores.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.sale.updateMany({ where: { attendantId: id }, data: { attendantId: null } });
+      await tx.sale.updateMany({ where: { backdateApprovedById: id }, data: { backdateApprovedById: null } });
+      await tx.sale.updateMany({ where: { mobileApprovedById: id }, data: { mobileApprovedById: null } });
+      await tx.saleStatusLog.updateMany({ where: { userId: id }, data: { userId: null } });
+      await tx.saleBackdateLog.updateMany({ where: { userId: id }, data: { userId: null } });
+      await tx.saleMobileApprovalLog.updateMany({ where: { userId: id }, data: { userId: null } });
+      await tx.stockMovement.updateMany({ where: { userId: id }, data: { userId: null } });
+      await tx.auditLog.updateMany({ where: { userId: id }, data: { userId: null } });
+      await tx.user.delete({ where: { id } });
     });
     await this.audit.log(user, 'DELETE', 'User', id);
-    const { passwordHash: _, ...safe } = updated;
-    return safe;
+    return { ok: true };
   }
 }

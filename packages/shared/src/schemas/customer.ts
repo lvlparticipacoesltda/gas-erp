@@ -24,6 +24,8 @@ export const createCustomerSchema = z.object({
   addresses: z.array(customerAddressSchema).optional(),
 });
 
-export const updateCustomerSchema = createCustomerSchema.partial();
+export const updateCustomerSchema = createCustomerSchema.partial().extend({
+  active: z.boolean().optional(),
+});
 
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;

@@ -146,11 +146,33 @@ export default function MasterUsersPage() {
     }
   }
 
-  async function handleDelete(user: UserRow) {
+  async function handleDeactivate(user: UserRow) {
     if (!user.active) return;
     if (
       !window.confirm(
-        `Excluir o usuário "${user.name}"?\n\nEle não poderá mais fazer login no sistema.`,
+        `Inativar o usuário "${user.name}"?\n\nEle não poderá mais fazer login no sistema, mas continuará listado como inativo.`,
+      )
+    ) {
+      return;
+    }
+    setFormError('');
+    try {
+      await api(
+        `/users/${user.id}`,
+        { method: 'PATCH', body: JSON.stringify({ active: false }) },
+        getToken(),
+      );
+      if (editing?.id === user.id) setEditing(null);
+      loadUsers();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao inativar usuário');
+    }
+  }
+
+  async function handleDelete(user: UserRow) {
+    if (
+      !window.confirm(
+        `Excluir permanentemente o usuário "${user.name}"?\n\nEsta ação não pode ser desfeita. O cadastro será removido do sistema.`,
       )
     ) {
       return;
@@ -392,10 +414,13 @@ export default function MasterUsersPage() {
                       Editar
                     </Button>
                     {u.active ? (
-                      <Button type="button" variant="danger" onClick={() => handleDelete(u)}>
-                        Excluir
+                      <Button type="button" variant="secondary" onClick={() => handleDeactivate(u)}>
+                        Inativar
                       </Button>
                     ) : null}
+                    <Button type="button" variant="danger" onClick={() => handleDelete(u)}>
+                      Excluir
+                    </Button>
                   </div>
                 </td>
               </tr>

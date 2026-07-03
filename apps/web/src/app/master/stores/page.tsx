@@ -65,11 +65,33 @@ export default function MasterStoresPage() {
     }
   }
 
-  async function handleDelete(store: Store) {
+  async function handleDeactivate(store: Store) {
     if (!store.active) return;
     if (
       !window.confirm(
-        `Excluir a loja "${store.name}"?\n\nUsuários vinculados não poderão operar nesta unidade.`,
+        `Inativar a loja "${store.name}"?\n\nUsuários vinculados não poderão operar nesta unidade, mas ela continuará listada como inativa.`,
+      )
+    ) {
+      return;
+    }
+    setFormError('');
+    try {
+      await api(
+        `/stores/${store.id}`,
+        { method: 'PATCH', body: JSON.stringify({ active: false }) },
+        getToken(),
+      );
+      if (editing?.id === store.id) setEditing(null);
+      load();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao inativar loja');
+    }
+  }
+
+  async function handleDelete(store: Store) {
+    if (
+      !window.confirm(
+        `Excluir permanentemente a loja "${store.name}"?\n\nEsta ação não pode ser desfeita. Só é possível se não houver vendas registradas.`,
       )
     ) {
       return;
@@ -223,10 +245,13 @@ export default function MasterStoresPage() {
                       Editar
                     </Button>
                     {s.active ? (
-                      <Button type="button" variant="danger" onClick={() => handleDelete(s)}>
-                        Excluir
+                      <Button type="button" variant="secondary" onClick={() => handleDeactivate(s)}>
+                        Inativar
                       </Button>
                     ) : null}
+                    <Button type="button" variant="danger" onClick={() => handleDelete(s)}>
+                      Excluir
+                    </Button>
                   </div>
                 </td>
               </tr>

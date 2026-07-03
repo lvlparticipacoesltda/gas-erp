@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createStoreSchema, updateStoreSchema } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
@@ -56,11 +56,14 @@ export class StoresService {
 
   async remove(user: AuthUser, id: string) {
     await this.findOne(user, id);
-    const store = await this.prisma.store.update({
-      where: { id },
-      data: { active: false },
-    });
+    const salesCount = await this.prisma.sale.count({ where: { storeId: id } });
+    if (salesCount > 0) {
+      throw new BadRequestException(
+        'Esta loja possui vendas registradas e não pode ser excluída. Você pode inativá-la.',
+      );
+    }
+    await this.prisma.store.delete({ where: { id } });
     await this.audit.log(user, 'DELETE', 'Store', id);
-    return store;
+    return { ok: true };
   }
 }

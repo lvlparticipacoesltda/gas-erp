@@ -30,6 +30,7 @@ interface Customer {
   name: string;
   phone?: string;
   document?: string;
+  active?: boolean;
   addresses: CustomerAddress[];
 }
 
@@ -53,12 +54,14 @@ interface CustomerForm extends CustomerAddressForm {
   name: string;
   phone: string;
   document: string;
+  active: boolean;
 }
 
 const emptyForm: CustomerForm = {
   name: '',
   phone: '',
   document: '',
+  active: true,
   zipCode: '',
   street: '',
   number: '',
@@ -265,6 +268,7 @@ export default function CustomersPage() {
       name: customer.name,
       phone: customer.phone ?? '',
       document: customer.document ?? '',
+      active: customer.active ?? true,
       ...addressFromCustomer(addr),
     });
   }
@@ -290,8 +294,36 @@ export default function CustomersPage() {
     }
   }
 
+  async function handleDeactivate(customer: Customer) {
+    if (customer.active === false) return;
+    if (
+      !window.confirm(
+        `Inativar o cliente "${customer.name}"?\n\nEle deixará de aparecer nas buscas, mas o histórico de pedidos será mantido.`,
+      )
+    ) {
+      return;
+    }
+    setFormError('');
+    try {
+      await api(`/customers/${customer.id}?storeId=${storeId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active: false }),
+      }, getToken());
+      if (editing?.id === customer.id) setEditing(null);
+      load();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao inativar cliente');
+    }
+  }
+
   async function handleDelete(customer: Customer) {
-    if (!window.confirm(`Excluir o cliente "${customer.name}"?`)) return;
+    if (
+      !window.confirm(
+        `Excluir permanentemente o cliente "${customer.name}"?\n\nEsta ação não pode ser desfeita. O cadastro será removido do sistema.`,
+      )
+    ) {
+      return;
+    }
     setFormError('');
     try {
       await api(`/customers/${customer.id}?storeId=${storeId}`, { method: 'DELETE' }, getToken());
@@ -306,6 +338,14 @@ export default function CustomersPage() {
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
+
+    if (editing.active !== false && !editForm.active) {
+      const ok = confirm(
+        `Inativar o cliente "${editing.name}"?\n\nEle deixará de aparecer nas buscas, mas o histórico de pedidos será mantido.`,
+      );
+      if (!ok) return;
+    }
+
     setFormError('');
     try {
       await api(`/customers/${editing.id}?storeId=${storeId}`, {
@@ -314,6 +354,7 @@ export default function CustomersPage() {
           name: editForm.name,
           phone: editForm.phone,
           document: editForm.document,
+          active: editForm.active,
           addresses: [buildAddressPayload(editForm)],
         }),
       }, getToken());
@@ -367,6 +408,14 @@ export default function CustomersPage() {
                   value={editForm}
                   onChange={(address) => setEditForm({ ...editForm, ...address })}
                 />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editForm.active}
+                    onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })}
+                  />
+                  Cliente ativo (desmarque para inativar nas buscas)
+                </label>
                 <div className="flex gap-2 pt-2">
                   <Button type="submit">Salvar cliente</Button>
                   <Button type="button" variant="secondary" onClick={() => { setEditing(null); setFormError(''); }}>Cancelar</Button>
@@ -431,6 +480,11 @@ export default function CustomersPage() {
                         Histórico
                       </Button>
                       <Button type="button" variant="secondary" onClick={() => startEdit(c)}>Editar</Button>
+                      {c.active !== false ? (
+                        <Button type="button" variant="secondary" onClick={() => handleDeactivate(c)}>
+                          Inativar
+                        </Button>
+                      ) : null}
                       <Button type="button" variant="danger" onClick={() => handleDelete(c)}>
                         Excluir
                       </Button>
