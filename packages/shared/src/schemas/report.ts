@@ -89,6 +89,7 @@ export interface SalesReportByDeliverer {
   cancelledCount: number;
   avgWaitTimeSeconds: number | null;
   avgRouteDurationSeconds: number | null;
+  avgTotalDeliveryTimeSeconds: number | null;
 }
 
 /** Uma linha do relatório detalhado de vendas (formato planilha). */
@@ -117,6 +118,8 @@ export interface SalesReportRow {
   waitTimeLabel: string | null;
   routeDurationSeconds: number | null;
   routeDurationLabel: string | null;
+  totalDeliveryTimeSeconds: number | null;
+  totalDeliveryTimeLabel: string | null;
   notes: string | null;
   /** Preenchido apenas para perfis com canViewFinancialMargins. */
   totalCost?: number;

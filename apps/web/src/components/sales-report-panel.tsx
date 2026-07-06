@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PageLoader } from '@/components/brand-loader';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedList } from '@/components/paginated-list';
-import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { Button, Card, Input, Label, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
@@ -13,6 +13,7 @@ import {
   PAYMENT_METHODS,
   SALE_STATUS_LABELS,
   SALE_STATUSES,
+  formatWaitTime,
   todayDateKey,
   type SalesReportFilters,
   type SalesReportResponse,
@@ -92,8 +93,9 @@ const FINANCIAL_TABLE_COLUMNS: { key: keyof SalesReportRow; label: string; class
 
 const TAIL_TABLE_COLUMNS: { key: keyof SalesReportRow; label: string; className?: string }[] = [
   { key: 'deliveryStatusLabel', label: 'Status entrega' },
-  { key: 'waitTimeLabel', label: 'Espera rota' },
+  { key: 'waitTimeLabel', label: 'Tempo até aceitar' },
   { key: 'routeDurationLabel', label: 'Tempo em rota' },
+  { key: 'totalDeliveryTimeLabel', label: 'Tempo total da entrega' },
   { key: 'notes', label: 'Observações', className: 'min-w-[10rem]' },
 ];
 
@@ -370,6 +372,40 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               {exporting ? 'Baixando…' : 'Baixar dados'}
             </Button>
           </div>
+
+          {data.byDeliverer.length > 0 && (
+            <>
+              <h2 className="font-semibold text-slate-900">Por entregador</h2>
+              <PaginatedList items={data.byDeliverer}>
+                {(rows) => (
+                  <Table>
+                    <thead className="bg-slate-50 text-left">
+                      <tr>
+                        <th className="p-3">Entregador</th>
+                        <th className="p-3">Rotas realizadas</th>
+                        <th className="p-3">Rotas canceladas</th>
+                        <th className="p-3">Tempo médio até aceitar</th>
+                        <th className="p-3">Tempo médio em rota</th>
+                        <th className="p-3">Tempo médio total da entrega</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((deliverer) => (
+                        <tr key={deliverer.delivererId} className="border-t border-slate-100">
+                          <td className="p-3">{deliverer.delivererName}</td>
+                          <td className="p-3">{deliverer.completedCount}</td>
+                          <td className="p-3">{deliverer.cancelledCount}</td>
+                          <td className="p-3">{formatWaitTime(deliverer.avgWaitTimeSeconds)}</td>
+                          <td className="p-3">{formatWaitTime(deliverer.avgRouteDurationSeconds)}</td>
+                          <td className="p-3">{formatWaitTime(deliverer.avgTotalDeliveryTimeSeconds)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                )}
+              </PaginatedList>
+            </>
+          )}
 
           <LoadingOverlay loading={isRefetching} minHeight="min-h-[30vh]" label="Atualizando relatório…">
             {data.rows.length === 0 ? (

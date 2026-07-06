@@ -63,6 +63,8 @@ type DashboardPayload = {
     maxWaitTimeSeconds: number | null;
     avgRouteDurationSeconds: number | null;
     maxRouteDurationSeconds: number | null;
+    avgTotalDeliveryTimeSeconds: number | null;
+    maxTotalDeliveryTimeSeconds: number | null;
     pendingCount: number;
     inProgressCount: number;
     completedCount: number;
@@ -74,6 +76,7 @@ type DashboardPayload = {
       delivererName: string;
       waitTimeSeconds: number | null;
       routeDurationSeconds: number | null;
+      totalDeliveryTimeSeconds: number | null;
     }[];
     byDeliverer: {
       delivererId: string;
@@ -82,6 +85,7 @@ type DashboardPayload = {
       cancelledCount: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
+      avgTotalDeliveryTimeSeconds: number | null;
     }[];
   };
 };
@@ -241,6 +245,8 @@ export class DashboardService {
         maxWaitTimeSeconds: null,
         avgRouteDurationSeconds: null,
         maxRouteDurationSeconds: null,
+        avgTotalDeliveryTimeSeconds: null,
+        maxTotalDeliveryTimeSeconds: null,
         pendingCount: 0,
         inProgressCount: 0,
         completedCount: 0,
@@ -512,6 +518,8 @@ export class DashboardService {
         maxWaitTimeSeconds: routeStats.maxWaitTimeSeconds,
         avgRouteDurationSeconds: routeStats.avgRouteDurationSeconds,
         maxRouteDurationSeconds: routeStats.maxRouteDurationSeconds,
+        avgTotalDeliveryTimeSeconds: routeStats.avgTotalDeliveryTimeSeconds,
+        maxTotalDeliveryTimeSeconds: routeStats.maxTotalDeliveryTimeSeconds,
         pendingCount: routeStats.counts.pending,
         inProgressCount: routeStats.counts.inProgress,
         completedCount: routeStats.counts.completed,

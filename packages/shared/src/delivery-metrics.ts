@@ -35,6 +35,15 @@ export function getRouteDurationSeconds(
   return diffSeconds(deliveryStartedAt, deliveryCompletedAt);
 }
 
+/** Soma tempo até aceitar + tempo em rota (entrega concluída). */
+export function getTotalDeliveryTimeSeconds(
+  waitTimeSeconds: number | null | undefined,
+  routeDurationSeconds: number | null | undefined,
+): number | null {
+  if (waitTimeSeconds == null && routeDurationSeconds == null) return null;
+  return (waitTimeSeconds ?? 0) + (routeDurationSeconds ?? 0);
+}
+
 /**
  * Segundos decorridos desde um instante de referência (ex.: criação da venda ou início da rota).
  */

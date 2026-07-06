@@ -40,6 +40,8 @@ export interface DailySummaryData {
     maxWaitTimeSeconds: number | null;
     avgRouteDurationSeconds: number | null;
     maxRouteDurationSeconds: number | null;
+    avgTotalDeliveryTimeSeconds: number | null;
+    maxTotalDeliveryTimeSeconds: number | null;
     slowDeliveries: {
       saleId: string;
       storeName?: string;
@@ -47,6 +49,7 @@ export interface DailySummaryData {
       delivererName: string;
       waitTimeSeconds: number | null;
       routeDurationSeconds: number | null;
+      totalDeliveryTimeSeconds: number | null;
     }[];
     byDeliverer: {
       delivererId: string;
@@ -55,6 +58,7 @@ export interface DailySummaryData {
       cancelledCount: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
+      avgTotalDeliveryTimeSeconds: number | null;
     }[];
   };
 }
@@ -99,10 +103,12 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
         <Card><div className="text-sm text-slate-500">Entregas em rota</div><div className="text-2xl font-bold">{data.deliveries.inProgress}</div></Card>
         <Card><div className="text-sm text-slate-500">Entregas concluídas</div><div className="text-2xl font-bold">{data.deliveries.completed}</div></Card>
         <Card><div className="text-sm text-slate-500">Rotas canceladas</div><div className="text-2xl font-bold">{data.deliveries.cancelled}</div></Card>
-        <Card><div className="text-sm text-slate-500">Tempo médio até a rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Maior espera até a rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Tempo médio até aceitar</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior tempo até aceitar</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
         <Card><div className="text-sm text-slate-500">Tempo médio em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgRouteDurationSeconds)}</div></Card>
         <Card><div className="text-sm text-slate-500">Maior tempo em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxRouteDurationSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Tempo médio total da entrega</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgTotalDeliveryTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior tempo total da entrega</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxTotalDeliveryTimeSeconds)}</div></Card>
       </div>
 
       {metrics?.slowDeliveries && metrics.slowDeliveries.length > 0 && (
@@ -116,8 +122,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                     {showStoreColumn && <th className="p-3">Unidade</th>}
                     <th className="p-3">Cliente</th>
                     <th className="p-3">Entregador</th>
-                    <th className="p-3">Espera até a rota</th>
+                    <th className="p-3">Tempo até aceitar</th>
                     <th className="p-3">Tempo em rota</th>
+                    <th className="p-3">Tempo total da entrega</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -128,6 +135,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                       <td className="p-3">{d.delivererName}</td>
                       <td className="p-3">{formatWaitTime(d.waitTimeSeconds)}</td>
                       <td className="p-3">{formatWaitTime(d.routeDurationSeconds)}</td>
+                      <td className="p-3">{formatWaitTime(d.totalDeliveryTimeSeconds)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -148,8 +156,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                     <th className="p-3">Entregador</th>
                     <th className="p-3">Rotas realizadas</th>
                     <th className="p-3">Rotas canceladas</th>
-                    <th className="p-3">Média até aceitar rota</th>
-                    <th className="p-3">Média para finalizar rota</th>
+                    <th className="p-3">Tempo médio até aceitar</th>
+                    <th className="p-3">Tempo médio em rota</th>
+                    <th className="p-3">Tempo médio total da entrega</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -160,6 +169,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                       <td className="p-3">{d.cancelledCount}</td>
                       <td className="p-3">{formatWaitTime(d.avgWaitTimeSeconds)}</td>
                       <td className="p-3">{formatWaitTime(d.avgRouteDurationSeconds)}</td>
+                      <td className="p-3">{formatWaitTime(d.avgTotalDeliveryTimeSeconds)}</td>
                     </tr>
                   ))}
                 </tbody>

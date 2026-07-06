@@ -19,6 +19,7 @@ import {
   getSaleAttendantName,
   getSaleDisplayStatus,
   getWaitTimeSeconds,
+  getTotalDeliveryTimeSeconds,
   toNumber,
   canViewFinancialMargins,
   computeGrossMarginPercent,
@@ -89,6 +90,10 @@ function mapSaleToReportRow(sale: SaleForReport, showFinancial: boolean): SalesR
   const routeDurationSeconds = delivery
     ? getRouteDurationSeconds(delivery.startedAt, delivery.completedAt)
     : null;
+  const totalDeliveryTimeSeconds = getTotalDeliveryTimeSeconds(
+    waitTimeSeconds,
+    routeDurationSeconds,
+  );
   const displayStatus = getSaleDisplayStatus(sale);
   const paymentSummary = [...new Set(sale.payments.map((p) => paymentDisplayLabel(p)))].join(', ');
   const paymentDetails = sale.payments
@@ -143,6 +148,8 @@ function mapSaleToReportRow(sale: SaleForReport, showFinancial: boolean): SalesR
     waitTimeLabel: formatWaitTime(waitTimeSeconds),
     routeDurationSeconds,
     routeDurationLabel: formatWaitTime(routeDurationSeconds),
+    totalDeliveryTimeSeconds,
+    totalDeliveryTimeLabel: formatWaitTime(totalDeliveryTimeSeconds),
     notes: sale.notes,
   };
 }
@@ -658,8 +665,9 @@ export class ReportsService {
             ]
           : []),
         'Status entrega',
-        'Tempo espera rota',
+        'Tempo até aceitar',
         'Tempo em rota',
+        'Tempo total da entrega',
         'Observações',
       ];
       const rows = report.rows.map((r) => [
@@ -693,6 +701,7 @@ export class ReportsService {
         r.deliveryStatusLabel ?? '',
         r.waitTimeLabel ?? '',
         r.routeDurationLabel ?? '',
+        r.totalDeliveryTimeLabel ?? '',
         r.notes ?? '',
       ]);
       return {
