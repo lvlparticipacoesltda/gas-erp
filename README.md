@@ -60,16 +60,16 @@ pnpm dev
 
 ## Estado atual (jul/2026)
 
-MVP **em produção** e funcional. Além do ciclo inicial (vendas, resumo diário, RBAC, app entregador), o sistema inclui **fornecedores, compras, relatórios, formas de pagamento com taxas, margem/custo, mapa de entregadores, venda pelo app do entregador com aprovação**, **preços por cliente**, **pagamentos múltiplos**, **geocoding/sugestão de entregador**, **inativar vs excluir cadastros** e **aba de entregadores no painel master**.
+MVP **em produção** e funcional. Além do ciclo inicial (vendas, resumo diário, RBAC, app entregador), o sistema inclui **fornecedores, compras, relatórios, formas de pagamento com taxas, margem/custo, mapa de entregadores, venda pelo app do entregador com aprovação**, **preços por cliente**, **pagamentos múltiplos**, **geocoding/sugestão de entregador**, **inativar vs excluir cadastros**, **aba de entregadores no painel master** e **API regional no Fly.io GRU** (latência ~20–50× menor que Railway).
 
 | Área | Status |
 |------|--------|
-| Deploy (Vercel + Railway + Neon) | ✅ No ar |
+| Deploy (Vercel + Fly.io GRU + Neon) | ✅ No ar |
 | Domínio `thlgasdopovo.com.br` | ✅ |
 | Auth + JWT multi-tenant | ✅ |
 | Painel master (lojas, usuários, entregadores, dashboard consolidado) | ✅ |
 | Painel loja (vendas, clientes, estoque, fornecedores, compras, relatórios) | ✅ |
-| Resumo diário com filtro De/Até + auto-refresh 15s + métricas por entregador | ✅ |
+| Resumo diário com filtro De/Até + auto-refresh 15s + métricas por entregador (até aceitar / em rota / total) | ✅ |
 | Paginação nas listas (vendas, clientes, produtos, estoque, usuários) | ✅ |
 | Venda: canal Portaria, GDP, benefício Gás do Povo, taxa entrega | ✅ |
 | Venda: data retroativa com aprovação gerente + log | ✅ |
@@ -149,25 +149,25 @@ Guia completo: [docs/deployment.md](docs/deployment.md)
 | | |
 |---|---|
 | **App** | https://thlgasdopovo.com.br |
-| **API** | https://gas-erpapi-production.up.railway.app/api/v1 |
-| **Health** | https://gas-erpapi-production.up.railway.app/api/v1/health |
+| **API** | https://api.thlgasdopovo.com.br/api/v1 (Fly.io **GRU**) |
+| **Health** | https://api.thlgasdopovo.com.br/api/v1/health |
 | **GitHub** | `lvlparticipacoesltda/gas-erp` |
-| **Stack** | Vercel (web) + Railway (API) + Neon (PostgreSQL) |
-| **DNS** | Hostinger → Vercel |
+| **Stack** | Vercel (web) + Fly.io GRU (API) + Neon (PostgreSQL sa-east-1) |
+| **DNS** | Hostinger → Vercel (web); `api.` → Fly.io |
 
 **Infraestrutura por fase:**
 
 | Fase | Sugestão |
 |------|----------|
-| MVP (agora) | Vercel + Railway + Neon — sem VPS |
-| Crescimento | Web na Vercel; API em VPS/Fly; Redis (Upstash) |
-| Alto volume | VPS ou Kubernetes + Postgres gerenciado |
+| **Atual** | Vercel + Fly.io GRU + Neon — API e banco no Brasil |
+| Crescimento | + Redis (Upstash sa-east-1), staging, Sentry |
+| Alto volume | VPS ou Kubernetes + Postgres dedicado |
 
 ## Migrations (banco)
 
 21 migrations até `20260701120000_deliverer_gps_stale_reminder`. Ver lista completa em [docs/development.md](docs/development.md#migrations-aplicadas).
 
-Aplicar em produção: `pnpm db:deploy` (também roda no `releaseCommand` do Railway).
+Aplicar em produção: `pnpm db:deploy` (também roda no `release_command` do Fly via `scripts/fly-release.sh`).
 
 No Neon, configure `DIRECT_URL` (host sem `-pooler`) além de `DATABASE_URL` para evitar lock em migrations — ver [docs/deployment.md](docs/deployment.md).
 
@@ -191,7 +191,7 @@ Roadmap completo com sprints: **[docs/roadmap.md](docs/roadmap.md)**
 | Sprint | Foco |
 |--------|------|
 | **Sprint 1** | Redirect `www` (único item restante) |
-| **Sprint 2** | Infra: API regional BR, cache, CI/CD, staging — [infrastructure-plan.md](docs/infrastructure-plan.md) |
+| **Sprint 2** | Infra: API Fly GRU ✅, CI ✅ — pendente: staging, Redis, Sentry, pausar Railway — [infrastructure-plan.md](docs/infrastructure-plan.md) |
 | **Sprint 3** | Badges de pendências, E2E, relatórios PDF/Excel |
 | **Fase 2** | Fiscal (NFC-e/NF-e), contas a pagar/receber, fluxo de caixa |
 | **Fase 3** | App cliente, WhatsApp, Redis real-time, SaaS multi-tenant |

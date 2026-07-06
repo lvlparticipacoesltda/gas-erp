@@ -170,7 +170,7 @@ pnpm --filter @gas-erp/api dev
 pnpm --filter @gas-erp/api build
 ```
 
-Produção: https://gas-erpapi-production.up.railway.app/api/v1
+Produção: https://api.thlgasdopovo.com.br/api/v1
 
 ---
 
@@ -186,6 +186,22 @@ cp .env.example .env
 ```
 
 Default em `.env.example` aponta para **API de produção**. Para API local no emulador use `http://10.0.2.2:3001/api/v1`.
+
+**Mapa in-app (jul/2026):** a tab **Mapa** usa `react-native-maps` + Google Maps SDK. Configure:
+
+```bash
+# apps/mobile/.env
+EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=AIza...   # Maps SDK for Android (tiles)
+```
+
+No servidor (Fly), para roteamento com polyline:
+
+```bash
+# .env na raiz / Fly secrets
+GOOGLE_MAPS_DIRECTIONS_API_KEY=AIza...    # Directions API
+```
+
+Após adicionar `react-native-maps`, é obrigatório **novo dev build** (`npx expo run:android` ou `eas build`). O mapa não funciona no Expo Go com Google Maps.
 
 Push em APK exige FCM — ver [mobile-push-fcm.md](mobile-push-fcm.md).
 
@@ -235,14 +251,14 @@ npx eas build -p android --profile production # AAB Play Store
 - Use `entregador@gas.com` / `admin123` (seed)
 - Abas: **Entregas**, **Venda** (criar pedido), **Histórico**
 
-### Fluxo testado (jun/2026)
+### Fluxo testado (jul/2026)
 
 1. Login entregador
-2. Lista **Aguardando** / **Em rota** (`GET /deliveries/my`)
-3. Clicar entrega → detalhe (endereço, itens, Maps/Waze)
-4. **Iniciar rota** → API `IN_PROGRESS` → Maps → GPS
-5. **Concluir entrega** → `DELIVERED`
-6. **Nova venda** na aba Venda → aprovação na loja web
+2. Tela **Mapa** com posição GPS + botão de entregas (estilo 99)
+3. Selecionar entrega aguardando → **Iniciar rota** (mapa in-app com polyline)
+4. Reroteamento automático se sair do trajeto (>60 m)
+5. **Concluir entrega** → pagamentos → `DELIVERED`
+6. Fallback **Google Maps / Waze** disponível durante a rota
 
 ---
 
@@ -259,9 +275,9 @@ git push
 
 | O que mudou | O que redeploya automaticamente |
 |-------------|----------------------------------|
-| `apps/api`, `packages/*` | Railway (API) |
+| `apps/api`, `packages/*`, `Dockerfile`, `fly.toml` | Fly.io (`fly deploy` ou push com hook) |
 | `apps/web` | Vercel (web) |
-| `packages/database` migration nova | Rodar `pnpm db:deploy` **antes** do push da API |
+| `packages/database` migration nova | Rodar `pnpm db:deploy` **antes** do deploy da API |
 | `apps/mobile` | Novo `eas build` (não é automático no push) |
 
 **Não commitar:** `.env`, `google-services.json`, `.pnpm-store/`, `apps/mobile/android/build/`, `node_modules/`
@@ -287,7 +303,7 @@ Ver seção completa em versões anteriores deste doc. Principais:
 
 | Item | Status |
 |------|--------|
-| Deploy Vercel + Railway + Neon | ✅ |
+| Deploy Vercel + Fly.io GRU + Neon | ✅ |
 | Domínio thlgasdopovo.com.br | ✅ |
 | Vendas, estoque, clientes, RBAC | ✅ |
 | Fornecedores + compras (notas de entrada) | ✅ |
@@ -313,6 +329,8 @@ Ver seção completa em versões anteriores deste doc. Principais:
 
 | Item | Status |
 |------|--------|
+| Tela **Mapa** fullscreen + picker de entregas (estilo 99) | ✅ jul/2026 |
+| Rota in-app com polyline + reroteamento automático | ✅ jul/2026 |
 | Login DELIVERER + entregas + detalhe | ✅ |
 | Iniciar rota / Maps / concluir | ✅ |
 | GPS background + presença no mapa | ✅ |
@@ -327,14 +345,12 @@ Ver seção completa em versões anteriores deste doc. Principais:
 
 | Commit | Descrição |
 |--------|-----------|
-| `e65fc5a` | Exclusão de entregadores; cascade ao excluir loja |
-| `d01cd41` | Separa inativar e excluir (usuários, lojas, clientes) |
-| `9a0aa5f` | Aba entregadores no painel master |
-| `5806b96` | GPS stale + alerta quando posição para |
-| `c77b799` | Pagamentos múltiplos, geocoding, sugestão entregador |
-| `ddc7810` | Páginas públicas privacidade e exclusão de conta |
-| `43d33b9` | Clientes por loja |
-| `54c4e83` | Formas de pagamento + taxas + receita líquida |
+| `f427a17` | Métricas de entrega renomeadas + tempo total |
+| `4bbf3dd` | Vendas efetivadas em painéis e relatórios |
+| `a2787ab` | Mobile aponta para API Fly (`api.thlgasdopovo.com.br`) |
+| `123314b` | Deploy da API no Fly.io GRU |
+| `51db304` | Otimização de latência + CI/deploy seletivo |
+| `c2ca6c6` | Ícones e logos da marca no painel web |
 
 ---
 
@@ -358,7 +374,10 @@ npx expo start --dev-client
 cd apps/mobile
 eas build -p android --profile preview
 
-# === MOBILE — AAB Play Store ===
+# === MOBILE — AAB Play Store (com mapa in-app) ===
+# Configure antes: eas secret:create -s project -n EXPO_PUBLIC_GOOGLE_MAPS_API_KEY -v AIza...
+# Fly: fly secrets set GOOGLE_MAPS_DIRECTIONS_API_KEY=AIza...
+cd apps/mobile
 eas build -p android --profile production
 eas submit -p android --latest
 

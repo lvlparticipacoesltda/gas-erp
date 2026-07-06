@@ -16,9 +16,10 @@ Estou continuando o Gas ERP — monorepo em /Users/zeroummobilidade/gas-erp (pnp
 
 ## Produção
 - Web: https://thlgasdopovo.com.br (Vercel)
-- API: https://gas-erpapi-production.up.railway.app/api/v1 (Railway)
+- API: https://api.thlgasdopovo.com.br/api/v1 (Fly.io GRU, São Paulo)
 - Banco: Neon PostgreSQL (sa-east-1) — DATABASE_URL (pooler) + DIRECT_URL (migrations)
 - Cliente piloto: Rede Gás Litoral / THL Gás do Povo
+- Latência (jul/2026): health ~59 ms · login ~171 ms · dashboard master ~71 ms
 
 ## Estado atual (jul/2026)
 
@@ -31,7 +32,8 @@ Estou continuando o Gas ERP — monorepo em /Users/zeroummobilidade/gas-erp (pnp
 - Custo fornecedor + margem bruta (produtos, resumo, relatório)
 - Clientes por loja + preço por cliente
 - Mapa de entregadores: presença GPS, disponibilidade, geocoding, sugestão por proximidade
-- Resumo diário: filtro De/Até, auto-refresh 15s, métricas por entregador (realizadas/canceladas)
+- Resumo diário: filtro De/Até, auto-refresh 15s, métricas por entregador (até aceitar / em rota / total)
+- Painéis e relatórios contabilizam vendas efetivadas (DELIVERED/PORTARIA)
 - Master: dashboard consolidado, aba Entregadores (/master/deliverers)
 - Inativar vs excluir: usuários, lojas, clientes, entregadores
 - Paginação server-side (20/pág) nas listas principais
@@ -57,7 +59,8 @@ Estou continuando o Gas ERP — monorepo em /Users/zeroummobilidade/gas-erp (pnp
 
 ### Próximo foco (roadmap)
 - Sprint 1 (restante): redirect `www`
-- Sprint 2: CI/CD, staging, subdomínio api., Sentry
+- Sprint 2 (restante): pausar Railway, staging, Redis, Sentry, rotacionar senha Neon
+- Sprint 3: badges pendências, E2E, relatórios PDF/Excel
 - Fase 2: fiscal, financeiro completo
 Ver docs/roadmap.md
 
@@ -89,7 +92,7 @@ atendente@gas.com / admin123 (ATTENDANT)
 - Não usar .npmrc hoisted (quebra Next.js)
 - Não commitar .env, google-services.json, .pnpm-store/, apps/mobile/android/build/
 - Commits só quando eu pedir
-- Migration nova em produção: pnpm db:deploy (com DIRECT_URL no Railway)
+- Migration nova em produção: pnpm db:deploy (com DIRECT_URL no Fly)
 - Mobile em produção: novo eas build (não é automático no git push)
 - Dia operacional: America/Sao_Paulo, offset UTC-3 fixo (business-day.ts)
 
@@ -105,7 +108,7 @@ atendente@gas.com / admin123 (ATTENDANT)
 ## Dicas
 
 - Se o chat anterior tinha mudanças **não commitadas**, rode `git status` e mencione os arquivos pendentes no prompt.
-- Último commit relevante: `e65fc5a` — exclusão de entregadores e cascade ao excluir loja.
+- Último commit relevante: `f427a17` — métricas de entrega renomeadas + tempo total; `4bbf3dd` — vendas efetivadas em painéis.
 - Para tarefas só no mobile, peça para ler `apps/mobile/app/` e `apps/mobile/src/lib/`.
 - Para API/web, peça para ler o módulo específico em `apps/api/src/modules/` ou `apps/web/src/app/`.
 - Para vendas retroativas: `packages/shared/src/sale-backdate.ts`

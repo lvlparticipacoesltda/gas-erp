@@ -8,13 +8,10 @@ import {
   getWaitTimeSeconds,
 } from '@gas-erp/shared';
 import { Badge, Card } from './ui';
+import { DeliverySaleSummary } from './DeliverySaleSummary';
 import { deliveryAddress } from '../lib/deliveries';
 import { colors, spacing } from '../theme';
 import type { Delivery } from '../types';
-
-function itemsSummary(delivery: Delivery): string {
-  return delivery.sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
-}
 
 function waitLabel(delivery: Delivery): string {
   if (delivery.status === 'PENDING') {
@@ -69,9 +66,7 @@ export function DeliveryCard({
           {address}
         </Text>
       ) : null}
-      <Text style={styles.items} numberOfLines={2}>
-        {itemsSummary(delivery)}
-      </Text>
+      <DeliverySaleSummary sale={delivery.sale} compact />
     </Card>
   );
 }
@@ -82,5 +77,4 @@ const styles = StyleSheet.create({
   wait: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
   customer: { fontSize: 16, fontWeight: '700', color: colors.text },
   address: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
-  items: { fontSize: 13, color: colors.textFaint },
 });

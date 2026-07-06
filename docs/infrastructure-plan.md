@@ -6,20 +6,21 @@ Documento de planejamento para **Sprint 2** e fases seguintes. Atualizado jul/20
 
 ---
 
-## Já implementado (Sprint 2 — B e C)
+## Já implementado (Sprint 2 — B, C e cutover)
 
-| Item | Onde |
-|------|------|
-| Dashboard master em batch (5 queries fixas vs N×loja) | `apps/api/.../dashboard.service.ts` |
-| Requests lentos logados (>1s, `SLOW_REQUEST_MS`) | `request-timing.interceptor.ts` |
+| Item | Onde / nota |
+|------|-------------|
+| Dashboard master em batch (5 queries fixas vs N×loja) | `dashboard.service.ts` |
+| Requests lentos logados (`SLOW_REQUEST_MS`) | `request-timing.interceptor.ts` |
 | Queries lentas opcionais (`PRISMA_LOG_QUERIES=true`) | `prisma.service.ts` |
-| Migration só se pendente | `scripts/railway-release.sh` |
-| Build Railway com `turbo --filter=@gas-erp/api` | `railway.toml` |
-| Vercel pula build se só API/mobile mudou | `scripts/vercel-should-build.sh` |
-| CI com path filter | `.github/workflows/ci.yml` |
-| Benchmark | `pnpm benchmark:api` |
+| Migration só se pendente | `scripts/release-migrate.sh` |
+| API no **Fly.io GRU** | `Dockerfile`, `fly.toml` |
+| Domínio **`api.thlgasdopovo.com.br`** | CNAME → `gas-erp-api.fly.dev` (DNS Vercel) |
+| Web Vercel → nova API | `NEXT_PUBLIC_API_URL=https://api.thlgasdopovo.com.br/api/v1` |
+| CI path filter + deploy seletivo | `.github/workflows/ci.yml`, `vercel-should-build.sh` |
+| Benchmark | `pnpm benchmark:api` — health ~59 ms, master ~71 ms (jul/2026) |
 
-**Próximo passo B (maior ROI restante):** migrar API para Fly.io GRU — ver [fly-migration.md](fly-migration.md).
+**Cutover concluído.** Pendências: rotacionar senha Neon, pausar Railway, Sentry/staging/Redis (opcional). Ver [roadmap.md](roadmap.md).
 
 ---
 
@@ -33,22 +34,22 @@ Hoje existem **três tipos diferentes** de lentidão. Tratar tudo como “proble
 | **B — Latência de request** | Clique demora 1–3s+ para responder | API ↔ banco distantes, queries pesadas, cold start | Infra + otimização SQL |
 | **C — Delay de deploy** | Push → produção leva 8–15 min | Build monorepo completo + migration no `releaseCommand` | CI/CD + deploy seletivo |
 
-### Arquitetura atual (produção)
+### Arquitetura atual (produção — jul/2026)
 
 ```
 Usuário (Brasil)
     │
     ▼
-Vercel — Next.js (apps/web)          ← CDN/edge; API calls vão para Railway
+Vercel — Next.js (apps/web)          ← CDN/edge
     │  NEXT_PUBLIC_API_URL
     ▼
-Railway — NestJS (apps/api)          ← região provável: EUA (verificar no painel)
+Fly.io GRU — NestJS (apps/api)       ← São Paulo (api.thlgasdopovo.com.br)
     │  DATABASE_URL (pooler)
     ▼
 Neon PostgreSQL (sa-east-1)          ← banco no Brasil
 ```
 
-**Hipótese mais provável de latência B:** API nos EUA conversando com Postgres em **sa-east-1** — cada query adiciona ~100–200 ms de ida e volta. O dashboard master foi otimizado (batch); colocar a API no Brasil ainda é o maior ganho restante.
+**Latência B resolvida no Sprint 2:** API e banco agora na mesma região (~59 ms health vs ~1–3 s no Railway EUA).
 
 ### Polling atual (tipo A — não é bug de rede)
 
@@ -71,8 +72,8 @@ Não recomendamos migrar tudo para um monolito único de imediato. O caminho nat
 ```
 Hoje (MVP)                    Curto prazo (Sprint 2–3)           Médio prazo (Fase 3)
 ─────────────────────────────────────────────────────────────────────────────────────
-Vercel + Railway + Neon   →   Mesma região + cache Redis    →   API em GRU + SSE/WS
-3 deploys independentes   →   CI/CD + deploy seletivo       →   Staging + observabilidade
+Vercel + Fly GRU + Neon   →   + cache Redis + staging        →   SSE/WebSocket real-time
+Deploy seletivo + CI      →   Sentry + uptime                →   Staging obrigatório
 Polling 15–30s            →   Cache dashboard 10s           →   Real-time (Redis pub/sub)
 ```
 
@@ -81,7 +82,7 @@ Polling 15–30s            →   Cache dashboard 10s           →   Real-time 
 | Opção | Prós | Contras | Quando considerar |
 |-------|------|---------|-------------------|
 | **Manter Vercel + API regional BR** | Web já funciona; menor risco | Ainda 2 provedores | **Recomendado agora** |
-| **Fly.io GRU (API) + Neon sa-east-1** | API e DB no Brasil | Migrar deploy Railway → Fly | Volume BR alto, latência B persistente |
+| **Fly.io GRU (API) + Neon sa-east-1** | API e DB no Brasil | Custo ~US$ 5–7/mês | ✅ **Implementado jul/2026** |
 | **VPS BR (Hetzner não tem BR; Locaweb/DO)** | Controle total, custo fixo | Você opera OS, backups, SSL | Time com ops ou >50 lojas |
 | **Supabase sa-east-1** | DB + realtime + auth | Reescrever auth/queries; lock-in | Greenfield ou refactor grande |
 | **Railway tudo** | Um painel | Web Next.js no Railway é ok; região SA limitada | Se Railway liberar SA |
@@ -133,12 +134,12 @@ Hoje **cada push** pode rebuildar web + API e rodar migrations.
 
 | # | Tarefa | Impacto |
 |---|--------|---------|
-| 2.2.1 | **GitHub Actions**: `lint` + `build` + `verify:deploy` em PR | Falha antes do merge |
-| 2.2.2 | **Deploy seletivo**: Railway só se `apps/api` ou `packages/*` mudou; Vercel só se `apps/web` ou `packages/shared` | Deploy 2–5 min vs 10–15 min |
-| 2.2.3 | **Migration gate**: `releaseCommand` só quando há migration nova (ou job manual) | Menos risco e menos tempo no deploy |
-| 2.2.4 | Ambiente **staging** (Neon branch + Railway/Vercel preview) | Testar migration antes de prod |
+| 2.2.1 | **GitHub Actions**: build seletivo em PR/push | ✅ `.github/workflows/ci.yml` |
+| 2.2.2 | **Deploy seletivo**: Fly só se API/packages mudou; Vercel só se web mudou | ✅ |
+| 2.2.3 | **Migration gate**: release só quando há migration nova | ✅ `release-migrate.sh` |
+| 2.2.4 | Ambiente **staging** (Neon branch + Vercel preview) | ⏳ |
 
-Arquivos envolvidos: `railway.toml`, `apps/web/vercel.json`, novo `.github/workflows/ci.yml`.
+Arquivos envolvidos: `fly.toml`, `Dockerfile`, `apps/web/vercel.json`, `.github/workflows/ci.yml`.
 
 ### Bloco 4 — Cache e queries (semana 2–3)
 
@@ -178,14 +179,14 @@ Ordem sugerida: **3b → 3a → 3d → 3c**.
 ## Roadmap de migração regional (se latência B continuar alta)
 
 ```
-Etapa 0 — Hoje
-  Vercel (web) + Railway (API, EUA?) + Neon (sa-east-1)
+Etapa 0 — Antes (jun/2026)
+  Vercel (web) + Railway (API, EUA) + Neon (sa-east-1)
 
-Etapa 1 — Sprint 2 (recomendado)
-  Vercel (web) + Fly.io GRU (API) + Neon (sa-east-1) + Upstash Redis (sa-east-1)
+Etapa 1 — Atual (jul/2026) ✅
+  Vercel (web) + Fly.io GRU (API) + Neon (sa-east-1)
 
 Etapa 2 — Crescimento
-  + Staging + CI/CD + cache dashboard + SSE entregas
+  + Staging + Redis cache dashboard + SSE entregas
 
 Etapa 3 — Alto volume / fiscal
   VPS ou K8s em SP + Postgres dedicado (ou Neon scale)
@@ -200,10 +201,10 @@ Etapa 3 — Alto volume / fiscal
 
 Prioridade se o objetivo é **menos delay percebido agora**:
 
-1. [ ] Medir região Railway vs Neon (Bloco 1)
-2. [ ] Colocar API no Brasil ou região mais próxima (Bloco 2) — **maior ROI**
-3. [ ] Cache Redis no dashboard (Bloco 4) — **segundo maior ROI**
-4. [ ] Deploy seletivo no CI (Bloco 3) — melhora **delay de deploy**, não runtime
+1. [x] Colocar API no Brasil (Bloco 2) — **concluído jul/2026**
+2. [ ] Cache Redis no dashboard (Bloco 4) — **segundo maior ROI**
+3. [ ] Pausar Railway (fallback legado)
+4. [ ] Deploy seletivo no CI (Bloco 3) — ✅ concluído
 5. [ ] Explicar ao time que polling 15s é comportamento atual (tipo A)
 6. [ ] Sprint 3: SSE + invalidação de cache após vendas
 
@@ -226,7 +227,7 @@ Prioridade se o objetivo é **menos delay percebido agora**:
 |------|---------|
 | Polling web | `apps/web/src/hooks/use-live-query.ts` |
 | Dashboard pesado | `apps/api/src/modules/dashboard/dashboard.service.ts` |
-| Deploy API | `railway.toml` |
+| Deploy API | `fly.toml`, `Dockerfile`, `scripts/fly-deploy.sh` |
 | Deploy web | `apps/web/vercel.json` |
 | Prisma | `apps/api/src/prisma/prisma.service.ts` |
 | Pooler Neon | `DATABASE_URL` com `-pooler`; migrations via `DIRECT_URL` |

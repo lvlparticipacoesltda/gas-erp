@@ -30,6 +30,7 @@ export * from './deliverer-route-stats';
 export * from './deliverer-availability';
 export * from './payment-sum-hint';
 export * from './geo-distance';
+export * from './geo-polyline';
 export * from './business-day';
 export * from './types';
 export * from './fiscal/fiscal-provider';

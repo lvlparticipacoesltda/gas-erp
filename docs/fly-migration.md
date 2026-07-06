@@ -2,6 +2,8 @@
 
 Colocar a API em **São Paulo** (Fly.io `gru`), ao lado do Neon **sa-east-1**, para reduzir latência B (requests de ~1–3s para metas de <200ms–1,5s).
 
+**Status (jul/2026):** ✅ **Cutover concluído.** API em produção em `https://api.thlgasdopovo.com.br/api/v1`. Railway permanece como fallback legado até ser pausado.
+
 **Relacionado:** [infrastructure-plan.md](infrastructure-plan.md) · [deployment.md](deployment.md)
 
 ---
@@ -10,8 +12,8 @@ Colocar a API em **São Paulo** (Fly.io `gru`), ao lado do Neon **sa-east-1**, p
 
 | Antes | Depois |
 |-------|--------|
-| API no Railway (provavelmente EUA) | API no Fly.io **GRU** (São Paulo) |
-| `*.up.railway.app` | `gas-erp-api.fly.dev` + opcional `api.thlgasdopovo.com.br` |
+| API no Railway (EUA) | API no Fly.io **GRU** (São Paulo) |
+| `*.up.railway.app` | `api.thlgasdopovo.com.br` (+ `gas-erp-api.fly.dev`) |
 | Web na Vercel | **Sem mudança** |
 | Neon PostgreSQL | **Sem mudança** |
 
@@ -74,9 +76,14 @@ fly secrets set \
   WEB_URL='https://thlgasdopovo.com.br' \
   RESEND_API_KEY='re_...' \
   EMAIL_FROM='Gas ERP <noreply@thlgasdopovo.com.br>'
+
+# Obrigatório: ativar secrets (sem isso ficam "Staged" e a app não vê)
+fly secrets deploy
 ```
 
 > Use os **mesmos valores** do Railway. `WEB_URL` sem aspas e sem `/` no final.
+>
+> Após `fly secrets set`, confira `fly secrets list` — STATUS deve ser **Deployed**, não **Staged**.
 
 Opcional (observabilidade):
 
@@ -223,10 +230,34 @@ Se precisar reduzir custo em ambiente de teste, pode ligar `auto_stop_machines` 
 ### Deploy falha no release_command (migration)
 
 ```bash
-fly logs --release
+fly secrets list          # STATUS deve ser "Deployed", não "Staged"
+fly secrets deploy        # se estiver Staged
+fly deploy
+fly logs -a gas-erp-api -n   # logs recentes (não existe --release nesta versão do flyctl)
 ```
 
-Confirme `DATABASE_URL` (pooler) e `DIRECT_URL` (sem pooler) iguais ao Railway.
+Causas comuns:
+
+1. **Secrets em "Staged"** — rodar `fly secrets deploy` antes do `fly deploy`
+2. **`DATABASE_URL` ausente ou errada** — copiar do Railway (pooler)
+3. **Falta `DIRECT_URL`** no Neon (host sem `-pooler`) — migrations precisam dela
+4. **Build antigo** — `git pull` + `fly deploy` com `release-migrate.sh` atualizado
+
+> **Atenção:** se `fly secrets list` mostrar o **mesmo digest** para DATABASE_URL, JWT_SECRET e RESEND_API_KEY, você provavelmente colou o **mesmo valor** em todos — corrija com `fly secrets set` usando cada valor correto do Railway.
+
+Teste local (opcional):
+
+```bash
+DATABASE_URL='...' DIRECT_URL='...' bash scripts/release-migrate.sh
+```
+
+Se precisar deployar a app **sem** rodar migration (emergência):
+
+```bash
+fly deploy --release-command-timeout=5m --skip-release-command
+```
+
+> Use `--skip-release-command` só em emergência; o schema deve já estar atualizado.
 
 ### Health 502 / app não sobe
 
@@ -264,6 +295,6 @@ Se algo der errado após cutover na Vercel:
 
 ---
 
-## CI (futuro)
+## CI
 
-Deploy Fly pode ser automatizado com `fly deploy --remote-only` no GitHub Actions usando `FLY_API_TOKEN`. Por ora, deploy manual após merge em `main`.
+Deploy Fly pode ser automatizado com `fly deploy --remote-only` no GitHub Actions usando `FLY_API_TOKEN`. Por ora, deploy manual após merge em `main` (`bash scripts/fly-deploy.sh`). CI já valida build da API em `.github/workflows/ci.yml`.

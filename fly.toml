@@ -1,12 +1,17 @@
-# Fly.io — API NestJS em São Paulo (GRU), próximo ao Neon sa-east-1
-# Primeiro deploy: fly launch --copy-config --no-deploy  (ajuste app name se quiser)
-# Depois: fly secrets set ... && fly deploy
+# fly.toml app configuration file generated for gas-erp-api on 2026-07-03T10:39:10-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
 app = 'gas-erp-api'
 primary_region = 'gru'
 
 [build]
   dockerfile = 'Dockerfile'
+
+[deploy]
+  release_command = 'bash scripts/fly-release.sh'
+  release_command_timeout = '5m'
 
 [env]
   NODE_ENV = 'production'
@@ -29,8 +34,5 @@ primary_region = 'gru'
 
 [[vm]]
   memory = '512mb'
-  cpu_kind = 'shared'
   cpus = 1
-
-[deploy]
-  release_command = 'bash scripts/fly-release.sh'
+  memory_mb = 512

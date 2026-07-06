@@ -170,17 +170,19 @@ Aprovação: `POST /sales/:id/mobile/approve` (`canApproveMobileSales` — maste
 
 ## Métricas de entrega
 
-Calcula quanto tempo uma venda com entrega esperou até a rota começar:
+Calcula quanto tempo uma venda com entrega levou em cada fase:
 
-```text
-tempoEspera = delivery.startedAt - sale.createdAt
-```
+| Métrica | Cálculo | Rótulo na UI |
+|---------|---------|--------------|
+| Tempo até aceitar | `delivery.startedAt - sale.createdAt` | Enquanto `PENDING`, mostra tempo decorrido desde a venda |
+| Tempo em rota | `delivery.completedAt - delivery.startedAt` | Timer ativo durante `IN_PROGRESS` |
+| Tempo total da entrega | soma dos dois acima | Resumo diário, relatórios CSV e detalhe da venda |
 
 - `startedAt` é preenchido quando o entregador inicia a rota (`IN_PROGRESS`) no app.
-- Enquanto `PENDING`, mostra-se o tempo decorrido desde `sale.createdAt`.
 - Helpers puros em `packages/shared/src/delivery-metrics.ts`, reutilizados por API, web e app.
-- Resumo diário inclui **por entregador** (médias de espera e tempo em rota) e entregas lentas com nome do entregador.
+- Resumo diário inclui **por entregador** (médias e entregas lentas).
 - Margem bruta e receita líquida (após taxas de pagamento) no resumo e relatórios.
+- Painéis e relatórios contabilizam apenas **vendas efetivadas** (`DELIVERED`/`PORTARIA`) — ver `packages/shared/src/sale-counting.ts`.
 
 ## API
 
@@ -208,9 +210,9 @@ Base URL: `/api/v1`
 
 | | |
 |---|---|
-| Base | `https://gas-erpapi-production.up.railway.app/api/v1` |
+| Base | `https://api.thlgasdopovo.com.br/api/v1` (Fly.io GRU) |
 | Health | `GET /health` (público, sem auth) |
-| CORS | `WEB_URL` no Railway; callback suporta múltiplas origens separadas por vírgula |
+| CORS | `WEB_URL` no Fly; callback suporta múltiplas origens separadas por vírgula |
 
 ## Infraestrutura
 
@@ -219,7 +221,7 @@ thlgasdopovo.com.br  →  Vercel (Next.js apps/web)
        │
        │  NEXT_PUBLIC_API_URL
        ▼
-gas-erpapi-production.up.railway.app  →  NestJS apps/api
+api.thlgasdopovo.com.br  →  Fly.io GRU (NestJS apps/api)
        │
        ▼
 Neon PostgreSQL (sa-east-1)
@@ -233,7 +235,7 @@ E-mail (Resend): [resend-setup.md](resend-setup.md)
 
 21 migrations até jul/2026. Lista completa em [development.md](development.md#migrations-aplicadas).
 
-Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy. Use `DIRECT_URL` no Neon para migrations (ver [deployment.md](deployment.md)).
+Fly.io roda `scripts/fly-release.sh` → `release-migrate.sh` a cada deploy. Use `DIRECT_URL` no Neon para migrations (ver [deployment.md](deployment.md)).
 
 ## Status do produto (jul/2026)
 
@@ -254,12 +256,15 @@ Railway roda `pnpm db:deploy` no `releaseCommand` a cada deploy. Use `DIRECT_URL
 | Data retroativa com aprovação | ✅ |
 | Filtro De/Até no resumo (loja + master) + auto-refresh 15s | ✅ |
 | Paginação nas listas | ✅ |
-| Métricas tempo até rota + por entregador (realizadas/canceladas) | ✅ `delivery-metrics.ts` |
+| Métricas tempo até aceitar / em rota / total + por entregador | ✅ `delivery-metrics.ts` |
+| Vendas efetivadas em painéis e relatórios | ✅ `sale-counting.ts` |
 | GPS stale + alerta quando posição para | ✅ |
 | App entregador MVP | ✅ Emulador + EAS preview APK |
 | Push FCM (nova rota / cancelamento / lembrete) | ✅ |
 | Páginas privacidade e exclusão de conta | ✅ |
 | Play Store (Google Play) | ✅ Publicado jul/2026 |
+| API regional Fly.io GRU | ✅ `api.thlgasdopovo.com.br` jul/2026 |
+| Branding web (ícones, favicon, loading) | ✅ jul/2026 |
 
 Roadmap e sprints: [roadmap.md](roadmap.md)
 

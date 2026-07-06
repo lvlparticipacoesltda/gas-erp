@@ -12,6 +12,7 @@ export interface StorePaymentMethodOption {
   id: string;
   label: string;
   systemCode: string | null;
+  enabled?: boolean;
 }
 
 export interface PaymentLine {
@@ -29,6 +30,10 @@ interface SalePaymentsEditorProps {
   loadingMethods?: boolean;
   methodsError?: string;
   gdpLocked?: boolean;
+  /** Exibe GDP como opção selecionável nas formas de pagamento. */
+  showGdpOption?: boolean;
+  /** Disparado quando o entregador escolhe GDP em uma linha de pagamento. */
+  onGdpSelected?: () => void;
 }
 
 export function newPaymentLineKey() {
@@ -72,11 +77,15 @@ export function paymentLinesToPayload(lines: PaymentLine[]) {
 export function resolveEditorMethods(
   methods: StorePaymentMethodOption[],
   gdpLocked: boolean,
+  showGdpOption = false,
 ): StorePaymentMethodOption[] {
   if (gdpLocked) {
     return methods.filter((m) => m.systemCode === 'GDP');
   }
-  return methods.filter((m) => m.systemCode !== 'GDP');
+  const regular = methods.filter((m) => m.systemCode !== 'GDP');
+  if (!showGdpOption) return regular;
+  const gdp = methods.find((m) => m.systemCode === 'GDP');
+  return gdp ? [...regular, gdp] : regular;
 }
 
 export function SalePaymentsEditor({
@@ -88,10 +97,12 @@ export function SalePaymentsEditor({
   loadingMethods = false,
   methodsError,
   gdpLocked = false,
+  showGdpOption = false,
+  onGdpSelected,
 }: SalePaymentsEditorProps) {
   const availableMethods = useMemo(
-    () => resolveEditorMethods(methods, gdpLocked),
-    [methods, gdpLocked],
+    () => resolveEditorMethods(methods, gdpLocked, showGdpOption),
+    [methods, gdpLocked, showGdpOption],
   );
 
   const paidTotal = useMemo(
@@ -168,7 +179,10 @@ export function SalePaymentsEditor({
                   key={method.id}
                   disabled={disabled}
                   style={[styles.methodChip, selected && styles.methodChipSelected]}
-                  onPress={() => updateLine(line.key, { storePaymentMethodId: method.id })}
+                  onPress={() => {
+                    if (method.systemCode === 'GDP') onGdpSelected?.();
+                    updateLine(line.key, { storePaymentMethodId: method.id });
+                  }}
                 >
                   <Text style={[styles.methodChipText, selected && styles.methodChipTextSelected]}>
                     {method.label}

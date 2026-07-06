@@ -67,6 +67,7 @@ interface MobileSaleRow {
   total: number | string;
   mobileApproval: string;
   status: string;
+  gasDoPovoBenefit?: boolean;
   store?: { id: string; name: string; code: string };
   customer?: { name: string } | null;
   items: { quantity: number; product: { name: string } }[];
@@ -211,12 +212,10 @@ export default function NewSaleScreen() {
     setPaymentLines([]);
     setLoadingPaymentMethods(true);
     setPaymentMethodsError('');
-    api<StorePaymentMethodOption[]>(
-      `/stores/${storeId}/payment-methods?activeOnly=${gasDoPovoBenefit ? 'false' : 'true'}`,
-    )
+    api<StorePaymentMethodOption[]>(`/stores/${storeId}/payment-methods?activeOnly=false`)
       .then((rows) => {
         setAllPaymentMethods(rows);
-        const regular = rows.filter((m) => m.systemCode !== 'GDP');
+        const regular = rows.filter((m) => m.systemCode !== 'GDP' && m.enabled !== false);
         setPaymentMethods(regular);
         if (!gasDoPovoBenefit) {
           setPaymentLines(createDefaultPaymentLines(regular, saleTotal));
@@ -233,17 +232,25 @@ export default function NewSaleScreen() {
       .finally(() => setLoadingPaymentMethods(false));
     // Recarrega formas ao trocar de loja; saleTotal é aplicado no efeito abaixo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, gasDoPovoBenefit]);
+  }, [storeId]);
 
   useEffect(() => {
     if (!gasDoPovoBenefit) return;
-    if (!gdpPaymentMethod) {
+    if (gdpPaymentMethod) {
+      setPaymentLines(createGdpPaymentLines(gdpPaymentMethod.id, allPaymentMethods, saleTotal));
+    } else {
       setPaymentLines([]);
-      return;
     }
-    setPaymentLines(createGdpPaymentLines(gdpPaymentMethod.id, allPaymentMethods, saleTotal));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gasDoPovoBenefit, gdpPaymentMethod?.id, saleTotal, allPaymentMethods.length]);
+
+  function enableGdpBenefit() {
+    setGasDoPovoBenefit(true);
+  }
+
+  function toggleGdpBenefit() {
+    setGasDoPovoBenefit((current) => !current);
+  }
 
   useEffect(() => {
     if (gasDoPovoBenefit) return;
@@ -496,10 +503,6 @@ export default function NewSaleScreen() {
       setError('Informe um preço válido para o benefício Gás do Povo.');
       return;
     }
-    if (gasDoPovoBenefit && !gdpPaymentMethod) {
-      setError('Forma GDP não configurada nesta loja. Contate o gestor.');
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -513,7 +516,9 @@ export default function NewSaleScreen() {
           gasDoPovoBenefit,
           items: [{ productId, quantity: qty, unitPrice }],
           payments: gasDoPovoBenefit
-            ? [{ storePaymentMethodId: gdpPaymentMethod!.id, amount: saleTotal }]
+            ? gdpPaymentMethod
+              ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: saleTotal }]
+              : [{ method: 'GDP', amount: saleTotal }]
             : paymentLinesToPayload(paymentLines),
           deliveryStreet: fulfillment === 'DELIVERY' ? deliveryStreet : undefined,
           deliveryNumber: fulfillment === 'DELIVERY' ? deliveryNumber : undefined,
@@ -525,6 +530,8 @@ export default function NewSaleScreen() {
       });
       setSuccess('Venda enviada — aguardando aprovação da loja.');
       setNotes('');
+      setGasDoPovoBenefit(false);
+      setGdpUnitPrice('');
       setPaymentLines(createDefaultPaymentLines(paymentMethods, saleTotal));
       clearCustomerSelection();
       await loadData();
@@ -740,7 +747,7 @@ export default function NewSaleScreen() {
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Benefício Gás do Povo</Text>
         <Pressable
-          onPress={() => setGasDoPovoBenefit((v) => !v)}
+          onPress={toggleGdpBenefit}
           style={[styles.gdpToggle, gasDoPovoBenefit && styles.gdpToggleActive]}
         >
           <Text style={[styles.gdpToggleTitle, gasDoPovoBenefit && styles.gdpToggleTitleActive]}>
@@ -748,7 +755,7 @@ export default function NewSaleScreen() {
           </Text>
           <Text style={[styles.gdpToggleHint, gasDoPovoBenefit && styles.gdpToggleHintActive]}>
             {gasDoPovoBenefit
-              ? 'Você pode ajustar o preço unitário acima'
+              ? 'Ajuste o preço unitário acima ou selecione GDP nas formas de pagamento'
               : `Preço fixo: ${catalogUnitPrice > 0 ? formatCurrency(catalogUnitPrice) : '—'}`}
           </Text>
         </Pressable>
@@ -757,7 +764,7 @@ export default function NewSaleScreen() {
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Formas de pagamento</Text>
         <SalePaymentsEditor
-          methods={gasDoPovoBenefit ? allPaymentMethods : paymentMethods}
+          methods={allPaymentMethods}
           lines={paymentLines}
           onChange={setPaymentLines}
           saleTotal={saleTotal}
@@ -765,6 +772,8 @@ export default function NewSaleScreen() {
           loadingMethods={loadingPaymentMethods}
           methodsError={paymentMethodsError}
           gdpLocked={gasDoPovoBenefit}
+          showGdpOption={Boolean(gdpPaymentMethod)}
+          onGdpSelected={enableGdpBenefit}
         />
         {gasDoPovoBenefit ? (
           <Text style={styles.hint}>
@@ -922,7 +931,12 @@ export default function NewSaleScreen() {
             return (
               <Card style={styles.pendingCard}>
                 <View style={styles.pendingHeader}>
-                  <Badge label={display.label} tone={display.tone} />
+                  <View style={styles.pendingBadges}>
+                    <Badge label={display.label} tone={display.tone} />
+                    {item.gasDoPovoBenefit ? (
+                      <Badge label="GDP" tone="warning" />
+                    ) : null}
+                  </View>
                   <Text style={styles.pendingDate}>
                     {new Date(item.createdAt).toLocaleString('pt-BR')}
                   </Text>
@@ -1073,6 +1087,7 @@ const styles = StyleSheet.create({
   },
   pendingCard: { gap: spacing.xs },
   pendingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  pendingBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, flex: 1 },
   pendingDate: { fontSize: 11, color: colors.textFaint },
   pendingStore: {
     fontSize: 12,

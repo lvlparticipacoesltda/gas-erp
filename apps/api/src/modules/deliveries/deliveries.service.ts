@@ -1,10 +1,16 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { deliveryTrackingSchema, updateDeliveryStatusSchema } from '@gas-erp/shared';
+import {
+  deliveryRouteQuerySchema,
+  deliveryTrackingSchema,
+  updateDeliveryStatusSchema,
+} from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { getDeliveryPhaseMetrics } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
+import { GeocodingService } from '../../common/geocoding/geocoding.service';
+import { RoutingService } from '../../common/routing/routing.service';
 
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
 
@@ -46,13 +52,42 @@ function withDeliveryMetrics<T extends DeliveryWithSale>(delivery: T, now: Date)
   return {
     ...delivery,
     deliveryAddress: buildDeliveryAddress(delivery.sale),
+    destination: null as { latitude: number; longitude: number } | null,
     ...metrics,
   };
 }
 
+async function resolveDestination(
+  geocoding: GeocodingService,
+  sale: {
+    deliveryStreet: string | null;
+    deliveryNumber: string | null;
+    deliveryNeighborhood: string | null;
+    deliveryCity: string | null;
+    deliveryState: string | null;
+  },
+): Promise<{ latitude: number; longitude: number } | null> {
+  if (!sale.deliveryStreet?.trim() || !sale.deliveryCity?.trim() || !sale.deliveryState?.trim()) {
+    return null;
+  }
+  const result = await geocoding.geocodeAddress({
+    street: sale.deliveryStreet,
+    number: sale.deliveryNumber ?? undefined,
+    neighborhood: sale.deliveryNeighborhood ?? undefined,
+    city: sale.deliveryCity,
+    state: sale.deliveryState,
+  });
+  if (!result) return null;
+  return { latitude: result.latitude, longitude: result.longitude };
+}
+
 @Injectable()
 export class DeliveriesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private geocoding: GeocodingService,
+    private routing: RoutingService,
+  ) {}
 
   async findByStore(user: AuthUser, storeId: string) {
     assertStoreAccess(user, storeId);
@@ -100,7 +135,57 @@ export class DeliveriesService {
     });
 
     const now = new Date();
-    return deliveries.map((delivery) => withDeliveryMetrics(delivery, now));
+    const enriched = await Promise.all(
+      deliveries.map(async (delivery) => {
+        const base = withDeliveryMetrics(delivery, now);
+        const destination = await resolveDestination(this.geocoding, delivery.sale);
+        return { ...base, destination };
+      }),
+    );
+    return enriched;
+  }
+
+  async getRouteForDelivery(
+    user: AuthUser,
+    deliveryId: string,
+    query: unknown,
+  ) {
+    const { originLat, originLng } = deliveryRouteQuerySchema.parse(query);
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: {
+        deliverer: true,
+        sale: {
+          select: {
+            storeId: true,
+            deliveryStreet: true,
+            deliveryNumber: true,
+            deliveryNeighborhood: true,
+            deliveryCity: true,
+            deliveryState: true,
+            store: { select: { organizationId: true } },
+          },
+        },
+      },
+    });
+    if (!delivery || delivery.sale.store.organizationId !== user.organizationId) {
+      throw new NotFoundException('Entrega não encontrada');
+    }
+    if (delivery.deliverer.userId !== user.id && user.role !== 'ORG_MASTER') {
+      throw new ForbiddenException('Sem permissão');
+    }
+
+    const destination = await resolveDestination(this.geocoding, delivery.sale);
+    if (!destination) {
+      throw new NotFoundException('Destino sem coordenadas. Verifique o endereço da venda.');
+    }
+
+    return this.routing.getRoute(
+      originLat,
+      originLng,
+      destination.latitude,
+      destination.longitude,
+    );
   }
 
   async addTrackingPoint(user: AuthUser, deliveryId: string, input: unknown) {

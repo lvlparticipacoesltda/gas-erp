@@ -163,7 +163,8 @@ Requer FCM configurado — ver [mobile-push-fcm.md](mobile-push-fcm.md).
 ### Deliveries (app entregador)
 
 - `GET /deliveries?storeId=...` — entregas ativas da loja (`PENDING` / `IN_PROGRESS`)
-- `GET /deliveries/my` — entregas do entregador logado (não canceladas)
+- `GET /deliveries/my` — entregas do entregador logado; inclui `destination: { latitude, longitude } | null` (geocodificado)
+- `GET /deliveries/:id/route?originLat=&originLng=` — rota Google Directions (`encodedPolyline`, `distanceMeters`, `durationSeconds`, `bounds`)
 - `POST /deliveries/:id/tracking` — `{ latitude, longitude, accuracy? }`
 - `GET /deliveries/:id/tracking` — histórico GPS
 - `PATCH /deliveries/:id/status` — `{ status: IN_PROGRESS | DELIVERED | CANCELLED }`
@@ -201,5 +202,5 @@ A API retorna mensagens estruturadas; o front normaliza em `apps/web/src/lib/err
 ## Produção
 
 ```
-https://gas-erpapi-production.up.railway.app/api/v1
+https://api.thlgasdopovo.com.br/api/v1
 ```

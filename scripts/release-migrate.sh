@@ -1,40 +1,33 @@
 #!/usr/bin/env bash
-# Aplica prisma migrate deploy somente se houver migrations pendentes.
+# Aplica prisma migrate deploy (idempotente — OK se schema já estiver atualizado).
 # Usado no Railway, Fly.io release_command e deploy manual.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+DB_DIR="$ROOT/packages/database"
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
-  echo "DATABASE_URL não definida"
+  echo "ERROR: DATABASE_URL não definida."
+  echo "Fly: fly secrets set DATABASE_URL='...' DIRECT_URL='...'"
   exit 1
 fi
 
-run_prisma() {
-  if [[ -f "$ROOT/package.json" ]] && command -v pnpm >/dev/null 2>&1; then
-    pnpm --filter @gas-erp/database exec prisma "$@"
-  else
-    cd "$ROOT/packages/database"
-    npx prisma "$@"
-  fi
-}
-
-echo "==> Verificando migrations pendentes..."
-
-STATUS="$(run_prisma migrate status 2>&1 || true)"
-
-if echo "$STATUS" | grep -q "Database schema is up to date"; then
-  echo "==> Schema atual — pulando prisma migrate deploy"
-  exit 0
+if [[ ! -f "$DB_DIR/prisma/schema.prisma" ]]; then
+  echo "ERROR: schema Prisma não encontrado em $DB_DIR/prisma"
+  exit 1
 fi
 
-if echo "$STATUS" | grep -q "Following migration"; then
-  echo "==> Migrations pendentes — aplicando..."
-  run_prisma migrate deploy
-  exit 0
+cd "$DB_DIR"
+
+echo "==> Prisma migrate deploy"
+echo "==> DATABASE_URL host: $(node -pe "try{new URL(process.env.DATABASE_URL).hostname}catch{''}" 2>/dev/null || echo '?')"
+if [[ -n "${DIRECT_URL:-}" ]]; then
+  echo "==> DIRECT_URL: definida (recomendado para Neon)"
+else
+  echo "==> AVISO: DIRECT_URL não definida — migrations no Neon podem falhar sem host directo"
 fi
 
-echo "==> Status inesperado do prisma migrate status:"
-echo "$STATUS"
-exit 1
+# migrate deploy é idempotente; evita fragilidade do migrate status + grep no Fly
+npx prisma migrate deploy
+
+echo "==> Migrations OK"

@@ -14,3 +14,29 @@ export const updateDeliveryStatusSchema = z.object({
 });
 
 export type DeliveryTrackingInput = z.infer<typeof deliveryTrackingSchema>;
+
+export const deliveryDestinationSchema = z.object({
+  latitude: z.number(),
+  longitude: z.number(),
+});
+
+export const deliveryRouteQuerySchema = z.object({
+  originLat: z.coerce.number().min(-90).max(90),
+  originLng: z.coerce.number().min(-180).max(180),
+});
+
+export const deliveryRouteBoundsSchema = z.object({
+  northeast: deliveryDestinationSchema,
+  southwest: deliveryDestinationSchema,
+});
+
+export const deliveryRouteResponseSchema = z.object({
+  encodedPolyline: z.string(),
+  distanceMeters: z.number(),
+  durationSeconds: z.number(),
+  bounds: deliveryRouteBoundsSchema,
+});
+
+export type DeliveryDestination = z.infer<typeof deliveryDestinationSchema>;
+export type DeliveryRouteQuery = z.infer<typeof deliveryRouteQuerySchema>;
+export type DeliveryRouteResponse = z.infer<typeof deliveryRouteResponseSchema>;

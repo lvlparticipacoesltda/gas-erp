@@ -10,41 +10,16 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 |------|--------|---------|
 | Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
 | Banco PostgreSQL (Neon) | ✅ | 21 migrations aplicadas em produção |
-| API (Railway) | ✅ | `https://gas-erpapi-production.up.railway.app` |
+| API (Fly.io GRU) | ✅ | `https://api.thlgasdopovo.com.br` — ver [fly-migration.md](fly-migration.md) |
+| API (Railway — legado) | ⏳ | `gas-erpapi-production.up.railway.app` — pausar após 24–48h estáveis no Fly |
 | Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
 | Domínio customizado | ✅ | `https://thlgasdopovo.com.br` → Vercel (DNS Hostinger) |
+| Subdomínio `api.` | ✅ | `api.thlgasdopovo.com.br` → Fly.io GRU |
 | CORS | ✅ | Callback multi-origin; `WEB_URL=https://thlgasdopovo.com.br` |
 | Health check | ✅ | `GET /api/v1/health` |
 | Login e fluxos MVP | ✅ | Validado pelo cliente |
-| Minha conta + troca de senha | ✅ | `/master/settings` e `/store/[id]/settings` |
-| Recuperação de senha (código) | ✅ | Resend integrado; ver [resend-setup.md](resend-setup.md) |
-| Permissões por tela (RBAC) | ✅ | Ver [rbac.md](rbac.md) |
-| Usuário ↔ múltiplas lojas | ✅ | `StoreMultiSelect` com checkboxes |
-| Subdomínio `api.` | ⏳ | API ainda na URL `*.up.railway.app` (opcional) |
+| CI (GitHub Actions) | ✅ | Build seletivo API/web em PR e push — `.github/workflows/ci.yml` |
 | Subdomínio `www` | ⏳ | Redirecionar `www` → apex ou incluir no CORS |
-| Domínio Resend verificado | ✅ | E-mails de recuperação de senha funcionando |
-| Senhas demo | ✅ | Trocadas em produção (jul/2026) |
-| CI/CD (GitHub Actions) | ⏳ | Deploy manual via push |
-| Módulo fiscal | ⏳ | Fase 2 |
-| Sidebar entregas + métricas espera/rota + por entregador | ✅ | `delivery-metrics.ts` no dashboard e listagens |
-| Resumo diário filtro De/Até (loja + master consolidado) + auto-refresh 15s | ✅ | `business-day.ts`, `useLiveQuery` |
-| Paginação nas listas + loading ao filtrar período | ✅ | Server-side 20/pág; resumo client-side 15/pág |
-| Venda: Portaria, GDP, Gás do Povo, data retroativa | ✅ | Ver migrations jun/2026 |
-| Fornecedores + compras (notas de entrada) | ✅ | Migrations `supplier`, `purchase_invoice` |
-| Relatórios (vendas, compras, estoque) + CSV | ✅ | `apps/api/src/modules/reports` |
-| Formas de pagamento por loja + taxas + receita líquida | ✅ | Migration `store_payment_methods` |
-| Custo fornecedor + margem bruta | ✅ | Migration `product_supplier_cost` |
-| Clientes por loja + preço por cliente | ✅ | Migrations `customer_per_store`, `customer_product_prices` |
-| Mapa de entregadores (presença GPS) | ✅ | Migration `deliverer_presence` |
-| Venda pelo app entregador com aprovação | ✅ | Migration `sale_mobile_approval` |
-| Entregador N:N unidades (`DelivererStore`) | ✅ | Migration `20260625120000_deliverer_multi_store` |
-| Push notifications (Expo + FCM) | ✅ | Nova rota / cancelamento / lembrete — ver [mobile-push-fcm.md](mobile-push-fcm.md) |
-| Pagamentos múltiplos + geocoding + sugestão entregador | ✅ | jul/2026 |
-| Inativar vs excluir cadastros | ✅ | Usuários, lojas, clientes, entregadores — jul/2026 |
-| Aba entregadores no painel master | ✅ | `/master/deliverers` — jul/2026 |
-| Páginas privacidade e exclusão de conta | ✅ | Play Store — jul/2026 |
-| App entregador (Expo) | ✅ | Publicado na Google Play (jul/2026) |
-| App cliente | ⏳ | Fase 2 |
 
 > **Guia de desenvolvimento local e mobile:** [development.md](development.md)
 
@@ -52,38 +27,39 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 
 | Commit | Descrição |
 |--------|-----------|
-| `e65fc5a` | Exclusão de entregadores; cascade ao excluir loja |
-| `d01cd41` | Separa inativar e excluir (usuários, lojas, clientes) |
-| `9a0aa5f` | Aba entregadores no painel master |
-| `5806b96` | GPS stale + alerta quando posição para |
-| `c77b799` | Pagamentos múltiplos, geocoding, sugestão entregador |
-| `ddc7810` | Páginas públicas privacidade e exclusão de conta |
-| `43d33b9` | Clientes por loja |
-| `54c4e83` | Formas de pagamento + taxas + receita líquida |
+| `f427a17` | Métricas de entrega renomeadas + tempo total da entrega |
+| `4bbf3dd` | Vendas efetivadas contabilizadas corretamente em painéis e relatórios |
+| `a2787ab` | Mobile aponta para `api.thlgasdopovo.com.br` (Fly) |
+| `123314b` | Deploy da API no Fly.io GRU |
+| `51db304` | Otimização de latência + deploy seletivo (Sprint 2) |
+| `c2ca6c6` | Ícones e logos da marca no painel web |
 
 ### URLs de produção
 
 | Serviço | URL |
 |---------|-----|
 | **App (login)** | https://thlgasdopovo.com.br/login |
-| **API** | https://gas-erpapi-production.up.railway.app/api/v1 |
-| **Health** | https://gas-erpapi-production.up.railway.app/api/v1/health |
-| **API (Fly GRU — migração)** | https://gas-erp-api.fly.dev/api/v1 — ver [fly-migration.md](fly-migration.md) |
+| **API** | https://api.thlgasdopovo.com.br/api/v1 |
+| **Health** | https://api.thlgasdopovo.com.br/api/v1/health |
+| **API (Fly direto)** | https://gas-erp-api.fly.dev/api/v1 |
+| **API (Railway — legado)** | https://gas-erpapi-production.up.railway.app/api/v1 |
 | **Vercel (backup)** | https://gas-erp-web.vercel.app |
+
+**Latência medida (jul/2026):** health ~59 ms · login ~171 ms · dashboard master ~71 ms (antes no Railway: ~1–3 s).
 
 ### Variáveis configuradas
 
 | Variável | Onde | Valor atual |
 |----------|------|-------------|
-| `DATABASE_URL` | Railway | Neon pooler (`sslmode=require`) |
-| `DIRECT_URL` | Railway | ✅ Neon sem `-pooler` (migrations) |
-| `JWT_SECRET` | Railway | gerado (`openssl rand -base64 48`) |
-| `JWT_EXPIRES_IN` | Railway | `7d` |
-| `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
-| `NODE_ENV` | Railway | `production` |
-| `RESEND_API_KEY` | Railway | chave Resend (recuperação de senha) |
-| `EMAIL_FROM` | Railway | `Gas ERP <noreply@thlgasdopovo.com.br>` |
-| `NEXT_PUBLIC_API_URL` | Vercel | `https://gas-erpapi-production.up.railway.app/api/v1` |
+| `DATABASE_URL` | Fly | Neon pooler (`sslmode=require`) |
+| `DIRECT_URL` | Fly | Neon sem `-pooler` (migrations) |
+| `JWT_SECRET` | Fly | gerado (`openssl rand -base64 48`) |
+| `JWT_EXPIRES_IN` | Fly | `7d` |
+| `WEB_URL` | Fly | `https://thlgasdopovo.com.br` |
+| `NODE_ENV` | Fly | `production` |
+| `RESEND_API_KEY` | Fly | chave Resend (recuperação de senha) |
+| `EMAIL_FROM` | Fly | `Gas ERP <noreply@thlgasdopovo.com.br>` |
+| `NEXT_PUBLIC_API_URL` | Vercel | `https://api.thlgasdopovo.com.br/api/v1` |
 
 ### Arquitetura em produção (atual)
 
@@ -95,7 +71,7 @@ thlgasdopovo.com.br  ──►  Hostinger DNS  ──►  Vercel (Next.js)
    │
    │  NEXT_PUBLIC_API_URL
    ▼
-gas-erpapi-production.up.railway.app  ──►  Railway (NestJS)
+api.thlgasdopovo.com.br  ──►  Fly.io GRU (NestJS, apps/api)
    │
    ▼
 Neon PostgreSQL (sa-east-1)
@@ -107,8 +83,8 @@ Neon PostgreSQL (sa-east-1)
 
 | Fase | Cenário | Sugestão |
 |------|---------|----------|
-| **Agora** | MVP real, 1 rede, poucas lojas | **Vercel + Railway + Neon** — sem VPS |
-| **Crescimento** | Mais lojas, GPS tempo real, filas | Manter web na Vercel; API em VPS ou Fly; Redis (Upstash) |
+| **Agora** | MVP real, 1 rede, poucas lojas | **Vercel + Fly.io GRU + Neon** — API e banco no Brasil |
+| **Crescimento** | Mais lojas, GPS tempo real, filas | Manter web na Vercel; + Redis (Upstash sa-east-1), staging, Sentry |
 | **Muito volume** | Fiscal, integrações pesadas | VPS ou Kubernetes com Postgres gerenciado |
 
 ### Arquitetura alvo (com subdomínios)
@@ -121,13 +97,13 @@ app.SEUDOMINIO  ──►  Vercel (Next.js apps/web)
    │
    │  NEXT_PUBLIC_API_URL
    ▼
-api.SEUDOMINIO  ──►  Railway (NestJS apps/api)
+api.SEUDOMINIO  ──►  Fly.io GRU (NestJS apps/api)
    │
    ▼
 Neon PostgreSQL
 ```
 
-Hoje o domínio raiz (`thlgasdopovo.com.br`) aponta direto para a Vercel. O subdomínio `api.` no Railway é opcional e pode ser configurado depois.
+Hoje o domínio raiz (`thlgasdopovo.com.br`) aponta para a Vercel e `api.thlgasdopovo.com.br` aponta para o Fly.io GRU.
 
 ---
 
@@ -144,16 +120,17 @@ App React Native (Expo SDK 56 + `expo-router`) usado pelos entregadores para ver
 
 | Variável | Onde | Valor |
 |----------|------|-------|
-| `EXPO_PUBLIC_API_URL` | `apps/mobile/.env` ou perfil EAS | URL base da API **incluindo `/api/v1`**. Default no código aponta para produção (`https://gas-erpapi-production.up.railway.app/api/v1`) |
+| `EXPO_PUBLIC_API_URL` | `apps/mobile/.env` ou perfil EAS | URL base da API **incluindo `/api/v1`**. Default: `https://api.thlgasdopovo.com.br/api/v1` |
 
 > Variáveis `EXPO_PUBLIC_*` são embutidas no bundle em build/start. Ao mudar o valor, reinicie o `expo start` ou gere um novo build EAS.
 
 `.env` local (ver [`apps/mobile/.env.example`](../apps/mobile/.env.example)):
 
 ```env
-# Default já aponta para produção; descomente para apontar para a API local
+# Default aponta para produção (Fly.io GRU)
+EXPO_PUBLIC_API_URL=https://api.thlgasdopovo.com.br/api/v1
+# Descomente para API local:
 # EXPO_PUBLIC_API_URL=http://localhost:3001/api/v1
-EXPO_PUBLIC_API_URL=https://gas-erpapi-production.up.railway.app/api/v1
 ```
 
 > Para testar contra a API local em um dispositivo físico, use o IP da máquina na rede (ex.: `http://192.168.0.10:3001/api/v1`), não `localhost`.
@@ -225,10 +202,12 @@ npx eas build -p android --profile production
 
 - Conta [GitHub](https://github.com) com o repositório `gas-erp`
 - Conta [Neon](https://neon.tech) (PostgreSQL)
-- Conta [Railway](https://railway.app) (API)
+- Conta [Fly.io](https://fly.io) (API — região GRU)
 - Conta [Vercel](https://vercel.com) (Web)
 - Domínio próprio com acesso ao DNS
 - Node.js 20+ e pnpm 9+ no Mac (para migrations/seed locais)
+
+> Railway ainda pode existir como fallback legado; novos deploys da API devem usar Fly.io — ver [fly-migration.md](fly-migration.md).
 
 ---
 
@@ -250,17 +229,17 @@ NEXT_PUBLIC_API_URL="http://localhost:3001/api/v1"
 
 | Variável | Onde | Exemplo |
 |----------|------|---------|
-| `DATABASE_URL` | Railway | `postgresql://...@ep-xxx-pooler.neon.tech/...?sslmode=require` |
-| `DIRECT_URL` | Railway | `postgresql://...@ep-xxx.neon.tech/...?sslmode=require` (sem pooler) |
-| `JWT_SECRET` | Railway | string longa aleatória (`openssl rand -base64 48`) |
-| `JWT_EXPIRES_IN` | Railway | `7d` |
-| `WEB_URL` | Railway | `https://thlgasdopovo.com.br` |
-| `NODE_ENV` | Railway | `production` |
-| `RESEND_API_KEY` | Railway | chave da [Resend](https://resend.com) (recuperação de senha) |
-| `EMAIL_FROM` | Railway | `Gas ERP <noreply@thlgasdopovo.com.br>` (domínio verificado na Resend) |
-| `NEXT_PUBLIC_API_URL` | Vercel | `https://gas-erpapi-production.up.railway.app/api/v1` |
+| `DATABASE_URL` | Fly | `postgresql://...@ep-xxx-pooler.neon.tech/...?sslmode=require` |
+| `DIRECT_URL` | Fly | `postgresql://...@ep-xxx.neon.tech/...?sslmode=require` (sem pooler) |
+| `JWT_SECRET` | Fly | string longa aleatória (`openssl rand -base64 48`) |
+| `JWT_EXPIRES_IN` | Fly | `7d` |
+| `WEB_URL` | Fly | `https://thlgasdopovo.com.br` |
+| `NODE_ENV` | Fly | `production` |
+| `RESEND_API_KEY` | Fly | chave da [Resend](https://resend.com) (recuperação de senha) |
+| `EMAIL_FROM` | Fly | `Gas ERP <noreply@thlgasdopovo.com.br>` (domínio verificado na Resend) |
+| `NEXT_PUBLIC_API_URL` | Vercel | `https://api.thlgasdopovo.com.br/api/v1` |
 
-Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
+Fly injeta `PORT` automaticamente via `fly.toml` (`8080`). Railway (legado) usava `PORT` ou `API_PORT`.
 
 ---
 
@@ -292,31 +271,30 @@ Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
    openssl rand -base64 48
    ```
 
-### Fase B — API no Railway
+### Fase B — API no Fly.io (GRU)
+
+Guia completo: **[fly-migration.md](fly-migration.md)**
+
+Resumo:
+
+1. `fly auth login` e `fly launch --copy-config --no-deploy` (região **gru**)
+2. `fly secrets set` com as mesmas variáveis do Neon/JWT/Resend + `fly secrets deploy`
+3. `bash scripts/fly-deploy.sh` (ou `fly deploy`)
+4. `fly certs add api.thlgasdopovo.com.br` + CNAME no DNS
+5. Vercel: `NEXT_PUBLIC_API_URL=https://api.thlgasdopovo.com.br/api/v1` + redeploy
+6. Validar health, login, dashboard; pausar Railway quando estável
+
+### Fase B (legado) — API no Railway
+
+<details>
+<summary>Instruções históricas — Railway (substituído pelo Fly.io em jul/2026)</summary>
 
 1. [Railway](https://railway.app) → **New Project** → **Deploy from GitHub** → selecione `gas-erp`.
+2. O arquivo [`railway.toml`](../railway.toml) na raiz define build, migrations (`releaseCommand`) e start do monorepo.
+3. Configure `DATABASE_URL`, `JWT_SECRET`, `WEB_URL`, etc.
+4. URL legada: `https://gas-erpapi-production.up.railway.app`
 
-2. O arquivo [`railway.toml`](../railway.toml) na raiz define build, migrations (`releaseCommand`) e start do monorepo. O build usa `pnpm install --prod=false` porque ferramentas como Prisma CLI, TypeScript e Nest CLI ficam em `devDependencies`.
-
-3. Em **Variables**, configure:
-   - `DATABASE_URL` — Neon
-   - `JWT_SECRET` — valor gerado no passo A.5
-   - `JWT_EXPIRES_IN` — `7d`
-   - `WEB_URL` — `https://app.SEUDOMINIO` (ou URL Vercel temporária até o DNS). **Sem aspas** e sem barra no final. Ex.: `https://gas-erp.vercel.app`
-   - `NODE_ENV` — `production`
-
-4. Aguarde o deploy e anote a URL `*.up.railway.app`.
-
-5. Teste a API:
-   ```bash
-   # Health check (sem autenticação)
-   curl https://gas-erpapi-production.up.railway.app/api/v1/health
-
-   # Login
-   curl -X POST https://gas-erpapi-production.up.railway.app/api/v1/auth/login \
-     -H "Content-Type: application/json" \
-     -d '{"email":"master@gas.com","password":"admin123"}'
-   ```
+</details>
 
 ### Fase C — Web na Vercel
 
@@ -340,8 +318,8 @@ Railway injeta `PORT` automaticamente — a API usa `PORT` ou `API_PORT`.
 
 1. **Hostinger** → DNS apontando para a Vercel (nameservers ou registros indicados pela Vercel).
 2. **Vercel** → Settings → Domains → `thlgasdopovo.com.br` adicionado e validado.
-3. **Railway** → `WEB_URL=https://thlgasdopovo.com.br` (sem aspas, sem `/` no final).
-4. **Vercel** → `NEXT_PUBLIC_API_URL=https://gas-erpapi-production.up.railway.app/api/v1` + redeploy.
+3. **Fly** → `WEB_URL=https://thlgasdopovo.com.br` (sem aspas, sem `/` no final).
+4. **Vercel** → `NEXT_PUBLIC_API_URL=https://api.thlgasdopovo.com.br/api/v1` + redeploy.
 
 > **Importante:** variáveis `NEXT_PUBLIC_*` são embutidas no build do Next.js. Sempre **redeploy** na Vercel após alterá-las.
 
@@ -353,16 +331,16 @@ No painel DNS da **Hostinger**:
 |------------|------|---------|
 | `@` (raiz) | A / CNAME | valor indicado pela Vercel |
 | `www` | CNAME | `cname.vercel-dns.com` (ou redirect na Vercel) |
-| `api` | CNAME | valor indicado pelo Railway |
+| `api` | CNAME | valor indicado pelo `fly certs add` (Fly.io GRU) |
 
 Depois:
 
 1. **Vercel** → Domains → `thlgasdopovo.com.br` e/ou `app.thlgasdopovo.com.br`
-2. **Railway** → Settings → Custom Domain → `api.thlgasdopovo.com.br`
+2. **Fly** → Settings → Certificates → `api.thlgasdopovo.com.br`
 3. Atualize variáveis:
-   - Railway: `WEB_URL=https://thlgasdopovo.com.br`
+   - Fly: `WEB_URL=https://thlgasdopovo.com.br`
    - Vercel: `NEXT_PUBLIC_API_URL=https://api.thlgasdopovo.com.br/api/v1`
-4. Redeploy API e Web
+4. Redeploy API (Fly) e Web (Vercel)
 
 ### Fase E — Validação
 
@@ -385,7 +363,7 @@ Depois:
 - [x] Não rodar `pnpm db:seed` em produção (`NODE_ENV=production` bloqueia)
 - [ ] Confirmar `JWT_SECRET` único e não versionado no git
 - [x] HTTPS ativo no app (`thlgasdopovo.com.br`)
-- [ ] HTTPS no domínio customizado da API (quando `api.` for configurado)
+- [x] HTTPS no domínio customizado da API (`api.thlgasdopovo.com.br` → Fly.io)
 
 ---
 
@@ -472,7 +450,7 @@ Guia passo a passo: [resend-setup.md](resend-setup.md)
 |---------|------|---------|
 | Neon | Free | R$ 0 |
 | Vercel | Hobby | R$ 0 |
-| Railway | Trial / Hobby | R$ 0–50/mês |
+| Fly.io GRU | Hobby (~1 máquina) | ~US$ 5–7/mês |
 | Domínio .com.br | — | ~R$ 40/ano |
 
 ---
@@ -497,13 +475,19 @@ Ver [playstore-checklist.md](playstore-checklist.md) · [roadmap.md](roadmap.md)
 
 ### Sprint 2 — Infraestrutura
 
-| Passo | Descrição |
-|-------|-----------|
-| Subdomínio `api.` | Railway Custom Domain + CNAME na Hostinger; atualizar `NEXT_PUBLIC_API_URL` na Vercel |
-| Ambiente staging | Branch `staging` + projeto Neon/Railway/Vercel separados |
-| CI/CD | GitHub Actions: lint, build, `verify:deploy` em cada PR |
-| Monitoramento | Sentry (erros) + uptime no `/api/v1/health` |
-| Backups | Confirmar política de backup automático no Neon |
+**Status:** 🟡 Bloco principal concluído (API Fly GRU, CI, deploy seletivo). Pendências menores abaixo.
+
+| Passo | Status | Descrição |
+|-------|--------|-----------|
+| API no Fly.io GRU | ✅ | `api.thlgasdopovo.com.br` — ver [fly-migration.md](fly-migration.md) |
+| CI GitHub Actions | ✅ | `.github/workflows/ci.yml` — build seletivo API/web |
+| Deploy seletivo Vercel | ✅ | `scripts/vercel-should-build.sh` |
+| Migration condicional | ✅ | `scripts/release-migrate.sh` / `fly-release.sh` |
+| Pausar Railway | ⏳ | Após 24–48h estáveis no Fly |
+| Ambiente staging | ⏳ | Branch `staging` + Neon branch |
+| Upstash Redis (cache dashboard) | ⏳ | TTL 10s |
+| Sentry + uptime `/health` | ⏳ | Observabilidade |
+| Rotacionar senha Neon | ⏳ | Prioridade segurança |
 
 ### Sprint 3 — Refinamentos operacionais
 
@@ -551,13 +535,12 @@ Ver [playstore-checklist.md](playstore-checklist.md) · [roadmap.md](roadmap.md)
 
 ### Infraestrutura (Sprint 2 — ver [roadmap.md](roadmap.md))
 
-| Passo | Descrição |
-|-------|-----------|
-| Subdomínio `api.` | Railway Custom Domain + CNAME na Hostinger; atualizar `NEXT_PUBLIC_API_URL` na Vercel |
-| Ambiente staging | Branch `staging` + projeto Neon/Railway/Vercel separados |
-| CI/CD | GitHub Actions: lint, build, `verify:deploy` em cada PR |
-| Monitoramento | Sentry (erros) + uptime no `/api/v1/health` |
-| Backups | Confirmar política de backup automático no Neon |
+| Passo | Status | Descrição |
+|-------|--------|-----------|
+| API Fly.io GRU + `api.` | ✅ | Cutover concluído jul/2026 |
+| CI GitHub Actions | ✅ | Build em PR e push |
+| Pausar Railway | ⏳ | Fallback legado |
+| Staging + Redis + Sentry | ⏳ | Opcional |
 
 ### Produto — Fase 2 (implementações)
 
@@ -587,4 +570,4 @@ Ver [playstore-checklist.md](playstore-checklist.md) · [roadmap.md](roadmap.md)
 - **CI/CD** completo com GitHub Actions
 - **Redis** (Upstash) para filas e real-time
 - **Sentry** para erros
-- **VPS / Fly.io** quando o volume justificar sair do Railway
+- **VPS / Fly.io** — API já está no Fly.io GRU; Railway pode ser desligado

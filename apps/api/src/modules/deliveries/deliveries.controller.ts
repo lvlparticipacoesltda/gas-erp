@@ -19,6 +19,15 @@ export class DeliveriesController {
     return this.service.findByDeliverer(user);
   }
 
+  @Get(':id/route')
+  getRoute(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query() query: unknown,
+  ) {
+    return this.service.getRouteForDelivery(user, id, query);
+  }
+
   @Get(':id/tracking')
   tracking(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.service.getTrackingHistory(user, id);

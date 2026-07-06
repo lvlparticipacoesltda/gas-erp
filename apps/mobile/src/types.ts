@@ -64,6 +64,11 @@ export interface TrackingPoint {
   recordedAt: string;
 }
 
+export interface DeliveryDestination {
+  latitude: number;
+  longitude: number;
+}
+
 export interface Delivery {
   id: string;
   status: DeliveryStatus;
@@ -71,6 +76,7 @@ export interface Delivery {
   startedAt?: string | null;
   completedAt?: string | null;
   deliveryAddress?: string | null;
+  destination?: DeliveryDestination | null;
   waitTimeSeconds?: number | null;
   routeDurationSeconds?: number | null;
   elapsedWaitingSeconds?: number;

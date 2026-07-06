@@ -20,10 +20,10 @@ function TabsNav() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Entregas',
+          title: 'Mapa',
           tabBarBadge: pending.length > 0 ? pending.length : undefined,
           tabBarBadgeStyle: { backgroundColor: colors.primary },
-          tabBarIcon: ({ color, size }) => <Ionicons name="cube" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="map" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
