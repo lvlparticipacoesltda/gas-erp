@@ -6,6 +6,7 @@ import {
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
   COUNTED_MOBILE_APPROVALS,
+  COUNTED_SALE_STATUSES,
   DashboardDateQuery,
   PAYMENT_METHOD_LABELS,
   canViewFinancialMargins,
@@ -105,7 +106,7 @@ export class DashboardService {
       saleDate: { gte: start, lt: end },
       backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
       mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
-      status: { not: SaleStatus.CANCELLED },
+      status: { in: [...COUNTED_SALE_STATUSES] as SaleStatus[] },
     };
 
     const [salesGrouped, activeDeliveries, summary, saleItemsByStore, paymentsByStore] =
@@ -270,7 +271,7 @@ export class DashboardService {
       saleDate: { gte: start, lt: end },
       backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
       mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
-      status: { not: SaleStatus.CANCELLED },
+      status: { in: [...COUNTED_SALE_STATUSES] as SaleStatus[] },
     };
 
     const showFinancial = canViewFinancialMargins(user.role);

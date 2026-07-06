@@ -21,6 +21,7 @@ export * from './sale-financials';
 export * from './sale-pricing';
 export * from './sale-backdate';
 export * from './sale-mobile';
+export * from './sale-counting';
 export * from './schemas/sale-mobile';
 export * from './schemas/payment-method';
 export * from './payment-methods-catalog';

@@ -6,6 +6,7 @@ import {
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
   COUNTED_MOBILE_APPROVALS,
+  COUNTED_SALE_STATUSES,
   DashboardDateQuery,
   DELIVERY_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -182,12 +183,12 @@ export class ReportsService {
       }),
       this.prisma.sale.groupBy({
         by: ['saleDate'],
-        where: { ...countedSaleWhere, status: { not: SaleStatus.CANCELLED } },
+        where: countedSaleWhere,
         _sum: { total: true },
         _count: { _all: true },
       }),
       this.prisma.salePayment.findMany({
-        where: { sale: { ...countedSaleWhere, status: { not: SaleStatus.CANCELLED } } },
+        where: { sale: countedSaleWhere },
         select: {
           method: true,
           amount: true,
@@ -225,10 +226,9 @@ export class ReportsService {
       }))
       .sort((a, b) => b.total - a.total);
 
-    // Totais (faturamento / ticket) excluem vendas canceladas.
-    const nonCancelled = byStatus.filter((s) => s.status !== SaleStatus.CANCELLED);
-    const totalRevenue = nonCancelled.reduce((sum, s) => sum + s.total, 0);
-    const salesCount = nonCancelled.reduce((sum, s) => sum + s.count, 0);
+    // Totais refletem apenas vendas efetivadas (DELIVERED/PORTARIA), salvo filtro explícito de status.
+    const totalRevenue = byStatus.reduce((sum, s) => sum + s.total, 0);
+    const salesCount = byStatus.reduce((sum, s) => sum + s.count, 0);
     const averageTicket = salesCount > 0 ? totalRevenue / salesCount : 0;
 
     // Por dia: cada saleDate é normalizada para meio-dia local do dia operacional,
@@ -271,7 +271,7 @@ export class ReportsService {
     }
 
     if (showFinancial) {
-      for (const sale of sales.filter((row) => row.status !== SaleStatus.CANCELLED)) {
+      for (const sale of sales) {
         const saleTotal = toNumber(sale.total);
         const cogs = computeSaleCogs(sale.items);
         for (const payment of sale.payments) {
@@ -323,15 +323,14 @@ export class ReportsService {
 
     let rows = sales.map((sale) => mapSaleToReportRow(sale, showFinancial));
 
-    const nonCancelledSales = sales.filter((sale) => sale.status !== SaleStatus.CANCELLED);
     const financialSummary = showFinancial
       ? (() => {
-          const totalCost = nonCancelledSales.reduce(
+          const totalCost = sales.reduce(
             (sum, sale) => sum + computeSaleCogs(sale.items),
             0,
           );
           const grossProfit = computeGrossProfit(totalRevenue, totalCost);
-          const totalProcessingFees = nonCancelledSales.reduce(
+          const totalProcessingFees = sales.reduce(
             (sum, sale) =>
               sum +
               sale.payments.reduce((feeSum, payment) => feeSum + toNumber(payment.processingFee), 0),
@@ -393,11 +392,10 @@ export class ReportsService {
       saleDate: { gte: start, lt: end },
       backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
       mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
+      status: filters.status
+        ? (filters.status as SaleStatus)
+        : { in: [...COUNTED_SALE_STATUSES] as SaleStatus[] },
     };
-
-    if (filters.status) {
-      where.status = filters.status as SaleStatus;
-    }
     if (filters.paymentMethod) {
       where.payments = {
         some: {
