@@ -35,6 +35,8 @@ interface SalePaymentsEditorProps {
   /** Disparado quando o entregador escolhe GDP em uma linha de pagamento. */
   onGdpSelected?: () => void;
   onAmountFocus?: () => void;
+  /** Layout mais espaçado para telas cheias (ex.: concluir entrega). */
+  comfortable?: boolean;
 }
 
 export function newPaymentLineKey() {
@@ -101,6 +103,7 @@ export function SalePaymentsEditor({
   showGdpOption = false,
   onGdpSelected,
   onAmountFocus,
+  comfortable = false,
 }: SalePaymentsEditorProps) {
   const availableMethods = useMemo(
     () => resolveEditorMethods(methods, gdpLocked, showGdpOption),
@@ -171,8 +174,11 @@ export function SalePaymentsEditor({
 
   return (
     <View style={styles.root}>
-      {lines.map((line) => (
-        <View key={line.key} style={styles.line}>
+      {lines.map((line, index) => (
+        <View key={line.key} style={[styles.line, comfortable && styles.lineComfortable]}>
+          {comfortable ? (
+            <Text style={styles.lineLabel}>Pagamento {index + 1}</Text>
+          ) : null}
           <View style={styles.methodRow}>
             {availableMethods.map((method) => {
               const selected = method.id === line.storePaymentMethodId;
@@ -180,21 +186,34 @@ export function SalePaymentsEditor({
                 <Pressable
                   key={method.id}
                   disabled={disabled}
-                  style={[styles.methodChip, selected && styles.methodChipSelected]}
+                  style={[
+                    styles.methodChip,
+                    comfortable && styles.methodChipComfortable,
+                    selected && styles.methodChipSelected,
+                  ]}
                   onPress={() => {
                     if (method.systemCode === 'GDP') onGdpSelected?.();
                     updateLine(line.key, { storePaymentMethodId: method.id });
                   }}
                 >
-                  <Text style={[styles.methodChipText, selected && styles.methodChipTextSelected]}>
+                  <Text
+                    style={[
+                      styles.methodChipText,
+                      comfortable && styles.methodChipTextComfortable,
+                      selected && styles.methodChipTextSelected,
+                    ]}
+                  >
                     {method.label}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
+          <Text style={[styles.amountLabel, comfortable && styles.amountLabelComfortable]}>
+            Valor
+          </Text>
           <TextInput
-            style={styles.amountInput}
+            style={[styles.amountInput, comfortable && styles.amountInputComfortable]}
             keyboardType="decimal-pad"
             editable={!disabled}
             value={line.amount > 0 ? String(line.amount) : ''}
@@ -204,28 +223,48 @@ export function SalePaymentsEditor({
               const amount = normalized === '' ? 0 : Number(normalized);
               updateLine(line.key, { amount: Number.isFinite(amount) ? amount : 0 });
             }}
-            placeholder="Valor"
+            placeholder="0,00"
             placeholderTextColor={colors.textFaint}
           />
           {!disabled && lines.length > 1 ? (
             <Pressable onPress={() => removeLine(line.key)}>
-              <Text style={styles.remove}>Remover</Text>
+              <Text style={styles.remove}>Remover forma</Text>
             </Pressable>
           ) : null}
         </View>
       ))}
 
       {!disabled && lines.length < availableMethods.length ? (
-        <Button label="+ Adicionar forma" variant="secondary" onPress={addLine} />
+        <Button
+          label="+ Adicionar forma de pagamento"
+          variant="secondary"
+          onPress={addLine}
+        />
       ) : null}
 
-      <View style={styles.summary}>
-        <Text style={styles.totalHint}>
-          Total da venda: <Text style={styles.totalValue}>{formatBrl(saleTotal)}</Text>
-        </Text>
-        <Text style={[styles.totalHint, sumHint && styles.totalHintError]}>
-          Informado: <Text style={styles.totalValue}>{formatBrl(paidTotal)}</Text>
-        </Text>
+      <View style={[styles.summary, comfortable && styles.summaryComfortable]}>
+        <View style={styles.summaryRow}>
+          <Text style={[styles.totalHint, comfortable && styles.totalHintComfortable]}>
+            Total da venda
+          </Text>
+          <Text style={[styles.totalValue, comfortable && styles.totalValueComfortable]}>
+            {formatBrl(saleTotal)}
+          </Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={[styles.totalHint, comfortable && styles.totalHintComfortable]}>
+            Informado
+          </Text>
+          <Text
+            style={[
+              styles.totalValue,
+              comfortable && styles.totalValueComfortable,
+              sumHint ? styles.totalValueError : null,
+            ]}
+          >
+            {formatBrl(paidTotal)}
+          </Text>
+        </View>
         {sumHint ? <Text style={styles.sumHintError}>{sumHint}</Text> : null}
       </View>
     </View>
@@ -260,6 +299,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.surface,
   },
+  lineComfortable: {
+    padding: spacing.lg,
+    gap: spacing.md,
+    borderRadius: radius.lg,
+  },
+  lineLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   methodChip: {
     paddingHorizontal: 10,
@@ -269,12 +320,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.bg,
   },
+  methodChipComfortable: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   methodChipSelected: {
     borderColor: colors.primary,
     backgroundColor: '#FFF4ED',
   },
   methodChipText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  methodChipTextComfortable: { fontSize: 14 },
   methodChipTextSelected: { color: colors.primary },
+  amountLabel: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  amountLabelComfortable: { fontSize: 14, fontWeight: '700' },
   amountInput: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -285,11 +343,33 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.bg,
   },
+  amountInputComfortable: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 22,
+    fontWeight: '700',
+  },
   remove: { fontSize: 13, color: colors.dangerText, fontWeight: '600' },
   summary: { gap: 4, marginTop: spacing.xs },
+  summaryComfortable: {
+    marginTop: spacing.sm,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   totalHint: { fontSize: 13, color: colors.textMuted },
+  totalHintComfortable: { fontSize: 15 },
   totalValue: { fontWeight: '700', color: colors.text },
-  totalHintError: { color: colors.warningText },
+  totalValueComfortable: { fontSize: 18 },
+  totalValueError: { color: colors.warningText },
   sumHintError: {
     marginTop: 4,
     fontSize: 13,

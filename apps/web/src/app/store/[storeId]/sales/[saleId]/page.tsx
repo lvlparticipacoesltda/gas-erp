@@ -329,6 +329,10 @@ export default function SaleDetailPage() {
     ? status
     : editableStatuses[0] ?? '';
   const statusChanged = statusSelectValue !== sale.status;
+  const delivererChanged =
+    statusSelectValue === 'IN_DELIVERY'
+    && !!delivererId
+    && delivererId !== (sale.deliverer?.id ?? '');
   const cancelReasonReady = statusSelectValue !== 'CANCELLED' || cancelReason.trim().length > 0;
 
   const canEditPayments =
@@ -650,9 +654,20 @@ export default function SaleDetailPage() {
                   </div>
                 )}
 
+                {!statusChanged && delivererChanged && (
+                  <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                    O entregador será alterado e a entrega reenviada para aceite do novo entregador.
+                  </p>
+                )}
+
                 <Button
                   type="button"
-                  disabled={saving || !statusSelectValue || !statusChanged || !cancelReasonReady}
+                  disabled={
+                    saving
+                    || !statusSelectValue
+                    || (!statusChanged && !delivererChanged)
+                    || !cancelReasonReady
+                  }
                   onClick={saveStatus}
                 >
                   {saving ? 'Salvando...' : 'Salvar alterações'}

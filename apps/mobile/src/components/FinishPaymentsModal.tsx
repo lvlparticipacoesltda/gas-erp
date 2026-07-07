@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
-  useWindowDimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPaymentLinesSumErrorMessage } from '@gas-erp/shared';
-import { BottomSheet } from '@/components/BottomSheet';
 import { Button } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, radius, spacing } from '@/theme';
@@ -33,9 +34,11 @@ interface FinishPaymentsModalProps {
   saleTotal: number;
   gasDoPovoBenefit?: boolean;
   itemQuantity?: number;
+  itemCount?: number;
   initialUnitPrice?: number;
   initialPayments?: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
   onClose: () => void;
+  onMinimizedChange?: (minimized: boolean) => void;
   onConfirm: (
     payments: { storePaymentMethodId: string; amount: number }[],
     unitPrice?: number,
@@ -85,6 +88,10 @@ function buildInitialLines(
   return createDefaultPaymentLines(regular, saleTotal);
 }
 
+function formatBrl(value: number): string {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export function FinishPaymentsModal({
   visible,
   saleId,
@@ -92,14 +99,16 @@ export function FinishPaymentsModal({
   saleTotal: initialSaleTotal,
   gasDoPovoBenefit = false,
   itemQuantity = 1,
+  itemCount = 1,
   initialUnitPrice,
   initialPayments,
   onClose,
+  onMinimizedChange,
   onConfirm,
 }: FinishPaymentsModalProps) {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
+  const [minimized, setMinimized] = useState(false);
   const [methods, setMethods] = useState<StorePaymentMethodOption[]>([]);
   const [lines, setLines] = useState<PaymentLine[]>([]);
   const [loadingMethods, setLoadingMethods] = useState(false);
@@ -109,15 +118,35 @@ export function FinishPaymentsModal({
   const [gdpUnitPrice, setGdpUnitPrice] = useState('');
   const openSessionRef = useRef<string | null>(null);
 
+  // O preço unitário GDP só pode ser ajustado em vendas com um único produto.
+  // Com mais itens (ex.: "taxa de entrega" como produto), o total é fixo e o
+  // backend recusa o ajuste — então não reenviamos o preço unitário.
+  const canEditGdpUnitPrice = gasDoPovoBenefit && itemCount === 1 && initialUnitPrice != null;
   const parsedUnitPrice = Math.max(0, Number(gdpUnitPrice.replace(',', '.')) || 0);
-  const deliveryFee = gasDoPovoBenefit && initialUnitPrice != null
+  const deliveryFee = canEditGdpUnitPrice
     ? Math.max(0, initialSaleTotal - initialUnitPrice * itemQuantity)
     : 0;
-  const saleTotal = gasDoPovoBenefit && parsedUnitPrice > 0
+  const saleTotal = canEditGdpUnitPrice && parsedUnitPrice > 0
     ? parsedUnitPrice * itemQuantity + deliveryFee
     : initialSaleTotal;
 
   const gdpMethodId = methods.find((m) => m.systemCode === 'GDP')?.id;
+
+  function setMinimizedState(next: boolean) {
+    setMinimized(next);
+    onMinimizedChange?.(next);
+  }
+
+  useEffect(() => {
+    if (!visible) {
+      openSessionRef.current = null;
+      setMinimized(false);
+      onMinimizedChange?.(false);
+      return;
+    }
+    setMinimizedState(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -171,13 +200,13 @@ export function FinishPaymentsModal({
   }, [saleTotal, visible, gasDoPovoBenefit, gdpMethodId, methods]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || minimized) return;
     const event = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const sub = Keyboard.addListener(event, () => {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
     return () => sub.remove();
-  }, [visible]);
+  }, [visible, minimized]);
 
   async function handleConfirm() {
     if (gasDoPovoBenefit) {
@@ -185,7 +214,7 @@ export function FinishPaymentsModal({
         setError('Forma GDP não configurada nesta loja. Contate o gestor.');
         return;
       }
-      if (parsedUnitPrice <= 0) {
+      if (canEditGdpUnitPrice && parsedUnitPrice <= 0) {
         setError('Informe um preço válido para o benefício Gás do Povo.');
         return;
       }
@@ -204,7 +233,7 @@ export function FinishPaymentsModal({
       const payload = gasDoPovoBenefit && gdpMethodId
         ? [{ storePaymentMethodId: gdpMethodId, amount: saleTotal }]
         : paymentLinesToPayload(lines);
-      const unitPricePayload = gasDoPovoBenefit && parsedUnitPrice > 0 ? parsedUnitPrice : undefined;
+      const unitPricePayload = canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : undefined;
       await onConfirm(payload, unitPricePayload);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar os pagamentos.');
@@ -213,27 +242,77 @@ export function FinishPaymentsModal({
     }
   }
 
-  return (
-    <BottomSheet visible={visible} onClose={onClose} maxHeightRatio={0.92}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom + spacing.md : 0}
-      >
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-          <Text style={styles.title}>Formas de pagamento</Text>
-          <Text style={styles.subtitle}>
-            Total da venda: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </Text>
+  if (!visible) return null;
 
-          <ScrollView
-            ref={scrollRef}
-            style={[styles.scroll, { maxHeight: windowHeight * 0.48 }]}
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            automaticallyAdjustKeyboardInsets
-            showsVerticalScrollIndicator
+  if (minimized) {
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+        <View style={styles.minimizedRoot} pointerEvents="box-none">
+          <View
+            style={[styles.minimizedBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}
           >
-          {gasDoPovoBenefit ? (
+            <Pressable
+              style={styles.minimizedMain}
+              onPress={() => setMinimizedState(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Expandir formas de pagamento"
+            >
+              <View style={styles.minimizedIcon}>
+                <Ionicons name="card-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.minimizedText}>
+                <Text style={styles.minimizedTitle}>Pagamentos</Text>
+                <Text style={styles.minimizedSubtitle}>{formatBrl(saleTotal)}</Text>
+              </View>
+              <Ionicons name="chevron-up" size={22} color={colors.text} />
+            </Pressable>
+            <Pressable onPress={onClose} hitSlop={8} style={styles.minimizedClose}>
+              <Ionicons name="close" size={20} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.fullscreen}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Formas de pagamento</Text>
+            <Text style={styles.subtitle}>Total: {formatBrl(saleTotal)}</Text>
+          </View>
+          <Pressable
+            onPress={() => setMinimizedState(true)}
+            style={styles.headerBtn}
+            hitSlop={8}
+            accessibilityLabel="Minimizar"
+          >
+            <Ionicons name="chevron-down" size={24} color={colors.text} />
+          </Pressable>
+          <Pressable
+            onPress={onClose}
+            style={styles.headerBtn}
+            hitSlop={8}
+            accessibilityLabel="Cancelar"
+          >
+            <Ionicons name="close" size={22} color={colors.textMuted} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator
+        >
+          {canEditGdpUnitPrice ? (
             <View style={styles.priceSection}>
               <Text style={styles.priceLabel}>Preço unitário (GDP)</Text>
               <TextInput
@@ -245,10 +324,11 @@ export function FinishPaymentsModal({
                 placeholderTextColor={colors.textFaint}
               />
               <Text style={styles.priceHint}>
-                Total: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                Total: {formatBrl(saleTotal)}
               </Text>
             </View>
           ) : null}
+
           <SalePaymentsEditor
             methods={methods}
             lines={lines}
@@ -257,52 +337,141 @@ export function FinishPaymentsModal({
             loadingMethods={loadingMethods}
             methodsError={methodsError}
             gdpLocked={gasDoPovoBenefit}
+            comfortable
             onAmountFocus={() => {
               scrollRef.current?.scrollToEnd({ animated: true });
             }}
           />
         </ScrollView>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <View style={styles.actions}>
-          <Button label="Cancelar" variant="secondary" onPress={onClose} style={styles.flex} />
-          <Button
-            label="Concluir entrega"
-            variant="success"
-            loading={loading}
-            onPress={handleConfirm}
-            style={styles.flex}
-          />
-        </View>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.actions}>
+            <Button label="Cancelar" variant="secondary" onPress={onClose} style={styles.flex} />
+            <Button
+              label="Concluir entrega"
+              variant="success"
+              loading={loading}
+              onPress={handleConfirm}
+              style={styles.flex}
+            />
+          </View>
         </View>
       </KeyboardAvoidingView>
-    </BottomSheet>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  sheet: {
-    padding: spacing.lg,
+  fullscreen: {
+    flex: 1,
+    backgroundColor: colors.bg,
   },
-  title: { fontSize: 18, fontWeight: '800', color: colors.text },
-  subtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
-  scroll: { marginTop: spacing.md },
-  scrollContent: { paddingBottom: spacing.xxl, gap: spacing.sm },
-  priceSection: { marginBottom: spacing.md, gap: spacing.xs },
-  priceLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerText: { flex: 1 },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+  },
+  title: { fontSize: 20, fontWeight: '800', color: colors.text },
+  subtitle: { marginTop: 2, fontSize: 15, fontWeight: '600', color: colors.primary },
+  scroll: { flex: 1 },
+  scrollContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+  },
+  priceSection: {
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
+  },
+  priceLabel: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
   priceInput: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.text,
     backgroundColor: colors.bg,
   },
-  priceHint: { fontSize: 13, color: colors.textMuted },
-  error: { marginTop: spacing.sm, fontSize: 13, color: colors.dangerText },
-  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  priceHint: { fontSize: 14, color: colors.textMuted },
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.sm,
+  },
+  error: { fontSize: 13, color: colors.dangerText, textAlign: 'center' },
+  actions: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
+  minimizedRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  minimizedBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.sm,
+    paddingTop: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 8,
+  },
+  minimizedMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  minimizedIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.infoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  minimizedText: { flex: 1 },
+  minimizedTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
+  minimizedSubtitle: { fontSize: 13, fontWeight: '600', color: colors.primary, marginTop: 2 },
+  minimizedClose: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
 });

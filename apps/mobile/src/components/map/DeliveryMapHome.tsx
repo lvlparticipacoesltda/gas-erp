@@ -40,6 +40,7 @@ export function DeliveryMapHome() {
   const [selected, setSelected] = useState<Delivery | null>(null);
   const [busy, setBusy] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [paymentsMinimized, setPaymentsMinimized] = useState(false);
   const mapRef = useRef<DriverMapRef>(null);
 
   const { position: driverPosition } = useDriverLocation(!isUnavailable);
@@ -213,7 +214,7 @@ export function DeliveryMapHome() {
         </Pressable>
       ) : null}
 
-      {activeDelivery ? (
+      {activeDelivery && !(paymentsOpen && !paymentsMinimized) ? (
         <View style={styles.bottomOverlay} pointerEvents="box-none">
           <ActiveRoutePanel
             delivery={activeDelivery}
@@ -262,13 +263,18 @@ export function DeliveryMapHome() {
           saleTotal={Number(activeDelivery.sale.total ?? 0)}
           gasDoPovoBenefit={activeDelivery.sale.gasDoPovoBenefit}
           itemQuantity={activeDelivery.sale.items[0]?.quantity ?? 1}
+          itemCount={activeDelivery.sale.items.length}
           initialUnitPrice={
             activeDelivery.sale.items[0]?.unitPrice != null
               ? Number(activeDelivery.sale.items[0].unitPrice)
               : undefined
           }
           initialPayments={activeDelivery.sale.payments}
-          onClose={() => setPaymentsOpen(false)}
+          onClose={() => {
+            setPaymentsOpen(false);
+            setPaymentsMinimized(false);
+          }}
+          onMinimizedChange={setPaymentsMinimized}
           onConfirm={handleFinishRoute}
         />
       ) : null}
