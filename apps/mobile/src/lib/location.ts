@@ -151,7 +151,8 @@ async function ensureBackgroundTaskRunning(): Promise<void> {
   if (!token || presenceSharingPaused) return;
 
   const onDelivery = await getActiveDeliveryMode();
-  if (!(await isTrackingActive())) {
+  // Em rota: reinicia ao ir para background — recupera task suspenso pelo SO (tela apagada).
+  if (onDelivery || !(await isTrackingActive())) {
     await ensureLocationUpdates(onDelivery).catch(() => undefined);
   }
 }
@@ -320,8 +321,8 @@ function buildTrackingOptions(
   const base: LocationTaskOptions = {
     accuracy: onDelivery ? Location.Accuracy.High : Location.Accuracy.Balanced,
     timeInterval: UPDATE_INTERVAL_MS,
-    // Presença parada: distanceInterval bloqueia updates no Android; rota usa distância.
-    distanceInterval: onDelivery ? 25 : 0,
+    // distanceInterval > 0 no Android pode suprimir updates por tempo; usar só timeInterval.
+    distanceInterval: 0,
     pausesUpdatesAutomatically: false,
     activityType: onDelivery
       ? Location.ActivityType.OtherNavigation
@@ -458,6 +459,10 @@ export async function startPresenceTracking(): Promise<PermissionResult> {
  */
 export async function startDeliveryTracking(deliveryId: string): Promise<PermissionResult> {
   await SecureStore.setItemAsync(ACTIVE_DELIVERY_KEY, deliveryId);
+  initForegroundPresence();
+  if (AppState.currentState === 'active') {
+    startForegroundPresenceLoop();
+  }
   return ensureLocationUpdates(true);
 }
 
@@ -485,7 +490,7 @@ export async function stopAllTracking(): Promise<void> {
 async function ensurePresenceTrackingFresh(): Promise<void> {
   if (presenceSharingPaused) return;
   const onDelivery = await getActiveDeliveryMode();
-  if (!(await isTrackingActive())) {
+  if (onDelivery || !(await isTrackingActive())) {
     await ensureLocationUpdates(onDelivery).catch(() => undefined);
   }
 }

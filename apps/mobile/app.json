@@ -78,6 +78,7 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Usamos sua localização em segundo plano para manter sua posição no mapa da loja e acompanhar entregas em rota.",
           "locationWhenInUsePermission": "Usamos sua localização para exibir sua posição no mapa da loja e registrar entregas em andamento.",
+          "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
