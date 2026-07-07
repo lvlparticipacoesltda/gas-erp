@@ -1,6 +1,7 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View } from 'react-native';
+import { ExpandableTabBar } from '@/components/ExpandableTabBar';
 import { Loading } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
@@ -10,11 +11,11 @@ function TabsNav() {
   const { pending } = useDeliveriesContext();
   return (
     <Tabs
+      tabBar={(props) => <ExpandableTabBar {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textFaint,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
       }}
     >
       <Tabs.Screen

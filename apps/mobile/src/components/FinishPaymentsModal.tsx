@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPaymentLinesSumErrorMessage } from '@gas-erp/shared';
+import { BottomSheet } from '@/components/BottomSheet';
 import { Button } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, radius, spacing } from '@/theme';
@@ -85,6 +87,7 @@ export function FinishPaymentsModal({
   onClose,
   onConfirm,
 }: FinishPaymentsModalProps) {
+  const insets = useSafeAreaInsets();
   const [methods, setMethods] = useState<StorePaymentMethodOption[]>([]);
   const [lines, setLines] = useState<PaymentLine[]>([]);
   const [loadingMethods, setLoadingMethods] = useState(false);
@@ -190,72 +193,61 @@ export function FinishPaymentsModal({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <Text style={styles.title}>Formas de pagamento</Text>
-          <Text style={styles.subtitle}>
-            Total da venda: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </Text>
+    <BottomSheet visible={visible} onClose={onClose} maxHeightRatio={0.85}>
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+        <Text style={styles.title}>Formas de pagamento</Text>
+        <Text style={styles.subtitle}>
+          Total da venda: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+        </Text>
 
-          <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-            {gasDoPovoBenefit ? (
-              <View style={styles.priceSection}>
-                <Text style={styles.priceLabel}>Preço unitário (GDP)</Text>
-                <TextInput
-                  style={styles.priceInput}
-                  keyboardType="decimal-pad"
-                  value={gdpUnitPrice}
-                  onChangeText={setGdpUnitPrice}
-                  placeholder="0,00"
-                  placeholderTextColor={colors.textFaint}
-                />
-                <Text style={styles.priceHint}>
-                  Total: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </Text>
-              </View>
-            ) : null}
-            <SalePaymentsEditor
-              methods={methods}
-              lines={lines}
-              onChange={setLines}
-              saleTotal={saleTotal}
-              loadingMethods={loadingMethods}
-              methodsError={methodsError}
-              gdpLocked={gasDoPovoBenefit}
-            />
-          </ScrollView>
+        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+          {gasDoPovoBenefit ? (
+            <View style={styles.priceSection}>
+              <Text style={styles.priceLabel}>Preço unitário (GDP)</Text>
+              <TextInput
+                style={styles.priceInput}
+                keyboardType="decimal-pad"
+                value={gdpUnitPrice}
+                onChangeText={setGdpUnitPrice}
+                placeholder="0,00"
+                placeholderTextColor={colors.textFaint}
+              />
+              <Text style={styles.priceHint}>
+                Total: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </Text>
+            </View>
+          ) : null}
+          <SalePaymentsEditor
+            methods={methods}
+            lines={lines}
+            onChange={setLines}
+            saleTotal={saleTotal}
+            loadingMethods={loadingMethods}
+            methodsError={methodsError}
+            gdpLocked={gasDoPovoBenefit}
+          />
+        </ScrollView>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <View style={styles.actions}>
-            <Button label="Cancelar" variant="secondary" onPress={onClose} style={styles.flex} />
-            <Button
-              label="Concluir entrega"
-              variant="success"
-              loading={loading}
-              onPress={handleConfirm}
-              style={styles.flex}
-            />
-          </View>
+        <View style={styles.actions}>
+          <Button label="Cancelar" variant="secondary" onPress={onClose} style={styles.flex} />
+          <Button
+            label="Concluir entrega"
+            variant="success"
+            loading={loading}
+            onPress={handleConfirm}
+            style={styles.flex}
+          />
         </View>
       </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
   sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
     padding: spacing.lg,
-    maxHeight: '85%',
   },
   title: { fontSize: 18, fontWeight: '800', color: colors.text },
   subtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },

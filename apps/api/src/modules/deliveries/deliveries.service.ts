@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -30,7 +30,15 @@ type DeliveryWithSale = {
   };
 };
 
-function buildDeliveryAddress(sale: DeliveryWithSale['sale']): string | null {
+function buildDeliveryAddress(sale: {
+  deliveryStreet: string | null;
+  deliveryNumber: string | null;
+  deliveryComplement?: string | null;
+  deliveryNeighborhood: string | null;
+  deliveryCity: string | null;
+  deliveryState: string | null;
+  deliveryLandmark?: string | null;
+}): string | null {
   const parts: string[] = [];
   const streetLine = [sale.deliveryStreet, sale.deliveryNumber].filter(Boolean).join(', ');
   if (streetLine) parts.push(streetLine);
@@ -83,6 +91,8 @@ async function resolveDestination(
 
 @Injectable()
 export class DeliveriesService {
+  private readonly logger = new Logger(DeliveriesService.name);
+
   constructor(
     private prisma: PrismaService,
     private geocoding: GeocodingService,
@@ -160,9 +170,11 @@ export class DeliveriesService {
             storeId: true,
             deliveryStreet: true,
             deliveryNumber: true,
+            deliveryComplement: true,
             deliveryNeighborhood: true,
             deliveryCity: true,
             deliveryState: true,
+            deliveryLandmark: true,
             store: { select: { organizationId: true } },
           },
         },
@@ -176,16 +188,27 @@ export class DeliveriesService {
     }
 
     const destination = await resolveDestination(this.geocoding, delivery.sale);
-    if (!destination) {
-      throw new NotFoundException('Destino sem coordenadas. Verifique o endereço da venda.');
+    const destAddress = buildDeliveryAddress(delivery.sale);
+
+    this.logger.log(
+      `GET route delivery=${deliveryId} origin=(${originLat},${originLng}) ` +
+        `geocoded=${destination ? `(${destination.latitude},${destination.longitude})` : 'null'} ` +
+        `address="${destAddress ?? '—'}"`,
+    );
+
+    if (!destination && !destAddress) {
+      throw new NotFoundException(
+        'Endereço incompleto (rua, cidade e UF). Corrija a venda antes de traçar a rota.',
+      );
     }
 
-    return this.routing.getRoute(
+    return this.routing.getRoute({
       originLat,
       originLng,
-      destination.latitude,
-      destination.longitude,
-    );
+      destLat: destination?.latitude,
+      destLng: destination?.longitude,
+      destAddress,
+    });
   }
 
   async addTrackingPoint(user: AuthUser, deliveryId: string, input: unknown) {

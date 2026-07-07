@@ -6,7 +6,7 @@ import {
   type DeliveryRouteResponse,
   type LatLng,
 } from '@gas-erp/shared';
-import { fetchDeliveryRoute } from '../lib/routing';
+import { fetchDeliveryRoute, logRouteDebug } from '../lib/routing';
 import type { DriverPosition } from './useDriverLocation';
 
 const REROUTE_DISTANCE_M = 60;
@@ -62,7 +62,9 @@ export function useRouteNavigation(
         setPolyline(decodePolyline(result.encodedPolyline));
         lastRerouteAt.current = Date.now();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro ao carregar rota');
+        const message = err instanceof Error ? err.message : 'Erro ao carregar rota';
+        logRouteDebug('navigation_failed', { deliveryId, message });
+        setError(message);
       } finally {
         setLoading(false);
         fetchingRef.current = false;

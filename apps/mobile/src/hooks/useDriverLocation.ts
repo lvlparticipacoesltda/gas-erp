@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
+import { requestLocationPermissionsWithDisclosure } from '../lib/location';
 
 export interface DriverPosition {
   latitude: number;
@@ -25,12 +26,15 @@ export function useDriverLocation(enabled = true) {
     let cancelled = false;
 
     async function start() {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (cancelled) return;
-      if (status !== 'granted') {
-        setPermissionDenied(true);
-        setPosition(DEFAULT_POSITION);
-        return;
+      const existing = await Location.getForegroundPermissionsAsync();
+      if (existing.status !== 'granted') {
+        const permissions = await requestLocationPermissionsWithDisclosure();
+        if (cancelled) return;
+        if (!permissions.foreground) {
+          setPermissionDenied(true);
+          setPosition(DEFAULT_POSITION);
+          return;
+        }
       }
 
       const current = await Location.getCurrentPositionAsync({

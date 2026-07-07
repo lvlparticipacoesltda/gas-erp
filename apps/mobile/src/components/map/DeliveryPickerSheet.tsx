@@ -1,6 +1,5 @@
 import {
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BottomSheet } from '../BottomSheet';
 import { DeliveryCard } from '../DeliveryCard';
 import { Loading, StateMessage } from '../ui';
 import { colors, radius, spacing } from '../../theme';
@@ -36,9 +36,8 @@ export function DeliveryPickerSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+    <BottomSheet visible={visible} onClose={onClose} maxHeightRatio={0.72}>
+      <View style={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
         <View style={styles.header}>
           <Text style={styles.title}>Entregas aguardando</Text>
@@ -80,20 +79,12 @@ export function DeliveryPickerSheet({
           />
         )}
       </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(28, 20, 12, 0.35)',
-  },
-  sheet: {
-    maxHeight: '72%',
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+  content: {
     paddingTop: spacing.sm,
   },
   handle: {

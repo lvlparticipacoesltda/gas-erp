@@ -1,10 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import type { LatLng } from '@gas-erp/shared';
 import type { DriverPosition } from '../../hooks/useDriverLocation';
-import type { Delivery, DeliveryDestination } from '../../types';
+import type { Delivery } from '../../types';
+import { DriverMarker, useDriverMarkerTracksViewChanges } from './DriverMarker';
 import { PendingDeliveryMarkers } from './PendingDeliveryMarkers';
+
+export type DriverMapRef = {
+  recenter: () => void;
+};
 
 const DEFAULT_REGION: Region = {
   latitude: -23.9608,
@@ -13,19 +18,8 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.04,
 };
 
-export function DriverMap({
-  driverPosition,
-  destination,
-  routePolyline,
-  previewPolyline = [],
-  followDriver,
-  pendingDeliveries = [],
-  selectedDeliveryId,
-  activeDeliveryId,
-  onSelectPendingDelivery,
-}: {
+export const DriverMap = forwardRef<DriverMapRef, {
   driverPosition: DriverPosition | null;
-  destination?: DeliveryDestination | null;
   routePolyline: LatLng[];
   previewPolyline?: LatLng[];
   followDriver?: boolean;
@@ -33,18 +27,55 @@ export function DriverMap({
   selectedDeliveryId?: string | null;
   activeDeliveryId?: string | null;
   onSelectPendingDelivery?: (delivery: Delivery) => void;
-}) {
+}>(function DriverMap({
+  driverPosition,
+  routePolyline,
+  previewPolyline = [],
+  followDriver,
+  pendingDeliveries = [],
+  selectedDeliveryId,
+  activeDeliveryId,
+  onSelectPendingDelivery,
+}, ref) {
   const mapRef = useRef<MapView>(null);
+  const driverTracksViewChanges = useDriverMarkerTracksViewChanges(
+    driverPosition?.latitude ?? 0,
+    driverPosition?.longitude ?? 0,
+    driverPosition?.heading ?? null,
+  );
+
+  const recenter = useCallback(() => {
+    if (!mapRef.current || !driverPosition) return;
+
+    if (followDriver && routePolyline.length > 1) {
+      mapRef.current.animateCamera(
+        {
+          center: {
+            latitude: driverPosition.latitude,
+            longitude: driverPosition.longitude,
+          },
+          pitch: 0,
+          zoom: 16,
+        },
+        { duration: 500 },
+      );
+      return;
+    }
+
+    mapRef.current.animateToRegion(
+      {
+        latitude: driverPosition.latitude,
+        longitude: driverPosition.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      },
+      500,
+    );
+  }, [driverPosition, followDriver, routePolyline.length]);
+
+  useImperativeHandle(ref, () => ({ recenter }), [recenter]);
 
   const pendingWithCoords = pendingDeliveries.filter((d) => d.destination != null);
-  const showSeparateDestination =
-    destination
-    && !pendingWithCoords.some(
-      (d) =>
-        d.id === activeDeliveryId
-        && d.destination?.latitude === destination.latitude
-        && d.destination?.longitude === destination.longitude,
-    );
 
   useEffect(() => {
     if (!mapRef.current || !driverPosition) return;
@@ -56,7 +87,6 @@ export function DriverMap({
             latitude: driverPosition.latitude,
             longitude: driverPosition.longitude,
           },
-          heading: driverPosition.heading ?? 0,
           pitch: 0,
           zoom: 16,
         },
@@ -73,7 +103,6 @@ export function DriverMap({
       for (const delivery of pendingWithCoords) {
         if (delivery.destination) coords.push(delivery.destination);
       }
-      if (destination && showSeparateDestination) coords.push(destination);
     }
     if (coords.length === 0) return;
 
@@ -97,14 +126,11 @@ export function DriverMap({
   }, [
     driverPosition?.latitude,
     driverPosition?.longitude,
-    destination?.latitude,
-    destination?.longitude,
     routePolyline.length,
     previewPolyline.length,
     selectedDeliveryId,
     followDriver,
     pendingWithCoords.length,
-    showSeparateDestination,
   ]);
 
   return (
@@ -116,14 +142,23 @@ export function DriverMap({
       showsUserLocation={false}
       showsMyLocationButton={false}
       toolbarEnabled={false}
-      rotateEnabled={!followDriver}
+      rotateEnabled
+      pitchEnabled={false}
     >
       {driverPosition ? (
         <Marker
           coordinate={driverPosition}
-          title="Você"
-          pinColor="#2563EB"
-        />
+          anchor={{ x: 0.5, y: 0.5 }}
+          flat={Boolean(followDriver && driverPosition.heading != null)}
+          rotation={
+            followDriver && driverPosition.heading != null
+              ? driverPosition.heading
+              : 0
+          }
+          tracksViewChanges={driverTracksViewChanges}
+        >
+          <DriverMarker />
+        </Marker>
       ) : null}
 
       <PendingDeliveryMarkers
@@ -133,14 +168,6 @@ export function DriverMap({
         highlightedId={activeDeliveryId}
         onSelect={onSelectPendingDelivery}
       />
-
-      {showSeparateDestination && destination ? (
-        <Marker
-          coordinate={destination}
-          title="Destino"
-          pinColor="#16A34A"
-        />
-      ) : null}
 
       {previewPolyline.length > 1 ? (
         <Polyline
@@ -160,7 +187,7 @@ export function DriverMap({
       ) : null}
     </MapView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   map: { ...StyleSheet.absoluteFill },

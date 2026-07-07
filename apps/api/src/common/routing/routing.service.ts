@@ -7,6 +7,14 @@ interface CacheEntry {
   expiresAt: number;
 }
 
+export interface RouteRequest {
+  originLat: number;
+  originLng: number;
+  destLat?: number;
+  destLng?: number;
+  destAddress?: string | null;
+}
+
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const DIRECTIONS_URL = 'https://maps.googleapis.com/maps/api/directions/json';
 
@@ -17,32 +25,69 @@ export class RoutingService {
 
   constructor(private config: ConfigService) {}
 
-  private cacheKey(
-    originLat: number,
-    originLng: number,
-    destLat: number,
-    destLng: number,
-  ): string {
+  private cacheKey(originLat: number, originLng: number, destination: string): string {
     return [
       originLat.toFixed(5),
       originLng.toFixed(5),
-      destLat.toFixed(5),
-      destLng.toFixed(5),
+      destination,
     ].join('|');
   }
 
-  async getRoute(
-    originLat: number,
-    originLng: number,
-    destLat: number,
-    destLng: number,
-  ): Promise<DeliveryRouteResponse> {
-    const key = this.cacheKey(originLat, originLng, destLat, destLng);
-    const cached = this.cache.get(key);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.result;
+  async getRoute(request: RouteRequest): Promise<DeliveryRouteResponse> {
+    const { originLat, originLng, destLat, destLng, destAddress } = request;
+    const origin = `${originLat},${originLng}`;
+    const attempts: { label: string; destination: string }[] = [];
+
+    if (destLat != null && destLng != null) {
+      attempts.push({ label: 'coordenadas', destination: `${destLat},${destLng}` });
+    }
+    if (destAddress?.trim()) {
+      attempts.push({ label: 'endereço', destination: destAddress.trim() });
     }
 
+    if (attempts.length === 0) {
+      throw new ServiceUnavailableException(
+        'Destino sem coordenadas nem endereço para calcular a rota.',
+      );
+    }
+
+    let lastStatus = 'UNKNOWN';
+    for (const attempt of attempts) {
+      const key = this.cacheKey(originLat, originLng, attempt.destination);
+      const cached = this.cache.get(key);
+      if (cached && cached.expiresAt > Date.now()) {
+        this.logger.log(
+          `Rota (cache) via ${attempt.label}: origem=${origin} destino="${attempt.destination}"`,
+        );
+        return cached.result;
+      }
+
+      try {
+        const result = await this.fetchDirections(origin, attempt.destination);
+        this.cache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS });
+        this.logger.log(
+          `Rota OK via ${attempt.label}: origem=${origin} destino="${attempt.destination}" ` +
+            `dist=${result.distanceMeters}m dur=${result.durationSeconds}s`,
+        );
+        return result;
+      } catch (error) {
+        lastStatus = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `Rota falhou via ${attempt.label}: origem=${origin} destino="${attempt.destination}" — ${lastStatus}`,
+        );
+      }
+    }
+
+    throw new ServiceUnavailableException(
+      `Não foi possível traçar rota (último erro: ${lastStatus}). ` +
+        'O endereço pode estar incompleto ou o geocoding impreciso — tente abrir no Maps/Waze.',
+    );
+  }
+
+  private async fetchDirections(
+    origin: string,
+    destination: string,
+  ): Promise<DeliveryRouteResponse> {
     const apiKey = this.config.get<string>('GOOGLE_MAPS_DIRECTIONS_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -51,22 +96,23 @@ export class RoutingService {
     }
 
     const params = new URLSearchParams({
-      origin: `${originLat},${originLng}`,
-      destination: `${destLat},${destLng}`,
+      origin,
+      destination,
       mode: 'driving',
       language: 'pt-BR',
+      region: 'br',
       key: apiKey,
     });
 
     const url = `${DIRECTIONS_URL}?${params.toString()}`;
     const res = await fetch(url);
     if (!res.ok) {
-      this.logger.warn(`Directions API HTTP ${res.status}`);
-      throw new ServiceUnavailableException('Não foi possível calcular a rota.');
+      throw new ServiceUnavailableException(`Directions HTTP ${res.status}`);
     }
 
     const data = (await res.json()) as {
       status: string;
+      error_message?: string;
       routes?: Array<{
         overview_polyline: { points: string };
         bounds: {
@@ -81,13 +127,13 @@ export class RoutingService {
     };
 
     if (data.status !== 'OK' || !data.routes?.[0]) {
-      this.logger.warn(`Directions API status: ${data.status}`);
-      throw new ServiceUnavailableException('Rota não encontrada para este destino.');
+      const detail = data.error_message ? ` — ${data.error_message}` : '';
+      throw new ServiceUnavailableException(`Directions status ${data.status}${detail}`);
     }
 
     const route = data.routes[0];
     const leg = route.legs[0];
-    const result: DeliveryRouteResponse = {
+    return {
       encodedPolyline: route.overview_polyline.points,
       distanceMeters: leg.distance.value,
       durationSeconds: leg.duration.value,
@@ -102,8 +148,5 @@ export class RoutingService {
         },
       },
     };
-
-    this.cache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS });
-    return result;
   }
 }

@@ -49,17 +49,16 @@ function movementReasonLabel(movement: Movement, storeId: string) {
   return movement.reason;
 }
 
-interface Balance {
+interface Product {
   id: string;
-  available: number;
-  inTransit: number;
-  lent: number;
-  product: { id: string; name: string; sku: string };
+  name: string;
+  sku: string;
+  stockBalances?: { available: number; inTransit: number; lent: number }[];
 }
 
 export default function StockPage() {
   const { storeId } = useParams<{ storeId: string }>();
-  const [balances, setBalances] = useState<Balance[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [adjustForm, setAdjustForm] = useState({ productId: '', quantity: 0, reason: 'Ajuste manual de estoque' });
   const [formError, setFormError] = useState('');
@@ -72,12 +71,20 @@ export default function StockPage() {
 
   const MOVEMENTS_PAGE_SIZE = 20;
 
-  async function loadBalances() {
-    const b = await api<Balance[]>(`/stock/balances?storeId=${storeId}`, {}, getToken());
-    setBalances(b);
-    if (!adjustForm.productId && b[0]) {
-      setAdjustForm((f) => ({ ...f, productId: b[0].product.id }));
+  async function loadProducts() {
+    const res = await api<PaginatedResponse<Product>>(
+      `/products?storeId=${storeId}&pageSize=100`,
+      {},
+      getToken(),
+    );
+    setProducts(res.data);
+    if (!adjustForm.productId && res.data[0]) {
+      setAdjustForm((f) => ({ ...f, productId: res.data[0].id }));
     }
+  }
+
+  function balanceFor(product: Product) {
+    return product.stockBalances?.[0] ?? { available: 0, inTransit: 0, lent: 0 };
   }
 
   async function loadMovements() {
@@ -99,7 +106,7 @@ export default function StockPage() {
   useEffect(() => {
     setMovementsPage(1);
     setReady(false);
-    loadBalances()
+    loadProducts()
       .catch(() => undefined)
       .finally(() => setReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,7 +142,7 @@ export default function StockPage() {
       }, getToken());
       setFormSuccess('Estoque atualizado com sucesso.');
       setAdjustForm((f) => ({ ...f, quantity: 0 }));
-      await Promise.all([loadBalances(), loadMovements()]);
+      await Promise.all([loadProducts(), loadMovements()]);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao ajustar estoque');
     }
@@ -157,15 +164,25 @@ export default function StockPage() {
         {formSuccess && (
           <p className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{formSuccess}</p>
         )}
+        {products.length === 0 ? (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Nenhum produto cadastrado nesta loja. Cadastre produtos em Produtos antes de ajustar o estoque.
+          </p>
+        ) : null}
         <form onSubmit={handleAdjust} className="grid gap-3 md:grid-cols-2">
           <div>
             <Label>Produto</Label>
             <Select
               value={adjustForm.productId}
               onChange={(e) => setAdjustForm({ ...adjustForm, productId: e.target.value })}
+              required
+              disabled={products.length === 0}
             >
-              {balances.map((b) => (
-                <option key={b.product.id} value={b.product.id}>{b.product.name}</option>
+              <option value="" disabled>
+                Selecione um produto
+              </option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>{product.name}</option>
               ))}
             </Select>
           </div>
@@ -197,14 +214,17 @@ export default function StockPage() {
           <tr><th className="p-3">Produto</th><th className="p-3">Disponível</th><th className="p-3">Trânsito</th><th className="p-3">Comodato</th></tr>
         </thead>
         <tbody>
-          {balances.map((b) => (
-            <tr key={b.id} className="border-t border-slate-100">
-              <td className="p-3">{b.product.name}</td>
-              <td className="p-3">{b.available}</td>
-              <td className="p-3">{b.inTransit}</td>
-              <td className="p-3">{b.lent}</td>
+          {products.map((product) => {
+            const balance = balanceFor(product);
+            return (
+            <tr key={product.id} className="border-t border-slate-100">
+              <td className="p-3">{product.name}</td>
+              <td className="p-3">{balance.available}</td>
+              <td className="p-3">{balance.inTransit}</td>
+              <td className="p-3">{balance.lent}</td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </Table>
 

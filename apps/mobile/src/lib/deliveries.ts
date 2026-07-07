@@ -1,8 +1,12 @@
 import { api } from './api';
-import type { Delivery, DeliveryStatus, Sale } from '../types';
+import type { Delivery, DeliveryStatus, Sale, TrackingPoint } from '../types';
 
 export function fetchMyDeliveries(): Promise<Delivery[]> {
   return api<Delivery[]>('/deliveries/my');
+}
+
+export function fetchDeliveryTracking(deliveryId: string): Promise<TrackingPoint[]> {
+  return api<TrackingPoint[]>(`/deliveries/${deliveryId}/tracking`);
 }
 
 export function updateDeliveryStatus(

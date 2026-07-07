@@ -1,23 +1,50 @@
 import { useEffect } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Loading } from '@/components/ui';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { DeliveryHistoryDetail } from '@/components/history/DeliveryHistoryDetail';
+import { Loading, StateMessage } from '@/components/ui';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
+import { colors } from '@/theme';
 
-/** Deep link / push → redireciona para o mapa home com a entrega selecionada. */
-export default function DeliveryDetailRedirect() {
+export default function DeliveryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getById, loading } = useDeliveriesContext();
   const delivery = id ? getById(id) : undefined;
 
-  useEffect(() => {
-    if (loading) return;
-    if (delivery) {
-      router.replace({ pathname: '/(tabs)', params: { deliveryId: delivery.id } });
-    } else {
-      router.replace('/(tabs)');
-    }
-  }, [delivery, loading, router]);
+  const isActive =
+    delivery?.status === 'PENDING' || delivery?.status === 'IN_PROGRESS';
+  const isHistory =
+    delivery?.status === 'DELIVERED' || delivery?.status === 'CANCELLED';
 
-  return <Loading label="Abrindo entrega..." />;
+  useEffect(() => {
+    if (loading || !delivery || !isActive) return;
+    router.replace({ pathname: '/(tabs)', params: { deliveryId: delivery.id } });
+  }, [delivery, isActive, loading, router]);
+
+  if (loading) {
+    return <Loading label="Abrindo entrega..." />;
+  }
+
+  if (!delivery) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <StateMessage
+          emoji="📭"
+          title="Entrega não encontrada"
+          subtitle="Ela pode ter sido removida ou você não tem acesso."
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (isActive) {
+    return <Loading label="Abrindo entrega..." />;
+  }
+
+  if (isHistory) {
+    return <DeliveryHistoryDetail delivery={delivery} />;
+  }
+
+  return null;
 }

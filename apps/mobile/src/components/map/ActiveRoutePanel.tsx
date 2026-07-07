@@ -73,7 +73,12 @@ export function ActiveRoutePanel({
       <DeliverySaleSummary sale={delivery.sale} />
 
       {routeLoading ? <Text style={styles.hint}>Calculando rota...</Text> : null}
-      {routeError ? <Text style={styles.error}>{routeError}</Text> : null}
+      {routeError ? (
+        <Text style={styles.error}>
+          {routeError}
+          {'\n'}Use Maps ou Waze abaixo se o endereço estiver correto.
+        </Text>
+      ) : null}
 
       <View style={styles.navRow}>
         <Button
@@ -140,7 +145,12 @@ export function SelectedDeliveryPanel({
       <DeliverySaleSummary sale={delivery.sale} />
 
       {routeLoading ? <Text style={styles.hint}>Calculando rota...</Text> : null}
-      {routeError ? <Text style={styles.error}>{routeError}</Text> : null}
+      {routeError ? (
+        <Text style={styles.error}>
+          {routeError}
+          {'\n'}Você ainda pode iniciar a rota e navegar pelo Maps/Waze.
+        </Text>
+      ) : null}
       <View style={styles.actions}>
         <Button label="Voltar" variant="secondary" onPress={onClear} style={styles.flex} />
         <Button
@@ -163,15 +173,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
     gap: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: -4 },
-    elevation: 8,
+    elevation: 12,
   },
   flex: { flex: 1 },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

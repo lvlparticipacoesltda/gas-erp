@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
@@ -7,7 +7,7 @@ import { FinishPaymentsModal } from '../FinishPaymentsModal';
 import { Loading } from '../ui';
 import { ActiveRoutePanel, SelectedDeliveryPanel } from './ActiveRoutePanel';
 import { DeliveryPickerSheet } from './DeliveryPickerSheet';
-import { DriverMap } from './DriverMap';
+import { DriverMap, type DriverMapRef } from './DriverMap';
 import { useDriverLocation } from '../../hooks/useDriverLocation';
 import { useRouteNavigation } from '../../hooks/useRouteNavigation';
 import { useRoutePreview } from '../../hooks/useRoutePreview';
@@ -26,6 +26,9 @@ import type { Delivery } from '../../types';
 
 export function DeliveryMapHome() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const fabSize = screenWidth * 0.14;
+  const fabIconSize = screenWidth * 0.065;
   const { deliveryId: deliveryIdParam } = useLocalSearchParams<{ deliveryId?: string }>();
   const { user, organization, logout } = useAuth();
   const { pending, inProgress, loading, refreshing, error, refresh, hasActiveRoute } =
@@ -37,6 +40,7 @@ export function DeliveryMapHome() {
   const [selected, setSelected] = useState<Delivery | null>(null);
   const [busy, setBusy] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const mapRef = useRef<DriverMapRef>(null);
 
   const { position: driverPosition } = useDriverLocation(!isUnavailable);
   const routeEnabled = Boolean(activeDelivery?.status === 'IN_PROGRESS');
@@ -69,14 +73,13 @@ export function DeliveryMapHome() {
     const fromParam =
       pending.find((d) => d.id === deliveryIdParam)
       ?? inProgress.find((d) => d.id === deliveryIdParam);
-    if (fromParam) setSelected(fromParam);
+    if (
+      fromParam
+      && (fromParam.status === 'PENDING' || fromParam.status === 'IN_PROGRESS')
+    ) {
+      setSelected(fromParam);
+    }
   }, [deliveryIdParam, pending, inProgress]);
-
-  const mapDestination = useMemo(() => {
-    if (activeDelivery?.destination) return activeDelivery.destination;
-    if (selected?.destination) return selected.destination;
-    return null;
-  }, [activeDelivery, selected]);
 
   const deliveriesOnMap = useMemo(() => {
     const list = [...pending];
@@ -136,8 +139,8 @@ export function DeliveryMapHome() {
   return (
     <View style={styles.root}>
       <DriverMap
+        ref={mapRef}
         driverPosition={driverPosition}
-        destination={mapDestination}
         routePolyline={polyline}
         previewPolyline={previewPolyline}
         followDriver={routeEnabled}
@@ -162,7 +165,18 @@ export function DeliveryMapHome() {
           ) : null}
           <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'entregador'}</Text>
         </View>
-        <View style={styles.iconButtonPlaceholder} />
+        <View style={styles.iconButtonPlaceholder}>
+          {driverPosition && !isUnavailable ? (
+            <Pressable
+              onPress={() => mapRef.current?.recenter()}
+              style={styles.iconButton}
+              hitSlop={8}
+              accessibilityLabel="Recentralizar mapa na sua posição"
+            >
+              <Ionicons name="locate" size={22} color={colors.primary} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {isUnavailable ? (
@@ -180,20 +194,27 @@ export function DeliveryMapHome() {
 
       {!activeDelivery && !selected ? (
         <Pressable
-          style={[styles.fab, { bottom: insets.bottom + 100 }]}
+          style={[
+            styles.fab,
+            {
+              width: fabSize,
+              height: fabSize,
+              borderRadius: fabSize / 2,
+            },
+          ]}
           onPress={() => setPickerOpen(true)}
         >
-          <Ionicons name="list" size={24} color={colors.navy} />
+          <Ionicons name="list" size={fabIconSize} color={colors.navy} />
           {pending.length > 0 ? (
-            <View style={styles.fabBadge}>
-              <Text style={styles.fabBadgeText}>{pending.length}</Text>
+            <View style={[styles.fabBadge, { minWidth: fabSize * 0.36, height: fabSize * 0.36, borderRadius: fabSize * 0.18 }]}>
+              <Text style={[styles.fabBadgeText, { fontSize: fabSize * 0.2 }]}>{pending.length}</Text>
             </View>
           ) : null}
         </Pressable>
       ) : null}
 
       {activeDelivery ? (
-        <View style={[styles.bottomPanel, { paddingBottom: insets.bottom }]}>
+        <View style={styles.bottomOverlay} pointerEvents="box-none">
           <ActiveRoutePanel
             delivery={activeDelivery}
             etaLabel={etaLabel}
@@ -207,7 +228,7 @@ export function DeliveryMapHome() {
           />
         </View>
       ) : selected ? (
-        <View style={[styles.bottomPanel, { paddingBottom: insets.bottom }]}>
+        <View style={styles.bottomOverlay} pointerEvents="box-none">
           <SelectedDeliveryPanel
             delivery={selected}
             busy={busy}
@@ -220,15 +241,7 @@ export function DeliveryMapHome() {
             onClear={() => setSelected(null)}
           />
         </View>
-      ) : (
-        <View style={[styles.idleBar, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Pressable style={styles.connectBtn} onPress={() => setPickerOpen(true)}>
-            <Text style={styles.connectText}>
-              {pending.length > 0 ? `Ver ${pending.length} entrega(s)` : 'Aguardando entregas'}
-            </Text>
-          </Pressable>
-        </View>
-      )}
+      ) : null}
 
       <DeliveryPickerSheet
         visible={pickerOpen}
@@ -296,7 +309,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  iconButtonPlaceholder: { width: 44 },
+  iconButtonPlaceholder: { width: 44, alignItems: 'center', justifyContent: 'center' },
   banner: {
     position: 'absolute',
     left: spacing.lg,
@@ -317,13 +330,11 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: spacing.lg,
-    width: 56,
-    height: 56,
-    borderRadius: radius.pill,
-    backgroundColor: '#FACC15',
+    right: '4%',
+    bottom: '3%',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#FACC15',
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -331,38 +342,19 @@ const styles = StyleSheet.create({
   },
   fabBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    minWidth: 20,
-    height: 20,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    top: '-8%',
+    right: '-8%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: '8%',
+    backgroundColor: colors.primary,
   },
-  fabBadgeText: { fontSize: 11, fontWeight: '800', color: '#FFF' },
-  bottomPanel: {
+  fabBadgeText: { fontWeight: '800', color: '#FFF' },
+  bottomOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 20,
   },
-  idleBar: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: 0,
-  },
-  connectBtn: {
-    backgroundColor: '#FACC15',
-    borderRadius: radius.lg,
-    paddingVertical: 18,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  connectText: { fontSize: 17, fontWeight: '800', color: colors.navy },
 });

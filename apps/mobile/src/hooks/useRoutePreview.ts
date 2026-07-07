@@ -5,7 +5,7 @@ import {
   type DeliveryRouteResponse,
   type LatLng,
 } from '@gas-erp/shared';
-import { fetchDeliveryRoute } from '../lib/routing';
+import { fetchDeliveryRoute, logRouteDebug } from '../lib/routing';
 import type { DriverPosition } from './useDriverLocation';
 
 function formatDuration(seconds: number): string {
@@ -66,7 +66,9 @@ export function useRoutePreview(
       .catch((err) => {
         if (cancelled) return;
         fetchedForRef.current = null;
-        setError(err instanceof Error ? err.message : 'Erro ao carregar rota');
+        const message = err instanceof Error ? err.message : 'Erro ao carregar rota';
+        logRouteDebug('preview_failed', { deliveryId, message });
+        setError(message);
         setRoute(null);
         setPolyline([]);
       })

@@ -10,6 +10,7 @@ import { DelivererAvailabilityProvider } from '@/lib/deliverer-availability-cont
 import { PushNotificationsBridge } from '@/components/PushNotificationsBridge';
 import { DevicePowerSetupBridge } from '@/components/DevicePowerSetupBridge';
 import { NotificationPermissionOnLaunch } from '@/components/NotificationPermissionOnLaunch';
+import { LocationDisclosureHost } from '@/components/LocationDisclosureHost';
 import { initForegroundPresence, teardownForegroundPresence } from '@/lib/location';
 import { colors } from '@/theme';
 
@@ -42,6 +43,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
+          <LocationDisclosureHost />
           <NotificationPermissionOnLaunch />
           <AuthenticatedDeliveries>
             <StatusBar style="dark" />

@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Callout, Marker } from 'react-native-maps';
 import {
   formatDistanceMeters,
@@ -12,12 +12,80 @@ import {
 } from '../DeliverySaleSummary';
 import { deliveryAddress } from '../../lib/deliveries';
 import { colors, radius, spacing } from '../../theme';
-import type { Delivery } from '../../types';
+import type { Delivery, DeliveryDestination } from '../../types';
 import type { DriverPosition } from '../../hooks/useDriverLocation';
+import { useDriverMarkerTracksViewChanges } from './DriverMarker';
+import { DestinationMarker } from './DestinationMarker';
 
 function formatCurrency(value: number | string | null | undefined): string {
   const n = value == null ? 0 : typeof value === 'number' ? value : Number(value) || 0;
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function DeliveryDestinationPin({
+  delivery,
+  dest,
+  emphasized,
+  customerName,
+  waitSeconds,
+  distanceMeters,
+  address,
+  onSelect,
+}: {
+  delivery: Delivery;
+  dest: DeliveryDestination;
+  emphasized: boolean;
+  customerName: string;
+  waitSeconds: number;
+  distanceMeters: number | null;
+  address: string;
+  onSelect?: (delivery: Delivery) => void;
+}) {
+  const tracksViewChanges = useDriverMarkerTracksViewChanges(
+    dest.latitude,
+    dest.longitude,
+    null,
+  );
+  // Android: custom markers precisam manter tracksViewChanges para todos renderizarem.
+  const trackChanges = Platform.OS === 'android' ? true : tracksViewChanges;
+
+  return (
+    <Marker
+      coordinate={dest}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={trackChanges}
+      zIndex={emphasized ? 2 : 1}
+      onPress={() => onSelect?.(delivery)}
+      title={customerName}
+      description={`${formatWaitTime(waitSeconds)} · ${distanceMeters != null ? formatDistanceMeters(distanceMeters) : '—'}`}
+    >
+      <DestinationMarker emphasized={emphasized} />
+      <Callout tooltip onPress={() => onSelect?.(delivery)}>
+        <View style={styles.callout}>
+          <Text style={styles.calloutTitle}>{customerName}</Text>
+          <Text style={styles.calloutMeta}>
+            Criada há {formatWaitTime(waitSeconds)}
+            {distanceMeters != null ? ` · ${formatDistanceMeters(distanceMeters)}` : ''}
+          </Text>
+          <Text style={styles.calloutItems} numberOfLines={2}>
+            {formatSaleItemsSummary(delivery.sale)}
+          </Text>
+          <Text style={styles.calloutPayment} numberOfLines={1}>
+            Pagamento: {formatSalePaymentsSummary(delivery.sale)}
+          </Text>
+          <Text style={styles.calloutTotal}>
+            {formatCurrency(delivery.sale.total)}
+          </Text>
+          {address ? (
+            <Text style={styles.calloutAddress} numberOfLines={3}>
+              {address}
+            </Text>
+          ) : null}
+          <Text style={styles.calloutAction}>Toque para ver detalhes</Text>
+        </View>
+      </Callout>
+    </Marker>
+  );
 }
 
 export function PendingDeliveryMarkers({
@@ -30,7 +98,6 @@ export function PendingDeliveryMarkers({
   deliveries: Delivery[];
   driverPosition: DriverPosition | null;
   selectedId?: string | null;
-  /** Entrega em rota — pin destacado no mapa. */
   highlightedId?: string | null;
   onSelect?: (delivery: Delivery) => void;
 }) {
@@ -40,8 +107,8 @@ export function PendingDeliveryMarkers({
         const dest = delivery.destination;
         if (!dest) return null;
 
-        const isSelected = delivery.id === selectedId;
-        const isHighlighted = delivery.id === highlightedId;
+        const emphasized =
+          delivery.id === highlightedId || delivery.id === selectedId;
         const waitSeconds =
           delivery.elapsedWaitingSeconds
           ?? getElapsedWaitingSeconds(delivery.sale.createdAt ?? delivery.createdAt);
@@ -55,42 +122,19 @@ export function PendingDeliveryMarkers({
           : null;
         const customerName = delivery.sale.customer?.name ?? 'Cliente';
         const address = deliveryAddress(delivery);
-        const pinColor = isHighlighted ? '#16A34A' : isSelected ? '#DC2626' : '#FB5E13';
 
         return (
-          <Marker
+          <DeliveryDestinationPin
             key={delivery.id}
-            coordinate={dest}
-            pinColor={pinColor}
-            onPress={() => onSelect?.(delivery)}
-            title={customerName}
-            description={`${formatWaitTime(waitSeconds)} · ${distanceMeters != null ? formatDistanceMeters(distanceMeters) : '—'}`}
-          >
-            <Callout tooltip onPress={() => onSelect?.(delivery)}>
-              <View style={styles.callout}>
-                <Text style={styles.calloutTitle}>{customerName}</Text>
-                <Text style={styles.calloutMeta}>
-                  Criada há {formatWaitTime(waitSeconds)}
-                  {distanceMeters != null ? ` · ${formatDistanceMeters(distanceMeters)}` : ''}
-                </Text>
-                <Text style={styles.calloutItems} numberOfLines={2}>
-                  {formatSaleItemsSummary(delivery.sale)}
-                </Text>
-                <Text style={styles.calloutPayment} numberOfLines={1}>
-                  Pagamento: {formatSalePaymentsSummary(delivery.sale)}
-                </Text>
-                <Text style={styles.calloutTotal}>
-                  {formatCurrency(delivery.sale.total)}
-                </Text>
-                {address ? (
-                  <Text style={styles.calloutAddress} numberOfLines={3}>
-                    {address}
-                  </Text>
-                ) : null}
-                <Text style={styles.calloutAction}>Toque para ver detalhes</Text>
-              </View>
-            </Callout>
-          </Marker>
+            delivery={delivery}
+            dest={dest}
+            emphasized={emphasized}
+            customerName={customerName}
+            waitSeconds={waitSeconds}
+            distanceMeters={distanceMeters}
+            address={address}
+            onSelect={onSelect}
+          />
         );
       })}
     </>

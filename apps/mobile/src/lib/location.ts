@@ -1,10 +1,11 @@
-import { Alert, AppState, type AppStateStatus, Platform } from 'react-native';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 import type { LocationTaskOptions } from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as SecureStore from 'expo-secure-store';
 import { api } from './api';
+import { showLocationDisclosure } from './location-disclosure';
 import { LOCATION_TASK } from './location-constants';
 import { ensureLocationTrackingNotificationChannel } from './location-notifications';
 import { getToken } from './storage';
@@ -35,21 +36,17 @@ type BatteryPayload = {
 };
 
 /**
- * Divulgação destacada (Google Play) antes do prompt de localização em segundo plano.
- * Deve aparecer ANTES de requestBackgroundPermissionsAsync.
+ * Divulgação destacada (Google Play) antes do prompt de localização em foreground.
  */
-export function confirmBackgroundLocationDisclosure(): Promise<boolean> {
-  return new Promise((resolve) => {
-    Alert.alert(
-      'Uso da sua localização',
-      'Enquanto você estiver disponível para a loja, o app compartilha sua posição — inclusive com o app em segundo plano — para aparecer no mapa de entregadores. Durante uma rota, o trajeto também é registrado até a conclusão. Quando a loja marcar você como indisponível, o compartilhamento é interrompido.',
-      [
-        { text: 'Agora não', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Permitir', style: 'default', onPress: () => resolve(true) },
-      ],
-      { cancelable: false },
-    );
-  });
+async function confirmForegroundLocationDisclosure(): Promise<boolean> {
+  return showLocationDisclosure('foreground');
+}
+
+/**
+ * Divulgação destacada (Google Play) antes do prompt de localização em segundo plano.
+ */
+async function confirmBackgroundLocationDisclosure(): Promise<boolean> {
+  return showLocationDisclosure('background');
 }
 
 async function readBattery(): Promise<BatteryPayload> {
@@ -273,6 +270,12 @@ async function requestLocationPermissionsWithDisclosureOnce(): Promise<Permissio
     if (fg.status === 'denied' && fg.canAskAgain === false) {
       return { foreground: false, background: false };
     }
+
+    const foregroundConsent = await confirmForegroundLocationDisclosure();
+    if (!foregroundConsent) {
+      return { foreground: false, background: false };
+    }
+
     const requested = await Location.requestForegroundPermissionsAsync();
     if (requested.status !== 'granted') return { foreground: false, background: false };
   }
