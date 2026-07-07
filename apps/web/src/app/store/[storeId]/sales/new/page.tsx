@@ -47,6 +47,12 @@ interface Deliverer {
 
 type Step = 1 | 2 | 3;
 
+type SaleLineItem = {
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+};
+
 const STEPS = [
   { n: 1, label: 'Cliente' },
   { n: 2, label: 'Produto' },
@@ -73,12 +79,10 @@ export default function NewSalePage() {
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
 
+  const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [draft, setDraft] = useState({
     customerId: '',
     customerName: '',
-    productId: '',
-    quantity: 1,
-    unitPrice: 0,
     channel: 'PHONE',
     fulfillmentType: 'DELIVERY' as 'PICKUP' | 'DELIVERY',
     delivererId: '',
@@ -176,11 +180,15 @@ export default function NewSalePage() {
   }
 
   useEffect(() => {
-    if (!draft.productId) return;
-    const unitPrice = resolveProductUnitPrice(draft.productId);
-    setDraft((d) => (d.unitPrice === unitPrice ? d : { ...d, unitPrice }));
+    if (!lineItems.length) return;
+    setLineItems((items) =>
+      items.map((item) => ({
+        ...item,
+        unitPrice: resolveProductUnitPrice(item.productId),
+      })),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recalc when customer prices or catalog load
-  }, [customerPriceByProduct, draft.productId, products]);
+  }, [customerPriceByProduct, products]);
 
   const gdpPaymentMethod = paymentMethods.find((m) => m.systemCode === 'GDP')
     ?? null;
@@ -315,20 +323,40 @@ export default function NewSalePage() {
     }));
   }
 
-  function selectProduct(id: string) {
-    setDraft((d) => ({
-      ...d,
-      productId: id,
-      unitPrice: resolveProductUnitPrice(id),
-    }));
+  function addProduct(id: string) {
+    setLineItems((items) => {
+      const existing = items.find((item) => item.productId === id);
+      if (existing) {
+        return items.map((item) =>
+          item.productId === id ? { ...item, quantity: item.quantity + 1 } : item,
+        );
+      }
+      return [...items, { productId: id, quantity: 1, unitPrice: resolveProductUnitPrice(id) }];
+    });
   }
 
-  const selectedProduct = products.find((p) => p.id === draft.productId);
-  const itemsSubtotal = draft.quantity * draft.unitPrice;
+  function updateLineItem(productId: string, patch: Partial<Pick<SaleLineItem, 'quantity' | 'unitPrice'>>) {
+    setLineItems((items) =>
+      items.map((item) => (item.productId === productId ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function removeLineItem(productId: string) {
+    setLineItems((items) => items.filter((item) => item.productId !== productId));
+  }
+
+  function lineItemCount(productId: string): number {
+    return lineItems.find((item) => item.productId === productId)?.quantity ?? 0;
+  }
+
+  const itemsSubtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const appliesDeliveryFee =
     !isPortariaChannel && draft.fulfillmentType === 'DELIVERY';
   const deliveryFee = appliesDeliveryFee
-    ? parsePrice(selectedProduct?.storeSettings?.[0]?.deliveryFee)
+    ? [...new Set(lineItems.map((item) => item.productId))].reduce((sum, productId) => {
+        const product = products.find((p) => p.id === productId);
+        return sum + parsePrice(product?.storeSettings?.[0]?.deliveryFee);
+      }, 0)
     : 0;
   const total = itemsSubtotal + deliveryFee;
 
@@ -358,16 +386,19 @@ export default function NewSalePage() {
         return;
       }
       setStep(2);
-      if (!draft.productId && products[0]) selectProduct(products[0].id);
       return;
     }
     if (step === 2) {
-      if (!draft.productId) {
-        setError('Selecione um produto.');
+      if (lineItems.length === 0) {
+        setError('Adicione pelo menos um produto.');
+        return;
+      }
+      if (lineItems.some((item) => item.unitPrice <= 0)) {
+        setError('Informe um preço válido para todos os produtos.');
         return;
       }
       if (total <= 0) {
-        setError('Informe um preço válido para o produto.');
+        setError('O total da venda deve ser maior que zero.');
         return;
       }
       if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
@@ -418,11 +449,11 @@ export default function NewSalePage() {
           deliveryCity: draft.deliveryCity,
           deliveryState: draft.deliveryState,
           gasDoPovoBenefit: draft.gasDoPovoBenefit,
-          items: [{
-            productId: draft.productId,
-            quantity: draft.quantity,
-            unitPrice: draft.unitPrice,
-          }],
+          items: lineItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+          })),
           payments: draft.gasDoPovoBenefit
             ? gdpPaymentMethod
               ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: total }]
@@ -476,9 +507,9 @@ export default function NewSalePage() {
                 {s.n === 1 && draft.customerName && (
                   <span className="max-w-[100px] truncate text-[10px] text-slate-500">{draft.customerName}</span>
                 )}
-                {s.n === 2 && selectedProduct && step > 2 && (
+                {s.n === 2 && lineItems.length > 0 && step > 2 && (
                   <span className="max-w-[100px] truncate text-[10px] text-slate-500">
-                    {draft.quantity}x {selectedProduct.name}
+                    {lineItems.reduce((sum, item) => sum + item.quantity, 0)} item(ns)
                   </span>
                 )}
               </button>
@@ -554,16 +585,24 @@ export default function NewSalePage() {
                   const storePrice = storeProductPrice(p);
                   const customerPrice = customerPriceByProduct[p.id];
                   const displayPrice = customerPrice ?? storePrice;
+                  const inCart = lineItemCount(p.id);
                   return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => selectProduct(p.id)}
+                    onClick={() => addProduct(p.id)}
                     className={`rounded-xl border p-4 text-left transition hover:border-brand-light ${
-                      draft.productId === p.id ? 'border-brand bg-brand-muted ring-2 ring-brand-light/40' : 'border-slate-200'
+                      inCart > 0 ? 'border-brand bg-brand-muted ring-2 ring-brand-light/40' : 'border-slate-200'
                     }`}
                   >
-                    <div className="font-medium">{p.name}</div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-medium">{p.name}</div>
+                      {inCart > 0 ? (
+                        <span className="shrink-0 rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-white">
+                          {inCart}
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="mt-1 text-sm text-brand-dark">
                       {customerPrice != null ? (
                         <>
@@ -576,47 +615,65 @@ export default function NewSalePage() {
                         formatCurrency(displayPrice)
                       )}
                     </div>
+                    <div className="mt-2 text-xs font-medium text-slate-500">Toque para adicionar</div>
                   </button>
                   );
                 })}
               </div>
 
-              {selectedProduct && (
-                <div className="mt-6 flex items-center gap-4">
-                  <Label>Quantidade</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setDraft((d) => ({ ...d, quantity: Math.max(1, d.quantity - 1) }))}
-                    >
-                      −
-                    </Button>
-                    <span className="w-8 text-center font-semibold">{draft.quantity}</span>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setDraft((d) => ({ ...d, quantity: d.quantity + 1 }))}
-                    >
-                      +
-                    </Button>
-                  </div>
-                  <div className="ml-auto text-right">
-                    <Label>Preço unit.</Label>
-                    {draft.gasDoPovoBenefit ? (
-                      <Input
-                        type="number"
-                        step="0.01"
-                        className="mt-1 w-28"
-                        value={draft.unitPrice}
-                        onChange={(e) => setDraft({ ...draft, unitPrice: Number(e.target.value) })}
-                      />
-                    ) : (
-                      <p className="mt-1 text-sm font-medium text-slate-900">
-                        {formatCurrency(draft.unitPrice)}
-                      </p>
-                    )}
-                  </div>
+              {lineItems.length > 0 && (
+                <div className="mt-6 space-y-3">
+                  <h3 className="font-medium text-slate-900">Itens da venda</h3>
+                  {lineItems.map((item) => {
+                    const product = products.find((p) => p.id === item.productId);
+                    if (!product) return null;
+                    return (
+                      <div
+                        key={item.productId}
+                        className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+                      >
+                        <div className="min-w-[140px] flex-1 font-medium">{product.name}</div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => updateLineItem(item.productId, { quantity: Math.max(1, item.quantity - 1) })}
+                          >
+                            −
+                          </Button>
+                          <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => updateLineItem(item.productId, { quantity: item.quantity + 1 })}
+                          >
+                            +
+                          </Button>
+                        </div>
+                        <div>
+                          <Label>Preço unit.</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="mt-1 w-28"
+                            value={item.unitPrice}
+                            onChange={(e) => updateLineItem(item.productId, { unitPrice: Number(e.target.value) })}
+                          />
+                        </div>
+                        <div className="ml-auto text-right text-sm font-semibold text-slate-900">
+                          {formatCurrency(item.quantity * item.unitPrice)}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          onClick={() => removeLineItem(item.productId)}
+                        >
+                          Remover
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -626,11 +683,15 @@ export default function NewSalePage() {
                   type="button"
                   onClick={() => setDraft((d) => {
                     const nextGdp = !d.gasDoPovoBenefit;
-                    return {
-                      ...d,
-                      gasDoPovoBenefit: nextGdp,
-                      unitPrice: nextGdp ? d.unitPrice : resolveProductUnitPrice(d.productId),
-                    };
+                    if (!nextGdp) {
+                      setLineItems((items) =>
+                        items.map((item) => ({
+                          ...item,
+                          unitPrice: resolveProductUnitPrice(item.productId),
+                        })),
+                      );
+                    }
+                    return { ...d, gasDoPovoBenefit: nextGdp };
                   })}
                   className={cn(
                     'mt-2 w-full rounded-xl border px-4 py-3 text-left text-sm transition',
@@ -665,10 +726,17 @@ export default function NewSalePage() {
             <Card>
               <h2 className="mb-4 font-semibold">Resumo</h2>
               <p className="text-sm text-slate-600">Cliente: {draft.customerName || '—'}</p>
-              {selectedProduct && (
-                <p className="mt-2 text-sm">
-                  {draft.quantity}x {selectedProduct.name}
-                </p>
+              {lineItems.length > 0 && (
+                <ul className="mt-2 space-y-1 text-sm">
+                  {lineItems.map((item) => {
+                    const product = products.find((p) => p.id === item.productId);
+                    return (
+                      <li key={item.productId}>
+                        {item.quantity}x {product?.name ?? 'Produto'} — {formatCurrency(item.unitPrice)}
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
               {deliveryFee > 0 && (
                 <p className="mt-2 text-sm text-slate-600">

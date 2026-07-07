@@ -17,7 +17,6 @@ import {
   toNumber,
   isDelivererAssignableForSale,
   assertSalePaymentsTotal,
-  assertSaleUnitPriceOverrideAllowed,
   SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE,
 } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
@@ -150,7 +149,6 @@ export class SalesService {
     }
 
     await this.validateSaleReferences(user, data);
-    await this.validateItemUnitPrices(data.storeId, data.customerId, data.items, gasDoPovoBenefit);
 
     if (data.channel === 'IN_STORE' && data.fulfillmentType === 'DELIVERY') {
       throw new BadRequestException('Vendas pelo canal portaria não permitem entrega.');
@@ -345,7 +343,6 @@ export class SalesService {
     }
 
     await this.validateMobileSaleReferences(user, data);
-    await this.validateItemUnitPrices(data.storeId, data.customerId, data.items, gasDoPovoBenefit);
 
     const unitCostByProduct = await this.resolveItemUnitCosts(data.storeId, data.items);
 
@@ -863,48 +860,6 @@ export class SalesService {
     });
 
     return new Map(settings.map((setting) => [setting.productId, toNumber(setting.supplierCost)]));
-  }
-
-  private async resolveExpectedUnitPrice(
-    storeId: string,
-    customerId: string | undefined | null,
-    productId: string,
-  ): Promise<number> {
-    if (customerId) {
-      const customerPrice = await this.prisma.customerProductPrice.findUnique({
-        where: {
-          customerId_productId_storeId: { customerId, productId, storeId },
-        },
-        select: { price: true },
-      });
-      if (customerPrice) {
-        return toNumber(customerPrice.price);
-      }
-    }
-
-    const storeSetting = await this.prisma.productStoreSetting.findUnique({
-      where: { productId_storeId: { productId, storeId } },
-      select: { price: true },
-    });
-    return storeSetting ? toNumber(storeSetting.price) : 0;
-  }
-
-  private async validateItemUnitPrices(
-    storeId: string,
-    customerId: string | undefined | null,
-    items: { productId: string; unitPrice: number }[],
-    gasDoPovoBenefit: boolean,
-  ) {
-    for (const item of items) {
-      const expected = await this.resolveExpectedUnitPrice(storeId, customerId, item.productId);
-      try {
-        assertSaleUnitPriceOverrideAllowed(item.unitPrice, expected, gasDoPovoBenefit);
-      } catch (error) {
-        throw new BadRequestException(
-          error instanceof Error ? error.message : SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE,
-        );
-      }
-    }
   }
 
   private async validateSaleReferences(user: AuthUser, data: CreateSaleInput) {

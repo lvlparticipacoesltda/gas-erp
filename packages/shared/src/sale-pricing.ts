@@ -8,14 +8,11 @@ export function saleUnitPricesMatch(a: number, b: number): boolean {
   return Math.abs(a - b) <= SALE_UNIT_PRICE_TOLERANCE;
 }
 
-/** Rejeita preço diferente do esperado quando não é benefício Gás do Povo. */
+/** Permite preço unitário customizado em qualquer forma de pagamento. */
 export function assertSaleUnitPriceOverrideAllowed(
-  submittedPrice: number,
-  expectedPrice: number,
-  gasDoPovoBenefit: boolean,
+  _submittedPrice: number,
+  _expectedPrice: number,
+  _gasDoPovoBenefit?: boolean,
 ): void {
-  if (gasDoPovoBenefit) return;
-  if (!saleUnitPricesMatch(submittedPrice, expectedPrice)) {
-    throw new Error(SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE);
-  }
+  // Sem restrição — o painel pode ajustar o preço na nova venda.
 }
