@@ -17,7 +17,6 @@ import {
   toNumber,
   isDelivererAssignableForSale,
   assertSalePaymentsTotal,
-  SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE,
 } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -1130,20 +1129,15 @@ export class SalesService {
 
     const gasDoPovoBenefit = sale.gasDoPovoBenefit;
 
-    if (submittedUnitPrice !== undefined) {
-      if (!gasDoPovoBenefit) {
-        throw new BadRequestException(SALE_UNIT_PRICE_OVERRIDE_ONLY_GDP_MESSAGE);
-      }
-      if (sale.items.length !== 1) {
-        throw new BadRequestException(
-          'Ajuste de preço GDP só é suportado para vendas com um produto.',
-        );
-      }
+    if (submittedUnitPrice !== undefined && sale.items.length !== 1) {
+      throw new BadRequestException(
+        'Ajuste de preço unitário só é suportado para vendas com um produto.',
+      );
     }
 
     let saleTotal = toNumber(sale.total);
 
-    if (submittedUnitPrice !== undefined && gasDoPovoBenefit) {
+    if (submittedUnitPrice !== undefined) {
       const deliveryFee = toNumber(sale.deliveryFee);
       const item = sale.items[0];
       const discount = toNumber(item.discount);
@@ -1162,9 +1156,19 @@ export class SalesService {
       && sale.delivery?.deliverer.userId === user.id;
 
     if (submittedUnitPrice !== undefined && !isDelivererOwner) {
-      throw new ForbiddenException(
-        'Apenas o entregador pode ajustar o preço GDP ao concluir a entrega.',
-      );
+      const isFinance = user.role === 'FINANCE';
+      const isManager = canManageSales(user.role);
+      const hasSalesScreen = hasScreenPermission(user.role, user.permissions, 'store.sales');
+      const terminal = sale.status === SaleStatus.DELIVERED || sale.status === SaleStatus.PORTARIA;
+
+      if (!isManager && !isFinance && !hasSalesScreen) {
+        throw new ForbiddenException('Sem permissão para alterar o preço unitário desta venda.');
+      }
+      if (terminal && !isManager && !isFinance) {
+        throw new ForbiddenException(
+          'Apenas gerente ou financeiro podem alterar o preço de venda finalizada.',
+        );
+      }
     }
 
     if (isDelivererOwner) {
@@ -1209,7 +1213,7 @@ export class SalesService {
     }));
 
     await this.prisma.$transaction(async (tx) => {
-      if (submittedUnitPrice !== undefined && gasDoPovoBenefit) {
+      if (submittedUnitPrice !== undefined) {
         const item = sale.items[0];
         const discount = toNumber(item.discount);
         const itemTotal = item.quantity * submittedUnitPrice - discount;
