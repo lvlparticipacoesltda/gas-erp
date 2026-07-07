@@ -20,7 +20,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.gaserp.entregador",
       "infoPlist": {
-        "UIBackgroundModes": ["location", "fetch"],
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ],
         "NSLocationWhenInUseUsageDescription": "Usamos sua localização para exibir sua posição no mapa da loja e registrar o trajeto das entregas.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Usamos sua localização em segundo plano para manter sua posição atualizada no mapa da loja e acompanhar entregas em rota.",
         "NSLocationAlwaysUsageDescription": "Usamos sua localização em segundo plano para manter sua posição atualizada no mapa da loja e acompanhar entregas em rota."
@@ -57,7 +60,9 @@
           "icon": "./assets/icon.png",
           "color": "#FB5E13",
           "defaultChannel": "deliveries-route",
-          "sounds": ["./assets/sounds/rota_entrega.wav"]
+          "sounds": [
+            "./assets/sounds/rota_entrega.wav"
+          ]
         }
       ],
       [

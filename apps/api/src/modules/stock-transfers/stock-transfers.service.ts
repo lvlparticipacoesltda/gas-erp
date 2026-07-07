@@ -1,8 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { StockTransferStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createStockTransferSchema, updateStockTransferStatusSchema } from '@gas-erp/shared';
-import { AuthUser } from '@gas-erp/shared';
+import {
+  AuthUser,
+  canManageStock,
+  createStockTransferSchema,
+  updateStockTransferStatusSchema,
+} from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { StockService } from '../stock/stock.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -40,6 +44,9 @@ export class StockTransfersService {
   }
 
   async create(user: AuthUser, input: unknown) {
+    if (!canManageStock(user.role)) {
+      throw new ForbiddenException('Sem permissão para transferir estoque.');
+    }
     const data = createStockTransferSchema.parse(input);
     if (data.fromStoreId === data.toStoreId) {
       throw new BadRequestException('Lojas de origem e destino devem ser diferentes');
@@ -61,6 +68,9 @@ export class StockTransfersService {
   }
 
   async updateStatus(user: AuthUser, id: string, input: unknown) {
+    if (!canManageStock(user.role)) {
+      throw new ForbiddenException('Sem permissão para alterar transferências de estoque.');
+    }
     const { status } = updateStockTransferStatusSchema.parse(input);
     const transfer = await this.prisma.stockTransfer.findUnique({
       where: { id },

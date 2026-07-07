@@ -5,9 +5,10 @@ import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
-import { api, getToken } from '@/lib/api';
+import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import type { PaginatedResponse } from '@gas-erp/shared';
+import { canManageStock } from '@gas-erp/shared';
 
 interface MovementTransfer {
   id: string;
@@ -58,6 +59,8 @@ interface Product {
 
 export default function StockPage() {
   const { storeId } = useParams<{ storeId: string }>();
+  const currentUser = getStoredUser<{ role: string }>();
+  const canEditStock = currentUser ? canManageStock(currentUser.role) : false;
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [adjustForm, setAdjustForm] = useState({ productId: '', quantity: 0, reason: 'Ajuste manual de estoque' });
@@ -156,6 +159,7 @@ export default function StockPage() {
     <>
     <PageHeader title="Estoque" subtitle="Saldos e movimentações da unidade" />
 
+      {canEditStock ? (
       <Card className="mb-8">
         <h2 className="mb-4 font-semibold">Ajustar estoque</h2>
         {formError && (
@@ -207,6 +211,7 @@ export default function StockPage() {
           </div>
         </form>
       </Card>
+      ) : null}
 
       <h2 className="mb-3 font-semibold">Saldos atuais</h2>
       <Table>

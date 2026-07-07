@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Callout, Marker } from 'react-native-maps';
 import {
   formatDistanceMeters,
@@ -14,7 +14,6 @@ import { deliveryAddress } from '../../lib/deliveries';
 import { colors, radius, spacing } from '../../theme';
 import type { Delivery, DeliveryDestination } from '../../types';
 import type { DriverPosition } from '../../hooks/useDriverLocation';
-import { useDriverMarkerTracksViewChanges } from './DriverMarker';
 import { DestinationMarker } from './DestinationMarker';
 
 function formatCurrency(value: number | string | null | undefined): string {
@@ -41,13 +40,8 @@ function DeliveryDestinationPin({
   address: string;
   onSelect?: (delivery: Delivery) => void;
 }) {
-  const tracksViewChanges = useDriverMarkerTracksViewChanges(
-    dest.latitude,
-    dest.longitude,
-    null,
-  );
-  // Android: custom markers precisam manter tracksViewChanges para todos renderizarem.
-  const trackChanges = Platform.OS === 'android' ? true : tracksViewChanges;
+  // Marcadores customizados precisam manter tracksViewChanges para todos renderizarem (iOS e Android).
+  const trackChanges = true;
 
   return (
     <Marker

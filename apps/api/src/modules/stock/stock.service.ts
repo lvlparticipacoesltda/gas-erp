@@ -1,8 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { adjustStockSchema } from '@gas-erp/shared';
-import { AuthUser } from '@gas-erp/shared';
+import { adjustStockSchema, AuthUser, canManageStock } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 
@@ -68,6 +67,9 @@ export class StockService {
   }
 
   async adjust(user: AuthUser, input: unknown) {
+    if (!canManageStock(user.role)) {
+      throw new ForbiddenException('Sem permissão para ajustar estoque.');
+    }
     const data = adjustStockSchema.parse(input);
     assertStoreAccess(user, data.storeId);
 

@@ -34,6 +34,7 @@ interface SalePaymentsEditorProps {
   showGdpOption?: boolean;
   /** Disparado quando o entregador escolhe GDP em uma linha de pagamento. */
   onGdpSelected?: () => void;
+  onAmountFocus?: () => void;
 }
 
 export function newPaymentLineKey() {
@@ -99,6 +100,7 @@ export function SalePaymentsEditor({
   gdpLocked = false,
   showGdpOption = false,
   onGdpSelected,
+  onAmountFocus,
 }: SalePaymentsEditorProps) {
   const availableMethods = useMemo(
     () => resolveEditorMethods(methods, gdpLocked, showGdpOption),
@@ -196,6 +198,7 @@ export function SalePaymentsEditor({
             keyboardType="decimal-pad"
             editable={!disabled}
             value={line.amount > 0 ? String(line.amount) : ''}
+            onFocus={onAmountFocus}
             onChangeText={(text) => {
               const normalized = text.replace(',', '.');
               const amount = normalized === '' ? 0 : Number(normalized);

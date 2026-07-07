@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
-import { api, getToken } from '@/lib/api';
+import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import type { PaginatedResponse } from '@gas-erp/shared';
+import { canManageStock } from '@gas-erp/shared';
 
 interface Store { id: string; name: string }
 interface Product { id: string; name: string }
@@ -29,6 +30,8 @@ const TRANSFER_STATUS_LABELS: Record<string, string> = {
 
 export default function StockTransfersPage() {
   const { storeId } = useParams<{ storeId: string }>();
+  const currentUser = getStoredUser<{ role: string }>();
+  const canEditStock = currentUser ? canManageStock(currentUser.role) : false;
   const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -87,6 +90,7 @@ export default function StockTransfersPage() {
     <>
     <PageHeader title="Transferências de estoque" subtitle="Movimentação entre unidades" />
       <div className="grid gap-6">
+        {canEditStock ? (
         <Card className="max-w-xl">
           <h2 className="mb-4 font-semibold">Nova transferência</h2>
           <form onSubmit={handleCreate} className="space-y-3">
@@ -106,6 +110,7 @@ export default function StockTransfersPage() {
             <Button type="submit">Solicitar</Button>
           </form>
         </Card>
+        ) : null}
         <Table>
           <thead className="bg-slate-50 text-left">
             <tr>
@@ -128,8 +133,8 @@ export default function StockTransfersPage() {
                 </td>
                 <td className="p-3">{TRANSFER_STATUS_LABELS[t.status] ?? t.status}</td>
                 <td className="p-3 space-x-2">
-                  {t.status === 'PENDING' && <Button variant="secondary" onClick={() => approve(t.id)}>Aprovar</Button>}
-                  {t.status === 'APPROVED' && <Button onClick={() => complete(t.id)}>Concluir</Button>}
+                  {canEditStock && t.status === 'PENDING' && <Button variant="secondary" onClick={() => approve(t.id)}>Aprovar</Button>}
+                  {canEditStock && t.status === 'APPROVED' && <Button onClick={() => complete(t.id)}>Concluir</Button>}
                 </td>
               </tr>
             ))}

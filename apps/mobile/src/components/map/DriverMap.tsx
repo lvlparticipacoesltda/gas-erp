@@ -76,27 +76,13 @@ export const DriverMap = forwardRef<DriverMapRef, {
   useImperativeHandle(ref, () => ({ recenter }), [recenter]);
 
   const pendingWithCoords = pendingDeliveries.filter((d) => d.destination != null);
+  const initialCameraDoneRef = useRef(false);
 
-  useEffect(() => {
+  function fitMapToCurrentContext() {
     if (!mapRef.current || !driverPosition) return;
 
-    if (followDriver && routePolyline.length > 1) {
-      mapRef.current.animateCamera(
-        {
-          center: {
-            latitude: driverPosition.latitude,
-            longitude: driverPosition.longitude,
-          },
-          pitch: 0,
-          zoom: 16,
-        },
-        { duration: 800 },
-      );
-      return;
-    }
-
     const coords: LatLng[] = [];
-    if (driverPosition) coords.push(driverPosition);
+    coords.push(driverPosition);
     if (previewPolyline.length > 1) {
       coords.push(...previewPolyline);
     } else {
@@ -123,13 +109,26 @@ export const DriverMap = forwardRef<DriverMapRef, {
       edgePadding: { top: 120, right: 48, bottom: 220, left: 48 },
       animated: true,
     });
+  }
+
+  // Centraliza uma vez quando a posição do entregador fica disponível.
+  useEffect(() => {
+    if (!driverPosition || initialCameraDoneRef.current) return;
+    initialCameraDoneRef.current = true;
+    fitMapToCurrentContext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverPosition?.latitude, driverPosition?.longitude]);
+
+  // Reajusta o enquadramento só quando a seleção/rota/entregas mudam — não a cada tick de GPS.
+  useEffect(() => {
+    if (!initialCameraDoneRef.current) return;
+    fitMapToCurrentContext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    driverPosition?.latitude,
-    driverPosition?.longitude,
     routePolyline.length,
     previewPolyline.length,
     selectedDeliveryId,
-    followDriver,
+    activeDeliveryId,
     pendingWithCoords.length,
   ]);
 

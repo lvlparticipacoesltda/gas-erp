@@ -38,7 +38,14 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, StoreScreenKey[]> = {
   PLATFORM_ADMIN: ALL_STORE_SCREENS,
   ORG_MASTER: ALL_STORE_SCREENS,
   STORE_MANAGER: ALL_STORE_SCREENS,
-  ATTENDANT: ['store.daily-summary', 'store.sales', 'store.sales.new', 'store.customers', 'store.deliverers.map'],
+  ATTENDANT: [
+    'store.daily-summary',
+    'store.sales',
+    'store.sales.new',
+    'store.customers',
+    'store.stock',
+    'store.deliverers.map',
+  ],
   FINANCE: [
     'store.daily-summary',
     'store.sales',
@@ -62,6 +69,11 @@ function normalizeScreenKey(screen: string): StoreScreenKey | null {
 }
 
 export function canManageSales(role: string): boolean {
+  return role === 'ORG_MASTER' || role === 'STORE_MANAGER' || role === 'PLATFORM_ADMIN';
+}
+
+/** Ajuste manual de estoque e transferências — gerente e master. */
+export function canManageStock(role: string): boolean {
   return role === 'ORG_MASTER' || role === 'STORE_MANAGER' || role === 'PLATFORM_ADMIN';
 }
 

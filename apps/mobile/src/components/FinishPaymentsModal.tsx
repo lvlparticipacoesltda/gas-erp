@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPaymentLinesSumErrorMessage } from '@gas-erp/shared';
 import { BottomSheet } from '@/components/BottomSheet';
@@ -88,6 +98,8 @@ export function FinishPaymentsModal({
   onConfirm,
 }: FinishPaymentsModalProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
   const [methods, setMethods] = useState<StorePaymentMethodOption[]>([]);
   const [lines, setLines] = useState<PaymentLine[]>([]);
   const [loadingMethods, setLoadingMethods] = useState(false);
@@ -158,6 +170,15 @@ export function FinishPaymentsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleTotal, visible, gasDoPovoBenefit, gdpMethodId, methods]);
 
+  useEffect(() => {
+    if (!visible) return;
+    const event = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(event, () => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, [visible]);
+
   async function handleConfirm() {
     if (gasDoPovoBenefit) {
       if (!gdpMethodId) {
@@ -193,14 +214,25 @@ export function FinishPaymentsModal({
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} maxHeightRatio={0.85}>
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-        <Text style={styles.title}>Formas de pagamento</Text>
-        <Text style={styles.subtitle}>
-          Total da venda: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-        </Text>
+    <BottomSheet visible={visible} onClose={onClose} maxHeightRatio={0.92}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom + spacing.md : 0}
+      >
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+          <Text style={styles.title}>Formas de pagamento</Text>
+          <Text style={styles.subtitle}>
+            Total da venda: {saleTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          </Text>
 
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            ref={scrollRef}
+            style={[styles.scroll, { maxHeight: windowHeight * 0.48 }]}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            showsVerticalScrollIndicator
+          >
           {gasDoPovoBenefit ? (
             <View style={styles.priceSection}>
               <Text style={styles.priceLabel}>Preço unitário (GDP)</Text>
@@ -225,6 +257,9 @@ export function FinishPaymentsModal({
             loadingMethods={loadingMethods}
             methodsError={methodsError}
             gdpLocked={gasDoPovoBenefit}
+            onAmountFocus={() => {
+              scrollRef.current?.scrollToEnd({ animated: true });
+            }}
           />
         </ScrollView>
 
@@ -240,7 +275,8 @@ export function FinishPaymentsModal({
             style={styles.flex}
           />
         </View>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </BottomSheet>
   );
 }
@@ -251,7 +287,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: '800', color: colors.text },
   subtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
-  scroll: { marginTop: spacing.md, maxHeight: 320 },
+  scroll: { marginTop: spacing.md },
+  scrollContent: { paddingBottom: spacing.xxl, gap: spacing.sm },
   priceSection: { marginBottom: spacing.md, gap: spacing.xs },
   priceLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   priceInput: {
