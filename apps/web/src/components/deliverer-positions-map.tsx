@@ -166,6 +166,7 @@ export function DelivererPositionsMap({
           accent: delivererMarkerAccent(p),
           isSelected,
           isLive: p.isLive,
+          stale: p.stale,
         });
         return (
           <Marker
