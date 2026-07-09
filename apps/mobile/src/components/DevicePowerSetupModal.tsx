@@ -13,6 +13,7 @@ import {
   shouldShowDevicePowerSetup,
 } from '@/lib/device-power-setup';
 import { Button } from '@/components/ui';
+import { APP_DISPLAY_NAME } from '@/constants/branding';
 import { colors, radius, spacing } from '@/theme';
 
 type Step = 'battery' | 'autostart';
@@ -70,7 +71,7 @@ export function DevicePowerSetupModal({
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>Passo 1 — Bateria</Text>
                   <Text style={styles.cardBody}>
-                    Toque em abrir configurações, encontre Gás do Povo Entregador e escolha{' '}
+                    Toque em abrir configurações, encontre {APP_DISPLAY_NAME} e escolha{' '}
                     <Text style={styles.strong}>Sem restrições</Text> ou{' '}
                     <Text style={styles.strong}>Não otimizar</Text>.
                   </Text>

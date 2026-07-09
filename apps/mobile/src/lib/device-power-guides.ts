@@ -2,6 +2,8 @@ import { Linking, Platform } from 'react-native';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 
+import { APP_DISPLAY_NAME } from '@/constants/branding';
+
 const ANDROID_PACKAGE =
   Constants.expoConfig?.android?.package ?? 'com.gaserp.entregador';
 
@@ -52,7 +54,7 @@ export function getAutostartGuide(): AutostartGuide {
       title: 'Ativar início automático (Xiaomi / Redmi / POCO)',
       steps: [
         'Abra Configurações → Apps → Gerenciar apps.',
-        'Toque em Gás do Povo Entregador.',
+        `Toque em ${APP_DISPLAY_NAME}.`,
         'Abra Início automático (Autostart) e ative.',
         'Volte e abra Economia de bateria → Sem restrições (se aparecer).',
         'Em Segurança → Bateria, confira se o app não está “restringido”.',
@@ -66,7 +68,7 @@ export function getAutostartGuide(): AutostartGuide {
       title: 'Ativar início automático (Huawei / Honor)',
       steps: [
         'Abra Configurações → Apps → Apps.',
-        'Toque em Gás do Povo Entregador → Bateria.',
+        `Toque em ${APP_DISPLAY_NAME} → Bateria.`,
         'Escolha Gerenciamento de inicialização → permitir início automático.',
         'Desative otimização de bateria para este app.',
       ],
@@ -77,7 +79,7 @@ export function getAutostartGuide(): AutostartGuide {
     variant: 'generic',
     title: 'Permitir app em segundo plano',
     steps: [
-      'Abra Configurações → Apps → Gás do Povo Entregador.',
+      `Abra Configurações → Apps → ${APP_DISPLAY_NAME}.`,
       'Em Bateria, escolha Sem restrições ou Não otimizar.',
       'Se existir “Início automático” ou “Executar em segundo plano”, ative.',
       'Desative economia agressiva de bateria para este app.',

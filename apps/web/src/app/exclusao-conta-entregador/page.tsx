@@ -4,9 +4,9 @@ import { LegalPage } from '@/components/legal-page';
 import { ACCOUNT_DELETION_ENTREGADOR } from '@/content/privacy-policy-entregador';
 
 export const metadata: Metadata = {
-  title: 'Exclusão de conta — App Entregador | Gás do Povo',
+  title: 'Exclusão de conta — THLGDP Entregador',
   description:
-    'Como solicitar a exclusão da conta e dos dados no aplicativo Gás do Povo Entregador.',
+    'Como solicitar a exclusão da conta e dos dados no aplicativo THLGDP Entregador.',
   robots: { index: true, follow: true },
 };
 
@@ -18,7 +18,7 @@ export default function ExclusaoContaEntregadorPage() {
       <p className="text-sm leading-relaxed text-slate-700">
         O Google Play exige que aplicativos que coletam dados pessoais ofereçam um caminho
         claro para o usuário solicitar a exclusão da conta. Siga os passos abaixo se você é
-        entregador e deseja remover seu acesso ao App Gás do Povo Entregador.
+        entregador e deseja remover seu acesso ao App {content.appName}.
       </p>
 
       <section>

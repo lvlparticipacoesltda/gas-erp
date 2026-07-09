@@ -1,6 +1,6 @@
-# Política de Privacidade — App Gás do Povo Entregador
+# Política de Privacidade — App THLGDP Entregador
 
-_Última atualização: 30/06/2026_
+_Última atualização: 09/07/2026_
 
 **URL pública (Play Store):** https://thlgasdopovo.com.br/privacidade-entregador
 
@@ -9,16 +9,16 @@ _Última atualização: 30/06/2026_
 
 **Identificação (deve coincidir com a ficha da loja):**
 
-- **App:** Gás do Povo Entregador
+- **App:** THLGDP Entregador
 - **Pacote Android:** `com.gaserp.entregador`
-- **Desenvolvedor (Google Play):** LVL Participações Ltda — conferir texto exato na Console
+- **Desenvolvedor (Google Play):** LVL SERVICOS E PARTICIPACOES LTDA
 - **Controlador dos dados:** THL Gás do Povo — Rede Gás Litoral
 
 **URL exclusão de conta:** https://thlgasdopovo.com.br/exclusao-conta-entregador
 
 ---
 
-Esta política descreve como o aplicativo **Gás do Povo Entregador** (o "App") coleta, usa e
+Esta política descreve como o aplicativo **THLGDP Entregador** (o "App") coleta, usa e
 protege os dados dos entregadores que o utilizam. O App é uma ferramenta de uso
 profissional, disponibilizada pelas distribuidoras de GLP (gás) às suas equipes de
 entrega.

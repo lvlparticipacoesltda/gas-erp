@@ -1,4 +1,5 @@
 import { Image, StyleSheet, View } from 'react-native';
+import { APP_DISPLAY_NAME } from '@/constants/branding';
 
 /** Logo empilhado (fundo escuro) — exportado do manual da marca. */
 export function BrandLogo() {
@@ -8,7 +9,7 @@ export function BrandLogo() {
         source={require('../../assets/logo-login.png')}
         style={styles.logo}
         resizeMode="contain"
-        accessibilityLabel="Gás do Povo Entregador"
+        accessibilityLabel={APP_DISPLAY_NAME}
       />
     </View>
   );

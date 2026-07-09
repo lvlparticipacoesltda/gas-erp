@@ -59,7 +59,7 @@ Preenchido no Play Console (jul/2026).
 ## 5. Ficha da loja
 
 - [x] **URL da Política de Privacidade:** https://thlgasdopovo.com.br/privacidade-entregador
-      (página pública em `apps/web/src/app/privacidade-entregador/`)
+      (app **THLGDP Entregador**, desenvolvedor **LVL SERVICOS E PARTICIPACOES LTDA**)
 - [ ] Categoria: Negócios / Produtividade.
 - [ ] Público-alvo: adultos (uso profissional). Não direcionado a crianças.
 - [ ] Capturas de tela, ícone (512×512) e feature graphic.

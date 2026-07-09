@@ -3,9 +3,9 @@ import { LegalPage, LegalSection } from '@/components/legal-page';
 import { PRIVACY_POLICY_ENTREGADOR } from '@/content/privacy-policy-entregador';
 
 export const metadata: Metadata = {
-  title: 'Política de Privacidade — App Entregador | Gás do Povo',
+  title: 'Política de Privacidade — THLGDP Entregador',
   description:
-    'Política de privacidade do aplicativo Gás do Povo Entregador para entregadores de GLP.',
+    'Política de privacidade do aplicativo THLGDP Entregador para entregadores de GLP.',
   robots: { index: true, follow: true },
 };
 

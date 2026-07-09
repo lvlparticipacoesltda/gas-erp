@@ -1,11 +1,11 @@
-/** Texto da política de privacidade do app Gás do Povo Entregador (Play Store). */
+/** Texto da política de privacidade do app THLGDP Entregador (Play Store). */
 export const PRIVACY_POLICY_ENTREGADOR = {
-  title: 'Política de Privacidade — App Gás do Povo Entregador',
+  title: 'Política de Privacidade — App THLGDP Entregador',
   updatedAt: '09/07/2026',
   /** Nome exato do app na Google Play / App Store. */
-  appName: 'Gás do Povo Entregador',
+  appName: 'THLGDP Entregador',
   /** Nome exato da conta desenvolvedor na Google Play Console. */
-  playDeveloper: 'LVL Participações Ltda',
+  playDeveloper: 'LVL SERVICOS E PARTICIPACOES LTDA',
   androidPackage: 'com.gaserp.entregador',
   iosBundleId: 'com.gaserp.entregador',
   controller: 'THL Gás do Povo — Rede Gás Litoral',
@@ -15,9 +15,9 @@ export const PRIVACY_POLICY_ENTREGADOR = {
     {
       heading: '1. Introdução',
       paragraphs: [
-        'Esta política descreve como o aplicativo Gás do Povo Entregador (o "App") coleta, usa e protege os dados dos entregadores que o utilizam. O App é uma ferramenta de uso profissional, disponibilizada pelas distribuidoras de GLP (gás) às suas equipes de entrega.',
-        'O App é operado em benefício da distribuidora à qual o entregador está vinculado. Os dados são tratados para fins de operação logística, gestão de entregas e comunicação com a equipe.',
-        'O App é publicado na Google Play pela conta desenvolvedor indicada nesta página, em parceria com a rede operadora THL Gás do Povo — Rede Gás Litoral.',
+        'Esta Política de Privacidade aplica-se ao aplicativo móvel THLGDP Entregador (o "App"), publicado na Google Play sob o pacote Android com.gaserp.entregador pela conta desenvolvedor LVL SERVICOS E PARTICIPACOES LTDA.',
+        'O App é operado em benefício da distribuidora à qual o entregador está vinculado, em parceria com a rede THL Gás do Povo — Rede Gás Litoral. Esta política descreve como o App coleta, usa e protege os dados dos entregadores que o utilizam.',
+        'O App é uma ferramenta de uso profissional, disponibilizada pelas distribuidoras de GLP (gás) às suas equipes de entrega. Os dados são tratados para fins de operação logística, gestão de entregas e comunicação com a equipe.',
       ],
     },
     {
@@ -97,11 +97,12 @@ export const PRIVACY_POLICY_ENTREGADOR = {
 } as const;
 
 export const ACCOUNT_DELETION_ENTREGADOR = {
-  title: 'Exclusão de conta — App Gás do Povo Entregador',
+  title: 'Exclusão de conta — App THLGDP Entregador',
   updatedAt: '09/07/2026',
+  appName: 'THLGDP Entregador',
   contactEmail: 'contato@thlgasdopovo.com.br',
   steps: [
-    'Envie um e-mail para contato@thlgasdopovo.com.br com o assunto "Exclusão de conta — App Entregador".',
+    'Envie um e-mail para contato@thlgasdopovo.com.br com o assunto "Exclusão de conta — THLGDP Entregador".',
     'Informe seu nome completo, o e-mail cadastrado no App e a distribuidora/unidade à qual está vinculado.',
     'Opcionalmente, descreva se deseja exclusão apenas do acesso ao App ou de todos os registros operacionais associados.',
     'Nossa equipe ou o gestor da sua distribuidora confirmará a solicitação em até 15 dias úteis.',

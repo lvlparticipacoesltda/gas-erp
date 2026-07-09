@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui';
+import { APP_DISPLAY_NAME } from '@/constants/branding';
 import {
   registerLocationDisclosurePresenter,
   type LocationDisclosureKind,
@@ -14,7 +15,7 @@ const COPY: Record<
   foreground: {
     title: 'Uso da sua localização',
     body:
-      'O aplicativo Gás do Povo Entregador coleta e usa sua localização precisa (GPS) para:\n\n'
+      `O aplicativo ${APP_DISPLAY_NAME} coleta e usa sua localização precisa (GPS) para:\n\n`
       + '• Mostrar sua posição no mapa da loja quando você está disponível\n'
       + '• Exibir sua localização no mapa durante rotas ativas\n'
       + '• Registrar o trajeto das entregas concluídas\n\n'
