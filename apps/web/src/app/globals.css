@@ -50,22 +50,28 @@ body {
 }
 
 @keyframes deliverer-pulse {
-  0% {
-    stroke-opacity: 1;
-    fill-opacity: 0.95;
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
   50% {
-    stroke-opacity: 0.55;
-    fill-opacity: 0.65;
-  }
-  100% {
-    stroke-opacity: 1;
-    fill-opacity: 0.95;
+    opacity: 0.78;
+    transform: scale(1.06);
   }
 }
 
 .deliverer-marker-live {
   animation: deliverer-pulse 1.6s ease-in-out infinite;
+}
+
+.deliverer-map-marker-root {
+  background: transparent !important;
+  border: none !important;
+}
+
+.deliverer-map-marker {
+  transform-origin: center center;
 }
 
 @keyframes ui-panel-enter {

@@ -4,6 +4,16 @@ _Última atualização: 30/06/2026_
 
 **URL pública (Play Store):** https://thlgasdopovo.com.br/privacidade-entregador
 
+> **Não use** URLs antigas (ex.: gasdepira.com.br). A política deve estar no domínio
+> da operação e com os mesmos nomes do app e do desenvolvedor na Google Play Console.
+
+**Identificação (deve coincidir com a ficha da loja):**
+
+- **App:** Gás do Povo Entregador
+- **Pacote Android:** `com.gaserp.entregador`
+- **Desenvolvedor (Google Play):** LVL Participações Ltda — conferir texto exato na Console
+- **Controlador dos dados:** THL Gás do Povo — Rede Gás Litoral
+
 **URL exclusão de conta:** https://thlgasdopovo.com.br/exclusao-conta-entregador
 
 ---

@@ -1,7 +1,13 @@
 /** Texto da política de privacidade do app Gás do Povo Entregador (Play Store). */
 export const PRIVACY_POLICY_ENTREGADOR = {
   title: 'Política de Privacidade — App Gás do Povo Entregador',
-  updatedAt: '30/06/2026',
+  updatedAt: '09/07/2026',
+  /** Nome exato do app na Google Play / App Store. */
+  appName: 'Gás do Povo Entregador',
+  /** Nome exato da conta desenvolvedor na Google Play Console. */
+  playDeveloper: 'LVL Participações Ltda',
+  androidPackage: 'com.gaserp.entregador',
+  iosBundleId: 'com.gaserp.entregador',
   controller: 'THL Gás do Povo — Rede Gás Litoral',
   contactEmail: 'contato@thlgasdopovo.com.br',
   website: 'https://thlgasdopovo.com.br',
@@ -11,6 +17,7 @@ export const PRIVACY_POLICY_ENTREGADOR = {
       paragraphs: [
         'Esta política descreve como o aplicativo Gás do Povo Entregador (o "App") coleta, usa e protege os dados dos entregadores que o utilizam. O App é uma ferramenta de uso profissional, disponibilizada pelas distribuidoras de GLP (gás) às suas equipes de entrega.',
         'O App é operado em benefício da distribuidora à qual o entregador está vinculado. Os dados são tratados para fins de operação logística, gestão de entregas e comunicação com a equipe.',
+        'O App é publicado na Google Play pela conta desenvolvedor indicada nesta página, em parceria com a rede operadora THL Gás do Povo — Rede Gás Litoral.',
       ],
     },
     {
@@ -91,7 +98,7 @@ export const PRIVACY_POLICY_ENTREGADOR = {
 
 export const ACCOUNT_DELETION_ENTREGADOR = {
   title: 'Exclusão de conta — App Gás do Povo Entregador',
-  updatedAt: '30/06/2026',
+  updatedAt: '09/07/2026',
   contactEmail: 'contato@thlgasdopovo.com.br',
   steps: [
     'Envie um e-mail para contato@thlgasdopovo.com.br com o assunto "Exclusão de conta — App Entregador".',

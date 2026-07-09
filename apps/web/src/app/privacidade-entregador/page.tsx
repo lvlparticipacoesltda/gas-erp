@@ -16,7 +16,19 @@ export default function PrivacidadeEntregadorPage() {
     <LegalPage title={policy.title} updatedAt={policy.updatedAt}>
       <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
         <p>
-          <span className="font-semibold text-slate-900">Controlador dos dados:</span>{' '}
+          <span className="font-semibold text-slate-900">Aplicativo:</span>{' '}
+          {policy.appName}
+        </p>
+        <p className="mt-2">
+          <span className="font-semibold text-slate-900">Desenvolvedor (Google Play):</span>{' '}
+          {policy.playDeveloper}
+        </p>
+        <p className="mt-2">
+          <span className="font-semibold text-slate-900">Pacote Android:</span>{' '}
+          <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{policy.androidPackage}</code>
+        </p>
+        <p className="mt-2">
+          <span className="font-semibold text-slate-900">Controlador dos dados / Operador:</span>{' '}
           {policy.controller}
         </p>
         <p className="mt-2">

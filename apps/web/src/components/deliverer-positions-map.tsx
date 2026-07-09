@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import type { DelivererPosition } from '@gas-erp/shared';
 import {
   DELIVERER_STATUS_LABELS,
@@ -11,6 +11,10 @@ import {
 } from '@gas-erp/shared';
 import { RouteElapsed } from '@/components/route-elapsed';
 import { PendingDeliveriesInfo } from '@/components/pending-deliveries-info';
+import {
+  createDelivererMapIcon,
+  delivererMarkerAccent,
+} from '@/components/deliverer-map-marker-icon';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_CENTER: L.LatLngExpression = [-23.5505, -46.6333];
@@ -32,12 +36,6 @@ function formatTimeShort(iso: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function markerColor(p: DelivererPosition): string {
-  if (p.stale) return '#94a3b8';
-  if (p.isLive) return '#f97316';
-  return '#3b82f6';
 }
 
 function positionStatusLabel(p: DelivererPosition): string {
@@ -163,20 +161,18 @@ export function DelivererPositionsMap({
       />
       {withCoords.map((p) => {
         const isSelected = selectedId === p.delivererId;
-        const color = markerColor(p);
         const badge = getDelivererPositionBadge(p);
+        const icon = createDelivererMapIcon({
+          accent: delivererMarkerAccent(p),
+          isSelected,
+          isLive: p.isLive,
+        });
         return (
-          <CircleMarker
+          <Marker
             key={p.delivererId}
-            center={[p.latitude, p.longitude]}
-            radius={isSelected ? 14 : p.isLive ? 12 : 10}
-            pathOptions={{
-              color: isSelected ? '#1d4ed8' : color,
-              fillColor: color,
-              fillOpacity: p.isLive ? 1 : 0.85,
-              weight: isSelected ? 3 : p.isLive ? 3 : 2,
-              className: p.isLive ? 'deliverer-marker-live' : undefined,
-            }}
+            position={[p.latitude, p.longitude]}
+            icon={icon}
+            zIndexOffset={isSelected ? 1000 : p.isLive ? 500 : 0}
             eventHandlers={{
               click: () => onSelect(p.delivererId),
             }}
@@ -214,7 +210,7 @@ export function DelivererPositionsMap({
                 </p>
               </div>
             </Popup>
-          </CircleMarker>
+          </Marker>
         );
       })}
     </MapContainer>
