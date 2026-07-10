@@ -1,8 +1,14 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Input, Label } from '@/components/ui';
-import { fetchAddressByCep, formatCep, normalizeCepDigits } from '@/lib/viacep';
+import {
+  fetchAddressByCep,
+  formatCep,
+  normalizeCepDigits,
+  searchAddressesByStreet,
+  type ViaCepResponse,
+} from '@/lib/viacep';
 
 export interface CustomerAddressForm {
   zipCode: string;
@@ -19,6 +25,9 @@ interface CustomerAddressFieldsProps {
   value: CustomerAddressForm;
   onChange: (value: CustomerAddressForm) => void;
 }
+
+const MIN_STREET_SEARCH = 3;
+const STREET_DEBOUNCE_MS = 300;
 
 export function customerAddressPayload(form: CustomerAddressForm) {
   return {
@@ -37,6 +46,14 @@ export function CustomerAddressFields({ value, onChange }: CustomerAddressFields
   const [cepError, setCepError] = useState('');
   const lastFetchedCep = useRef('');
   const numberRef = useRef<HTMLInputElement>(null);
+  const streetContainerRef = useRef<HTMLDivElement>(null);
+  const streetListId = useId();
+
+  const [streetOpen, setStreetOpen] = useState(false);
+  const [streetLoading, setStreetLoading] = useState(false);
+  const [streetSuggestions, setStreetSuggestions] = useState<ViaCepResponse[]>([]);
+  const [debouncedStreet, setDebouncedStreet] = useState('');
+  const [streetActiveIndex, setStreetActiveIndex] = useState(0);
 
   const setField = useCallback(
     (field: AddressField, fieldValue: string) => {
@@ -44,6 +61,101 @@ export function CustomerAddressFields({ value, onChange }: CustomerAddressFields
     },
     [onChange, value],
   );
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedStreet(value.street.trim()), STREET_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [value.street]);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!streetContainerRef.current?.contains(e.target as Node)) {
+        setStreetOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  useEffect(() => {
+    const city = value.city.trim();
+    const state = value.state.trim().toUpperCase();
+    if (
+      !streetOpen ||
+      debouncedStreet.length < MIN_STREET_SEARCH ||
+      city.length < MIN_STREET_SEARCH ||
+      state.length !== 2
+    ) {
+      setStreetSuggestions([]);
+      setStreetLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setStreetLoading(true);
+    searchAddressesByStreet(state, city, debouncedStreet)
+      .then((results) => {
+        if (!cancelled) {
+          setStreetSuggestions(results);
+          setStreetActiveIndex(0);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStreetSuggestions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setStreetLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedStreet, value.city, value.state, streetOpen]);
+
+  function applyStreetSuggestion(result: ViaCepResponse) {
+    onChange({
+      ...value,
+      street: result.logradouro,
+      neighborhood: result.bairro || value.neighborhood,
+      city: result.localidade || value.city,
+      state: result.uf || value.state,
+      zipCode: result.cep ? formatCep(result.cep) : value.zipCode,
+    });
+    setStreetOpen(false);
+    setStreetSuggestions([]);
+    numberRef.current?.focus();
+  }
+
+  function handleStreetChange(raw: string) {
+    setField('street', raw);
+    setStreetOpen(true);
+  }
+
+  function onStreetKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (!streetOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      setStreetOpen(true);
+      return;
+    }
+    if (e.key === 'Escape') {
+      setStreetOpen(false);
+      return;
+    }
+    if (!streetSuggestions.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setStreetActiveIndex((i) => Math.min(i + 1, streetSuggestions.length - 1));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setStreetActiveIndex((i) => Math.max(i - 1, 0));
+      return;
+    }
+    if (e.key === 'Enter' && streetOpen && streetSuggestions[streetActiveIndex]) {
+      e.preventDefault();
+      applyStreetSuggestion(streetSuggestions[streetActiveIndex]);
+    }
+  }
 
   async function lookupCep(rawCep: string) {
     const digits = normalizeCepDigits(rawCep);
@@ -89,6 +201,21 @@ export function CustomerAddressFields({ value, onChange }: CustomerAddressFields
     void lookupCep(formatted);
   }
 
+  const canSearchStreet =
+    value.city.trim().length >= MIN_STREET_SEARCH && value.state.trim().length === 2;
+  const showStreetDropdown = streetOpen && value.street.length > 0;
+  const showStreetHint =
+    showStreetDropdown && !canSearchStreet && value.street.trim().length >= MIN_STREET_SEARCH;
+  const showStreetLoading = showStreetDropdown && canSearchStreet && streetLoading;
+  const showStreetEmpty =
+    showStreetDropdown &&
+    canSearchStreet &&
+    !streetLoading &&
+    debouncedStreet.length >= MIN_STREET_SEARCH &&
+    streetSuggestions.length === 0;
+  const showStreetResults =
+    showStreetDropdown && canSearchStreet && !streetLoading && streetSuggestions.length > 0;
+
   return (
     <div className="space-y-3 rounded-lg border border-slate-100 bg-slate-50/80 p-4">
       <p className="text-sm font-medium text-slate-700">Endereço</p>
@@ -115,13 +242,63 @@ export function CustomerAddressFields({ value, onChange }: CustomerAddressFields
         <p className="mt-1 text-xs text-slate-500">Informe o CEP para preencher rua, bairro, cidade e UF.</p>
       </div>
 
-      <div>
+      <div ref={streetContainerRef} className="relative">
         <Label>Logradouro</Label>
         <Input
           value={value.street}
-          onChange={(e) => setField('street', e.target.value)}
+          onChange={(e) => handleStreetChange(e.target.value)}
+          onFocus={() => setStreetOpen(true)}
+          onKeyDown={onStreetKeyDown}
           placeholder="Rua, avenida…"
+          role="combobox"
+          aria-expanded={showStreetDropdown}
+          aria-controls={`${streetListId}-listbox`}
+          aria-autocomplete="list"
+          autoComplete="off"
         />
+        {showStreetDropdown && (
+          <div
+            id={`${streetListId}-listbox`}
+            role="listbox"
+            className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+          >
+            {showStreetHint && (
+              <p className="px-3 py-2 text-xs text-slate-500">
+                Informe cidade e UF para buscar o logradouro.
+              </p>
+            )}
+            {showStreetLoading && (
+              <p className="px-3 py-2 text-sm text-slate-500">Buscando endereços…</p>
+            )}
+            {showStreetEmpty && (
+              <p className="px-3 py-2 text-sm text-slate-500">Nenhum endereço encontrado.</p>
+            )}
+            {showStreetResults &&
+              streetSuggestions.map((result, index) => (
+                <button
+                  key={`${result.cep}-${result.logradouro}-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === streetActiveIndex}
+                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${
+                    index === streetActiveIndex ? 'bg-brand-muted/60' : ''
+                  }`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyStreetSuggestion(result)}
+                >
+                  <span className="font-medium text-slate-900">{result.logradouro}</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {[result.bairro, result.localidade, result.uf, formatCep(result.cep)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </button>
+              ))}
+          </div>
+        )}
+        <p className="mt-1 text-xs text-slate-500">
+          Digite o logradouro para buscar sugestões (com cidade e UF preenchidos).
+        </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">

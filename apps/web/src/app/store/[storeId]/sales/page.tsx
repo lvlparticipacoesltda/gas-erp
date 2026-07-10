@@ -16,6 +16,7 @@ import {
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
   getSaleAttendantName,
+  getSaleDelivererName,
   getSaleDisplayStatus,
   getWaitTimeSeconds,
   isBackdatedSale,
@@ -214,7 +215,7 @@ export default function SalesListPage() {
                     <div className="mt-0.5 text-xs text-slate-500">aguardando gerente</div>
                   )}
                 </td>
-                <td className="p-3">{s.deliverer?.user.name ?? '-'}</td>
+                <td className="p-3">{getSaleDelivererName(s) ?? '-'}</td>
                 <td className="p-3">
                   {s.delivery?.startedAt
                     ? formatWaitTime(getWaitTimeSeconds(s.createdAt, s.delivery.startedAt))

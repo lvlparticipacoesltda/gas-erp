@@ -24,6 +24,7 @@ import {
   getPaymentLinesSumErrorMessage,
   hasScreenPermission,
   formatSaleDateLabel,
+  getSaleDelivererName,
   getSaleDisplayStatus,
   PAYMENT_METHOD_LABELS,
   SALE_CHANNEL_LABELS,
@@ -485,7 +486,7 @@ export default function SaleDetailPage() {
                   <dd>{sale.mobileRejectionReason}</dd>
                 </div>
               )}
-              <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{sale.deliverer?.user.name ?? '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Entregador</dt><dd>{getSaleDelivererName(sale) ?? '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Total</dt><dd className="font-semibold">{formatCurrency(sale.total)}</dd></div>
               <div className="flex justify-between">
                 <dt className="text-slate-500">Benefício Gás do Povo</dt>

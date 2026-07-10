@@ -12,7 +12,7 @@ import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/componen
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
-import { getSaleDisplayStatus, type PaginatedResponse } from '@gas-erp/shared';
+import { getSaleDisplayStatus, getSaleDelivererName, type PaginatedResponse } from '@gas-erp/shared';
 
 interface CustomerAddress {
   id?: string;
@@ -169,7 +169,7 @@ function CustomerHistoryModal({
                           </div>
                           <div className="flex gap-2">
                             <dt className="shrink-0 text-slate-500">Entregador:</dt>
-                            <dd>{sale.deliverer?.user.name ?? '—'}</dd>
+                            <dd>{getSaleDelivererName(sale) ?? '—'}</dd>
                           </div>
                           <div className="flex gap-2">
                             <dt className="shrink-0 text-slate-500">Endereço:</dt>

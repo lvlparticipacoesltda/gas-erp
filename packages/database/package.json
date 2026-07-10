@@ -12,6 +12,7 @@
     "migrate:deploy:force": "dotenv -e ../../.env -- sh -c 'PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy'",
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "import:sv-customers": "dotenv -e ../../.env -- tsx scripts/import-sao-vicente-customers.ts",
+    "import:grj-customers": "dotenv -e ../../.env -- tsx scripts/import-guaruja-customers.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "build": "tsc"
   },

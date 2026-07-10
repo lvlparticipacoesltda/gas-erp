@@ -47,6 +47,16 @@ export function getSaleAttendantName(sale: {
   return sale.attendant?.name ?? null;
 }
 
+export function getSaleDelivererName(sale: {
+  status: string;
+  deliverer?: { user: { name: string } } | null;
+}): string | null {
+  if (sale.status === 'PORTARIA') {
+    return 'Portaria';
+  }
+  return sale.deliverer?.user.name ?? null;
+}
+
 /** Status unificado para venda + entrega (histórico e sidebar). */
 export function getSaleDisplayStatus(sale: {
   status: string;
@@ -87,7 +97,7 @@ export function getSaleDisplayStatus(sale: {
   }
 
   if (sale.status === 'PORTARIA') {
-    return { key: 'PORTARIA', label: 'Portaria', tone: 'default' };
+    return { key: 'PORTARIA', label: 'Entregue', tone: 'success' };
   }
 
   if (sale.status === 'DELIVERED' || sale.delivery?.status === 'DELIVERED') {

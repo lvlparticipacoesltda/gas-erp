@@ -28,3 +28,27 @@ export async function fetchAddressByCep(cep: string): Promise<ViaCepResponse | n
   if (data.erro) return null;
   return data;
 }
+
+export async function searchAddressesByStreet(
+  uf: string,
+  city: string,
+  street: string,
+): Promise<ViaCepResponse[]> {
+  const state = uf.trim().toUpperCase();
+  const cityName = city.trim();
+  const streetName = street.trim();
+  if (state.length !== 2 || cityName.length < 3 || streetName.length < 3) return [];
+
+  const path = [
+    encodeURIComponent(state),
+    encodeURIComponent(cityName),
+    encodeURIComponent(streetName),
+  ].join('/');
+
+  const res = await fetch(`https://viacep.com.br/ws/${path}/json/`);
+  if (!res.ok) return [];
+
+  const data = (await res.json()) as ViaCepResponse[] | (ViaCepResponse & { erro?: boolean });
+  if (!Array.isArray(data)) return [];
+  return data.filter((row) => row.logradouro && !row.erro);
+}
