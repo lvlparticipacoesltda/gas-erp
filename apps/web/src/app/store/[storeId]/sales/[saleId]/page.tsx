@@ -745,7 +745,7 @@ export default function SaleDetailPage() {
                     <span className="font-medium text-slate-800">
                       {SALE_STATUS_LABELS[log.status] ?? log.status}
                     </span>
-                    <span className="text-slate-500">{formatDate(log.createdAt)}</span>
+                    <span className="text-slate-500">{formatDateTime(log.createdAt)}</span>
                   </div>
                   {log.user && (
                     <p className="mt-1 text-slate-600">Por {log.user.name}</p>
