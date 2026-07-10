@@ -163,6 +163,7 @@ export function DelivererPositionsMap({
         const isSelected = selectedId === p.delivererId;
         const badge = getDelivererPositionBadge(p);
         const icon = createDelivererMapIcon({
+          name: p.name,
           accent: delivererMarkerAccent(p),
           isSelected,
           isLive: p.isLive,
