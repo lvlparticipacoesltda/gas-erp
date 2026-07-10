@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { MapPin, RefreshCw } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { DelivererMapCard, DelivererOfflineCard } from '@/components/deliverer-map-card';
-import { api, getStoredUser, getToken } from '@/lib/api';
+import { api, getStoredUser, getToken, refreshStoredUser } from '@/lib/api';
 import { buildStoreHref } from '@/lib/store-nav';
 import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
 import { canToggleDelivererAvailability, getDelivererAvailabilityLock } from '@gas-erp/shared';
@@ -42,11 +42,20 @@ export default function DelivererMapPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [canToggleAvailability] = useState(() => {
+  const [canToggleAvailability, setCanToggleAvailability] = useState(() => {
     const user = getStoredUser<AuthUser>();
     return user ? canToggleDelivererAvailability(user.role, user.permissions) : false;
   });
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => {
+    void refreshStoredUser().then((user) => {
+      setCanToggleAvailability(
+        user ? canToggleDelivererAvailability(user.role, user.permissions) : false,
+      );
+    });
+  }, []);
 
   const load = useCallback(async () => {
     const data = await api<DelivererPosition[]>(
@@ -102,6 +111,7 @@ export default function DelivererMapPage() {
     }
 
     setSavingId(delivererId);
+    setActionError('');
     try {
       await api(
         `/deliverers/${delivererId}`,
@@ -115,8 +125,10 @@ export default function DelivererMapPage() {
         setSelectedId(null);
       }
       await loadAll();
-    } catch {
-      // api() already surfaces errors to the user when applicable
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Não foi possível alterar a disponibilidade.',
+      );
     } finally {
       setSavingId(null);
     }
@@ -159,6 +171,11 @@ export default function DelivererMapPage() {
 
       <aside className="flex h-[min(55vh,520px)] w-full shrink-0 flex-col border-t border-slate-200 bg-white shadow-xl lg:h-full lg:w-[min(100%,400px)] lg:max-w-md lg:border-l lg:border-t-0">
         <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          {actionError && (
+            <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {actionError}
+            </p>
+          )}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 className="text-base font-bold text-slate-900">Entregadores</h1>

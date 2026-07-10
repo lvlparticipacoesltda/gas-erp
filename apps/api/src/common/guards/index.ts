@@ -71,6 +71,14 @@ export function assertStoreAccess(user: AuthUser, storeId: string) {
   }
 }
 
+/** Exige que o usuário tenha acesso a ao menos uma das lojas informadas. */
+export function assertSharedStoreAccess(user: AuthUser, storeIds: string[]) {
+  if (user.role === 'ORG_MASTER' || user.role === 'PLATFORM_ADMIN') return;
+  if (!storeIds.some((storeId) => user.storeIds.includes(storeId))) {
+    throw new ForbiddenException('Sem acesso a este entregador');
+  }
+}
+
 export function assertScreenPermission(user: AuthUser, screen: string) {
   if (!hasScreenPermission(user.role, user.permissions, screen)) {
     throw new ForbiddenException('Sem permissão para esta tela');

@@ -5,7 +5,7 @@ import { DeliveryStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS, canManageDeliverers, canToggleDelivererAvailability, delivererSuggestQuerySchema, haversineDistanceMeters, isDelivererAssignableForSale } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
-import { assertStoreAccess, assertScreenPermission } from '../../common/guards';
+import { assertSharedStoreAccess, assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { AuditService } from '../../common/audit/audit.service';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
@@ -516,7 +516,14 @@ export class DeliverersService {
     ) {
       throw new NotFoundException('Entregador não encontrado');
     }
-    deliverer.stores.forEach((s) => assertStoreAccess(user, s.storeId));
+    if (!canManage && canToggleAvailability) {
+      assertSharedStoreAccess(
+        user,
+        deliverer.stores.map((s) => s.storeId),
+      );
+    } else {
+      deliverer.stores.forEach((s) => assertStoreAccess(user, s.storeId));
+    }
 
     if (data.storeIds) {
       data.storeIds.forEach((storeId) => assertStoreAccess(user, storeId));
