@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { Badge, Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import { formatSaleAddress, parsePrice } from '@/lib/sale-utils';
 import {
   SalePaymentsEditor,
@@ -516,6 +516,23 @@ export default function SaleDetailPage() {
                     </dd>
                   </div>
                 </>
+              )}
+              {sale.delivery && (sale.delivery.startedAt || sale.delivery.completedAt) && (
+                <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
+                  <p className="font-semibold text-emerald-900">Entrega pelo aplicativo</p>
+                  {sale.delivery.startedAt && (
+                    <p className="mt-1 text-emerald-800">
+                      Rota iniciada: {formatDateTime(sale.delivery.startedAt)}
+                    </p>
+                  )}
+                  {sale.delivery.completedAt ? (
+                    <p className="mt-1 text-base font-semibold text-emerald-900">
+                      Finalizada no app: {formatDateTime(sale.delivery.completedAt)}
+                    </p>
+                  ) : sale.delivery.status === 'IN_PROGRESS' ? (
+                    <p className="mt-1 font-medium text-amber-800">Rota em andamento</p>
+                  ) : null}
+                </div>
               )}
               {address && <div><dt className="text-slate-500">Endereço</dt><dd className="mt-1">{address}</dd></div>}
               {sale.notes && <div><dt className="text-slate-500">Obs.</dt><dd className="mt-1">{sale.notes}</dd></div>}
