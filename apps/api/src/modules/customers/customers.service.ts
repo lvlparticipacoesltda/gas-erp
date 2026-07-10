@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { customerAddressSchema, createCustomerSchema, updateCustomerSchema, upsertCustomerProductPriceSchema } from '@gas-erp/shared';
+import { customerAddressSchema, createCustomerSchema, updateCustomerSchema, upsertCustomerProductPriceSchema, phoneSearchTerms } from '@gas-erp/shared';
 import { AuthUser, toNumber } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
@@ -36,8 +36,8 @@ export class CustomersService {
         ? {
             OR: [
               { name: { contains: search, mode: 'insensitive' as const } },
-              { phone: { contains: search } },
               { document: { contains: search } },
+              ...phoneSearchTerms(search).map((term) => ({ phone: { contains: term } })),
             ],
           }
         : {}),

@@ -13,6 +13,7 @@ import {
   customerInitials,
   formatAddressShort,
   formatPhoneDisplay,
+  phoneQueryMatches,
   type CustomerAddress,
 } from '@/lib/customer-display';
 
@@ -416,7 +417,15 @@ export function CustomerPicker({
                           {highlightMatch(c.name, debouncedSearch)}
                         </p>
                         <p className="truncate text-xs text-slate-500">
-                          {phone ? highlightMatch(phone, debouncedSearch) : 'Sem telefone'}
+                          {phone ? (
+                            phoneQueryMatches(c.phone, debouncedSearch) ? (
+                              <mark className="rounded bg-brand-muted px-0.5 text-brand-dark">{phone}</mark>
+                            ) : (
+                              phone
+                            )
+                          ) : (
+                            'Sem telefone'
+                          )}
                           {neighborhood ? (
                             <>
                               <span className="mx-1 text-slate-300">·</span>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizePhoneForStorage } from '../phone';
 
 export const customerAddressSchema = z.object({
   label: z.string().optional(),
@@ -17,7 +18,10 @@ export const createCustomerSchema = z.object({
   storeId: z.string().min(1),
   name: z.string().min(2),
   email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
+  phone: z
+    .string()
+    .optional()
+    .transform((value) => normalizePhoneForStorage(value)),
   document: z.string().optional(),
   notes: z.string().optional(),
   categoryId: z.string().optional(),

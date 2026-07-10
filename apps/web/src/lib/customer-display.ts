@@ -1,3 +1,5 @@
+import { formatPhoneBr, stripPhoneDigits } from '@gas-erp/shared';
+
 /** Iniciais para avatar (ex.: Maria Silva → MS). */
 export function customerInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -8,15 +10,16 @@ export function customerInitials(name: string): string {
 
 /** Formata telefone BR quando possível. */
 export function formatPhoneDisplay(phone?: string): string {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 11) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  return formatPhoneBr(phone);
+}
+
+export function phoneQueryMatches(phone: string | undefined, query: string): boolean {
+  if (!phone) return false;
+  const qDigits = stripPhoneDigits(query);
+  if (qDigits.length >= 2) {
+    return stripPhoneDigits(phone).includes(qDigits);
   }
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  }
-  return phone;
+  return phone.toLowerCase().includes(query.trim().toLowerCase());
 }
 
 export interface CustomerAddress {

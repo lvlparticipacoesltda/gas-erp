@@ -29,6 +29,7 @@ import {
   computeNetProfit,
   computeNetRevenue,
   computeSaleCogs,
+  phoneSearchTerms,
   type PurchasesReportResponse,
   type ReportType,
   type SalesReportFilters,
@@ -419,7 +420,9 @@ export class ReportsService {
       where.customer = {
         OR: [
           { name: { contains: term, mode: 'insensitive' } },
-          { phone: { contains: term, mode: 'insensitive' } },
+          ...phoneSearchTerms(term).map((phoneTerm) => ({
+            phone: { contains: phoneTerm, mode: 'insensitive' as const },
+          })),
         ],
       };
     }
