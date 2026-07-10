@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
-import { Badge, Button, Label, PageHeader, Select, Table } from '@/components/ui';
+import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { buildDashboardDateQuery } from '@/lib/dashboard-date';
+import { formatCurrency } from '@/lib/utils';
 import {
   canManageSales,
   canApproveMobileSales,
@@ -22,6 +23,7 @@ import {
   isBackdatedSale,
   isMobileOriginatedSale,
   SALE_STATUS_LABELS,
+  todayDateKey,
   type PaginatedResponse,
 } from '@gas-erp/shared';
 
@@ -42,6 +44,11 @@ interface Sale {
   delivery?: { status: string; startedAt?: string | null; completedAt?: string | null } | null;
 }
 
+interface DelivererOption {
+  id: string;
+  user: { name: string };
+}
+
 const PAGE_SIZE = 20;
 
 export default function SalesListPage() {
@@ -53,27 +60,59 @@ export default function SalesListPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [backdateFilter, setBackdateFilter] = useState(false);
   const [mobileFilter, setMobileFilter] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [delivererId, setDelivererId] = useState('');
+  const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
   const canApproveMobile = currentUser ? canApproveMobileSales(currentUser.role) : false;
 
+  const salesQuery = useMemo(() => {
+    const params = new URLSearchParams({
+      storeId,
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
+    if (statusFilter) params.set('status', statusFilter);
+    if (backdateFilter) params.set('backdatePending', 'true');
+    if (mobileFilter) params.set('mobilePending', 'true');
+    if (dateFrom || dateTo) {
+      const dateQuery = buildDashboardDateQuery(dateFrom || dateTo, dateTo || dateFrom);
+      for (const part of dateQuery.split('&')) {
+        const [key, value] = part.split('=');
+        if (key && value) params.set(key, decodeURIComponent(value));
+      }
+    }
+    if (delivererId) params.set('delivererId', delivererId);
+    return params.toString();
+  }, [storeId, page, statusFilter, backdateFilter, mobileFilter, dateFrom, dateTo, delivererId]);
+
+  useEffect(() => {
+    if (!storeId) return;
+    let cancelled = false;
+    api<DelivererOption[]>(`/deliverers?storeId=${storeId}`, {}, getToken())
+      .then((rows) => {
+        if (!cancelled) setDeliverers(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setDeliverers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId]);
+
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, backdateFilter, mobileFilter, storeId]);
+  }, [statusFilter, backdateFilter, mobileFilter, dateFrom, dateTo, delivererId, storeId]);
 
   useEffect(() => {
     if (!storeId) return;
     setLoading(true);
-    const statusQuery = statusFilter ? `&status=${statusFilter}` : '';
-    const backdateQuery = backdateFilter ? '&backdatePending=true' : '';
-    const mobileQuery = mobileFilter ? '&mobilePending=true' : '';
-    api<PaginatedResponse<Sale>>(
-      `/sales?storeId=${storeId}&page=${page}&pageSize=${PAGE_SIZE}${statusQuery}${backdateQuery}${mobileQuery}`,
-      {},
-      getToken(),
-    )
+    api<PaginatedResponse<Sale>>(`/sales?${salesQuery}`, {}, getToken())
       .then((res) => {
         setSales(res.data);
         setTotalPages(res.totalPages);
@@ -83,7 +122,7 @@ export default function SalesListPage() {
         setLoading(false);
         setReady(true);
       });
-  }, [storeId, statusFilter, backdateFilter, mobileFilter, page]);
+  }, [storeId, salesQuery]);
 
   if (!ready) {
     return <PageLoader />;
@@ -102,6 +141,46 @@ export default function SalesListPage() {
       />
 
       <div className="mb-6 flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="w-full max-w-md">
+          <Label>Período</Label>
+          <div className="mt-1 flex min-w-0 gap-2">
+            <Input
+              type="date"
+              className="min-w-0 flex-1"
+              value={dateFrom}
+              max={dateTo || todayDateKey()}
+              onChange={(e) => {
+                const value = e.target.value;
+                setDateFrom(value);
+                if (dateTo && value > dateTo) setDateTo(value);
+              }}
+            />
+            <Input
+              type="date"
+              className="min-w-0 flex-1"
+              value={dateTo}
+              min={dateFrom || undefined}
+              max={todayDateKey()}
+              onChange={(e) => {
+                const value = e.target.value;
+                setDateTo(value);
+                if (dateFrom && value < dateFrom) setDateFrom(value);
+              }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Deixe em branco para listar todas as datas</p>
+        </div>
+        <div className="w-full max-w-xs">
+          <Label>Entregador</Label>
+          <Select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}>
+            <option value="">Todos os entregadores</option>
+            {deliverers.map((deliverer) => (
+              <option key={deliverer.id} value={deliverer.id}>
+                {deliverer.user.name}
+              </option>
+            ))}
+          </Select>
+        </div>
         <div className="w-full max-w-xs">
           <Label>Status</Label>
           <Select
@@ -162,6 +241,20 @@ export default function SalesListPage() {
             />
             Só aguardando aprovação (app)
           </label>
+        )}
+        {(dateFrom || dateTo || delivererId) && (
+          <Button
+            type="button"
+            variant="secondary"
+            className="mb-0.5"
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+              setDelivererId('');
+            }}
+          >
+            Limpar data e entregador
+          </Button>
         )}
       </div>
 

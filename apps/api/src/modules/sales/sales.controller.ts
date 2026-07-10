@@ -18,7 +18,12 @@ export class SalesController {
     @Query('pageSize') pageSize?: string,
     @Query('backdatePending') backdatePending?: string,
     @Query('mobilePending') mobilePending?: string,
+    @Query('date') date?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('delivererId') delivererId?: string,
   ) {
+    const hasDate = date || dateFrom || dateTo;
     return this.salesService.findAll(
       user,
       storeId,
@@ -27,6 +32,8 @@ export class SalesController {
       Number(pageSize) || 20,
       backdatePending === 'true',
       mobilePending === 'true',
+      hasDate ? { date, dateFrom, dateTo } : undefined,
+      delivererId || undefined,
     );
   }
 

@@ -17,6 +17,7 @@ import {
   toNumber,
   isDelivererAssignableForSale,
   assertSalePaymentsTotal,
+  type DashboardDateQuery,
 } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -24,6 +25,7 @@ import { StockService } from '../stock/stock.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { PushService } from '../../common/push/push.service';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
+import { resolveDashboardDateRange } from '../../common/utils/business-day';
 import { StorePaymentMethodsService } from '../stores/store-payment-methods.service';
 import type { Prisma } from '@gas-erp/database';
 
@@ -70,14 +72,31 @@ export class SalesService {
     pageSize = 20,
     backdatePending?: boolean,
     mobilePending?: boolean,
+    dateQuery?: DashboardDateQuery,
+    delivererId?: string,
   ) {
     assertStoreAccess(user, storeId);
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
+
+    let saleDateFilter: { gte: Date; lt: Date } | undefined;
+    if (dateQuery?.date || dateQuery?.dateFrom || dateQuery?.dateTo) {
+      try {
+        const { start, end } = resolveDashboardDateRange(dateQuery);
+        saleDateFilter = { gte: start, lt: end };
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'Intervalo de datas inválido',
+        );
+      }
+    }
+
     const where: Prisma.SaleWhereInput = {
       storeId,
       ...(status ? { status: status as SaleStatus } : {}),
       ...(backdatePending ? { backdateApproval: 'PENDING' as BackdateApprovalStatus } : {}),
       ...(mobilePending ? { mobileApproval: 'PENDING' as MobileApprovalStatus } : {}),
+      ...(saleDateFilter ? { saleDate: saleDateFilter } : {}),
+      ...(delivererId ? { delivererId } : {}),
     };
     const [data, total] = await Promise.all([
       this.prisma.sale.findMany({
