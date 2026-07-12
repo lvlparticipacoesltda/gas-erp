@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { BackdateApprovalStatus, DeliveryStatus, MobileApprovalStatus, SaleStatus } from '@gas-erp/database';
+import { BackdateApprovalStatus, DeliveryStatus, MobileApprovalStatus, Prisma, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   createSaleSchema,
@@ -27,7 +27,6 @@ import { PushService } from '../../common/push/push.service';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 import { resolveDashboardDateRange } from '../../common/utils/business-day';
 import { StorePaymentMethodsService } from '../stores/store-payment-methods.service';
-import type { Prisma } from '@gas-erp/database';
 
 @Injectable()
 export class SalesService {
@@ -78,24 +77,37 @@ export class SalesService {
     assertStoreAccess(user, storeId);
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
 
-    let saleDateFilter: { gte: Date; lt: Date } | undefined;
+    let saleIdsFilter: string[] | undefined;
     if (dateQuery?.date || dateQuery?.dateFrom || dateQuery?.dateTo) {
+      let dateFrom: string;
+      let dateTo: string;
       try {
-        const { start, end } = resolveDashboardDateRange(dateQuery);
-        saleDateFilter = { gte: start, lt: end };
+        ({ dateFrom, dateTo } = resolveDashboardDateRange(dateQuery));
       } catch (error) {
         throw new BadRequestException(
           error instanceof Error ? error.message : 'Intervalo de datas inválido',
         );
       }
+
+      const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT id
+        FROM "Sale"
+        WHERE "storeId" = ${storeId}
+          AND (timezone('America/Sao_Paulo', "saleDate")::date >= ${dateFrom}::date)
+          AND (timezone('America/Sao_Paulo', "saleDate")::date <= ${dateTo}::date)
+      `;
+      saleIdsFilter = rows.map((row) => row.id);
+      if (saleIdsFilter.length === 0) {
+        return paginatedResult([], 0, p, ps);
+      }
     }
 
     const where: Prisma.SaleWhereInput = {
       storeId,
+      ...(saleIdsFilter ? { id: { in: saleIdsFilter } } : {}),
       ...(status ? { status: status as SaleStatus } : {}),
       ...(backdatePending ? { backdateApproval: 'PENDING' as BackdateApprovalStatus } : {}),
       ...(mobilePending ? { mobileApproval: 'PENDING' as MobileApprovalStatus } : {}),
-      ...(saleDateFilter ? { saleDate: saleDateFilter } : {}),
       ...(delivererId ? { delivererId } : {}),
     };
     const [data, total] = await Promise.all([

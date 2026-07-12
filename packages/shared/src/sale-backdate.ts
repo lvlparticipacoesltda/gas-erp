@@ -47,10 +47,11 @@ export function isFutureBusinessDay(dateKey: string): boolean {
 }
 
 export function formatSaleDateLabel(value: string | Date): string {
-  const key =
-    value instanceof Date
-      ? formatDateKeyInTimezone(value)
-      : value.slice(0, 10);
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isNaN(date.getTime())) {
+    return formatDateKeyInTimezone(date).split('-').reverse().join('/');
+  }
+  const key = typeof value === 'string' ? value.slice(0, 10) : '';
   return key.split('-').reverse().join('/');
 }
 

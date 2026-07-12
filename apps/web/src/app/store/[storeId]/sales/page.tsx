@@ -13,6 +13,7 @@ import {
   canManageSales,
   canApproveMobileSales,
   formatSaleDateTimeLabel,
+  formatDashboardDateRangeLabel,
   formatWaitTime,
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
@@ -62,6 +63,8 @@ export default function SalesListPage() {
   const [mobileFilter, setMobileFilter] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [useDateRange, setUseDateRange] = useState(false);
+  const [filterDate, setFilterDate] = useState('');
   const [delivererId, setDelivererId] = useState('');
   const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
   const [ready, setReady] = useState(false);
@@ -69,6 +72,9 @@ export default function SalesListPage() {
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
   const canApproveMobile = currentUser ? canApproveMobileSales(currentUser.role) : false;
+
+  const effectiveDateFrom = useDateRange ? dateFrom : filterDate;
+  const effectiveDateTo = useDateRange ? dateTo : filterDate;
 
   const salesQuery = useMemo(() => {
     const params = new URLSearchParams({
@@ -79,8 +85,11 @@ export default function SalesListPage() {
     if (statusFilter) params.set('status', statusFilter);
     if (backdateFilter) params.set('backdatePending', 'true');
     if (mobileFilter) params.set('mobilePending', 'true');
-    if (dateFrom || dateTo) {
-      const dateQuery = buildDashboardDateQuery(dateFrom || dateTo, dateTo || dateFrom);
+    if (effectiveDateFrom || effectiveDateTo) {
+      const dateQuery = buildDashboardDateQuery(
+        effectiveDateFrom || effectiveDateTo,
+        effectiveDateTo || effectiveDateFrom,
+      );
       for (const part of dateQuery.split('&')) {
         const [key, value] = part.split('=');
         if (key && value) params.set(key, decodeURIComponent(value));
@@ -88,7 +97,24 @@ export default function SalesListPage() {
     }
     if (delivererId) params.set('delivererId', delivererId);
     return params.toString();
-  }, [storeId, page, statusFilter, backdateFilter, mobileFilter, dateFrom, dateTo, delivererId]);
+  }, [
+    storeId,
+    page,
+    statusFilter,
+    backdateFilter,
+    mobileFilter,
+    effectiveDateFrom,
+    effectiveDateTo,
+    delivererId,
+  ]);
+
+  const activeDateLabel =
+    effectiveDateFrom || effectiveDateTo
+      ? formatDashboardDateRangeLabel(
+          effectiveDateFrom || effectiveDateTo,
+          effectiveDateTo || effectiveDateFrom,
+        )
+      : null;
 
   useEffect(() => {
     if (!storeId) return;
@@ -107,21 +133,28 @@ export default function SalesListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, backdateFilter, mobileFilter, dateFrom, dateTo, delivererId, storeId]);
+  }, [statusFilter, backdateFilter, mobileFilter, filterDate, dateFrom, dateTo, useDateRange, delivererId, storeId]);
 
   useEffect(() => {
     if (!storeId) return;
+    const controller = new AbortController();
     setLoading(true);
-    api<PaginatedResponse<Sale>>(`/sales?${salesQuery}`, {}, getToken())
+    api<PaginatedResponse<Sale>>(`/sales?${salesQuery}`, { signal: controller.signal }, getToken())
       .then((res) => {
         setSales(res.data);
         setTotalPages(res.totalPages);
         setTotal(res.total);
       })
+      .catch((err) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      })
       .finally(() => {
-        setLoading(false);
-        setReady(true);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setReady(true);
+        }
       });
+    return () => controller.abort();
   }, [storeId, salesQuery]);
 
   if (!ready) {
@@ -140,51 +173,96 @@ export default function SalesListPage() {
         }
       />
 
-      <div className="mb-6 flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="w-full max-w-md">
-          <Label>Período</Label>
-          <div className="mt-1 flex min-w-0 gap-2">
-            <Input
-              type="date"
-              className="min-w-0 flex-1"
-              value={dateFrom}
-              max={dateTo || todayDateKey()}
-              onChange={(e) => {
-                const value = e.target.value;
-                setDateFrom(value);
-                if (dateTo && value > dateTo) setDateTo(value);
-              }}
-            />
-            <Input
-              type="date"
-              className="min-w-0 flex-1"
-              value={dateTo}
-              min={dateFrom || undefined}
-              max={todayDateKey()}
-              onChange={(e) => {
-                const value = e.target.value;
-                setDateTo(value);
-                if (dateFrom && value < dateFrom) setDateFrom(value);
-              }}
-            />
+      <div className="mb-6 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        {activeDateLabel && (
+          <div className="inline-flex items-center rounded-full bg-brand-muted px-3 py-1 text-xs font-medium text-brand-dark">
+            Filtrando data: {activeDateLabel}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Deixe em branco para listar todas as datas</p>
-        </div>
-        <div className="w-full max-w-xs">
-          <Label>Entregador</Label>
-          <Select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}>
-            <option value="">Todos os entregadores</option>
-            {deliverers.map((deliverer) => (
-              <option key={deliverer.id} value={deliverer.id}>
-                {deliverer.user.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-full max-w-xs">
-          <Label>Status</Label>
-          <Select
-            value={
+        )}
+
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="w-full max-w-sm">
+            {useDateRange ? (
+              <>
+                <Label>Período</Label>
+                <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-slate-600">De</span>
+                    <Input
+                      type="date"
+                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
+                      value={dateFrom}
+                      max={dateTo || todayDateKey()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDateFrom(value);
+                        if (dateTo && value > dateTo) setDateTo(value);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-slate-600">Até</span>
+                    <Input
+                      type="date"
+                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      max={todayDateKey()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDateTo(value);
+                        if (dateFrom && value < dateFrom) setDateFrom(value);
+                      }}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <Label>Data da venda</Label>
+                <Input
+                  type="date"
+                  className="mt-1 min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
+                  value={filterDate}
+                  max={todayDateKey()}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-500">Deixe em branco para listar todas as datas</p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setUseDateRange((current) => !current);
+                setDateFrom('');
+                setDateTo('');
+                setFilterDate('');
+              }}
+              className="mt-2 text-xs font-medium text-brand hover:underline"
+            >
+              {useDateRange ? 'Usar apenas um dia' : 'Filtrar por período (de/até)'}
+            </button>
+          </div>
+          <div className="w-full max-w-xs">
+            <Label>Entregador</Label>
+            <Select
+              className="mt-1 min-h-11 border-slate-300 bg-slate-50"
+              value={delivererId}
+              onChange={(e) => setDelivererId(e.target.value)}
+            >
+              <option value="">Todos os entregadores</option>
+              {deliverers.map((deliverer) => (
+                <option key={deliverer.id} value={deliverer.id}>
+                  {deliverer.user.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="w-full max-w-xs">
+            <Label>Status</Label>
+            <Select
+              className="mt-1 min-h-11 border-slate-300 bg-slate-50"
+              value={
               mobileFilter
                 ? '__mobile_pending__'
                 : backdateFilter
@@ -242,12 +320,13 @@ export default function SalesListPage() {
             Só aguardando aprovação (app)
           </label>
         )}
-        {(dateFrom || dateTo || delivererId) && (
+        {(filterDate || dateFrom || dateTo || delivererId) && (
           <Button
             type="button"
             variant="secondary"
             className="mb-0.5"
             onClick={() => {
+              setFilterDate('');
               setDateFrom('');
               setDateTo('');
               setDelivererId('');
@@ -256,6 +335,7 @@ export default function SalesListPage() {
             Limpar data e entregador
           </Button>
         )}
+        </div>
       </div>
 
       <PaginatedSection
