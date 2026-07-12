@@ -11,6 +11,7 @@ import { getDeliveryPhaseMetrics } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
 import { RoutingService } from '../../common/routing/routing.service';
+import { StoreRealtimeService } from '../../common/realtime/store-realtime.service';
 
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
 
@@ -97,6 +98,7 @@ export class DeliveriesService {
     private prisma: PrismaService,
     private geocoding: GeocodingService,
     private routing: RoutingService,
+    private realtime: StoreRealtimeService,
   ) {}
 
   async findByStore(user: AuthUser, storeId: string) {
@@ -338,6 +340,16 @@ export class DeliveriesService {
         where: { id: delivery.delivererId },
         data: { status: 'ON_DELIVERY' },
       });
+    }
+
+    try {
+      this.realtime.notifyStoreChange(
+        delivery.sale.storeId,
+        delivery.sale.store.organizationId,
+        'delivery_updated',
+      );
+    } catch {
+      // Eventos em tempo real não devem bloquear o fluxo principal.
     }
 
     return updated;

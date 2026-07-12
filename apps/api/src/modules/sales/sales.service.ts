@@ -27,6 +27,10 @@ import { PushService } from '../../common/push/push.service';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 import { resolveDashboardDateRange } from '../../common/utils/business-day';
 import { StorePaymentMethodsService } from '../stores/store-payment-methods.service';
+import {
+  StoreRealtimeReason,
+  StoreRealtimeService,
+} from '../../common/realtime/store-realtime.service';
 
 @Injectable()
 export class SalesService {
@@ -36,7 +40,20 @@ export class SalesService {
     private audit: AuditService,
     private push: PushService,
     private paymentMethods: StorePaymentMethodsService,
+    private realtime: StoreRealtimeService,
   ) {}
+
+  private notifyStoreRealtime(
+    storeId: string,
+    organizationId: string,
+    reason: StoreRealtimeReason,
+  ) {
+    try {
+      this.realtime.notifyStoreChange(storeId, organizationId, reason);
+    } catch {
+      // Eventos em tempo real não devem bloquear o fluxo principal.
+    }
+  }
 
   private saleInclude = {
     store: { select: { id: true, name: true, code: true } },
@@ -314,6 +331,8 @@ export class SalesService {
         .catch(() => undefined);
     }
 
+    this.notifyStoreRealtime(data.storeId, user.organizationId, 'sale_created');
+
     return sale;
   }
 
@@ -436,6 +455,8 @@ export class SalesService {
       // Auditoria não bloqueia o fluxo.
     }
 
+    this.notifyStoreRealtime(data.storeId, user.organizationId, 'sale_created');
+
     return sale;
   }
 
@@ -551,6 +572,8 @@ export class SalesService {
         .catch(() => undefined);
     }
 
+    this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
+
     return this.findOne(user, id);
   }
 
@@ -606,6 +629,8 @@ export class SalesService {
     } catch {
       // Auditoria não deve bloquear o fluxo.
     }
+
+    this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
 
     return this.findOne(user, id);
   }
@@ -760,6 +785,8 @@ export class SalesService {
         .catch(() => undefined);
     }
 
+    this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
+
     return this.findOne(user, id);
   }
 
@@ -816,6 +843,8 @@ export class SalesService {
     } catch {
       // Auditoria não deve bloquear o fluxo.
     }
+
+    this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
 
     return this.findOne(user, id);
   }
@@ -1133,6 +1162,8 @@ export class SalesService {
         .catch(() => undefined);
     }
 
+    this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_status');
+
     return this.findOne(user, id);
   }
 
@@ -1296,6 +1327,8 @@ export class SalesService {
     } catch {
       // auditoria não bloqueia
     }
+
+    this.notifyStoreRealtime(sale.storeId, sale.store.organizationId, 'sale_payments');
 
     return this.findOne(user, id);
   }

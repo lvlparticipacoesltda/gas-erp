@@ -19,6 +19,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RealtimeModule } from './common/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PushModule,
     GeocodingModule,
     PrismaModule,
+    RealtimeModule,
     AuthModule,
     StoresModule,
     UsersModule,

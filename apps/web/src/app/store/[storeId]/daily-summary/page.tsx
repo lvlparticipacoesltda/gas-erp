@@ -7,7 +7,7 @@ import { DailySummaryContent, type DailySummaryData } from '@/components/daily-s
 import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PageHeader } from '@/components/ui';
-import { DASHBOARD_POLL_INTERVAL_MS, useLiveQuery } from '@/hooks/use-live-query';
+import { useLiveQuery } from '@/hooks/use-live-query';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { todayDateKey } from '@gas-erp/shared';
@@ -21,7 +21,7 @@ export default function DailySummaryPage() {
   const { data, loading, isRefetching, error } = useLiveQuery<DailySummaryData>(
     () => api(`/dashboard/store?storeId=${storeId}&${query}`, {}, getToken()),
     [storeId, query],
-    { enabled: Boolean(storeId) },
+    { enabled: Boolean(storeId), realtime: { type: 'store', storeId } },
   );
 
   if (loading && !data) return <PageLoader label="Carregando resumo…" />;
@@ -32,8 +32,8 @@ export default function DailySummaryPage() {
         title="Resumo diário"
         subtitle={
           data?.date
-            ? `Fechamento operacional · ${data.date} · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
-            : `Fechamento operacional da unidade · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
+            ? `Fechamento operacional · ${data.date} · atualização em tempo real`
+            : 'Fechamento operacional da unidade · atualização em tempo real'
         }
       />
 

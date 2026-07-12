@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { useLiveQuery } from '@/hooks/use-live-query';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
@@ -54,10 +55,7 @@ const PAGE_SIZE = 20;
 
 export default function SalesListPage() {
   const { storeId } = useParams<{ storeId: string }>();
-  const [sales, setSales] = useState<Sale[]>([]);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
   const [backdateFilter, setBackdateFilter] = useState(false);
   const [mobileFilter, setMobileFilter] = useState(false);
@@ -67,8 +65,6 @@ export default function SalesListPage() {
   const [filterDate, setFilterDate] = useState('');
   const [delivererId, setDelivererId] = useState('');
   const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
-  const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(false);
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
   const canApproveMobile = currentUser ? canApproveMobileSales(currentUser.role) : false;
@@ -135,29 +131,17 @@ export default function SalesListPage() {
     setPage(1);
   }, [statusFilter, backdateFilter, mobileFilter, filterDate, dateFrom, dateTo, useDateRange, delivererId, storeId]);
 
-  useEffect(() => {
-    if (!storeId) return;
-    const controller = new AbortController();
-    setLoading(true);
-    api<PaginatedResponse<Sale>>(`/sales?${salesQuery}`, { signal: controller.signal }, getToken())
-      .then((res) => {
-        setSales(res.data);
-        setTotalPages(res.totalPages);
-        setTotal(res.total);
-      })
-      .catch((err) => {
-        if (err instanceof Error && err.name === 'AbortError') return;
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-          setReady(true);
-        }
-      });
-    return () => controller.abort();
-  }, [storeId, salesQuery]);
+  const { data: salesPage, loading, isRefetching } = useLiveQuery<PaginatedResponse<Sale>>(
+    () => api(`/sales?${salesQuery}`, {}, getToken()),
+    [storeId, salesQuery],
+    { enabled: Boolean(storeId), realtime: { type: 'store', storeId } },
+  );
 
-  if (!ready) {
+  const sales = salesPage?.data ?? [];
+  const totalPages = salesPage?.totalPages ?? 1;
+  const total = salesPage?.total ?? 0;
+
+  if (loading && !salesPage) {
     return <PageLoader />;
   }
 
@@ -165,7 +149,7 @@ export default function SalesListPage() {
     <>
       <PageHeader
         title="Histórico de vendas"
-        subtitle="Consulte, filtre e acompanhe as vendas da unidade"
+        subtitle="Consulte, filtre e acompanhe as vendas da unidade · atualização em tempo real"
         action={
           <Link href={`/store/${storeId}/sales/new`}>
             <Button>Nova venda</Button>
@@ -339,7 +323,7 @@ export default function SalesListPage() {
       </div>
 
       <PaginatedSection
-        loading={loading}
+        loading={loading || isRefetching}
         pagination={{
           className: 'mt-4',
           page,

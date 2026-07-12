@@ -7,7 +7,7 @@ import { DailySummaryContent, type DailySummaryData } from '@/components/daily-s
 import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { Card, PageHeader } from '@/components/ui';
-import { DASHBOARD_POLL_INTERVAL_MS, useLiveQuery } from '@/hooks/use-live-query';
+import { useLiveQuery } from '@/hooks/use-live-query';
 import { api, getToken, setCurrentStoreId } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
@@ -39,6 +39,7 @@ export default function MasterDashboardPage() {
   }>(
     () => api(`/dashboard/master?${query}`, {}, getToken()),
     [query],
+    { realtime: { type: 'org' } },
   );
 
   function openStore(id: string) {
@@ -61,8 +62,8 @@ export default function MasterDashboardPage() {
         title="Painel Master"
         subtitle={
           data?.date
-            ? `Visão consolidada · ${data.date} · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
-            : `Visão consolidada de todas as unidades · atualiza a cada ${DASHBOARD_POLL_INTERVAL_MS / 1000}s`
+            ? `Visão consolidada · ${data.date} · atualização em tempo real`
+            : 'Visão consolidada de todas as unidades · atualização em tempo real'
         }
       />
 
