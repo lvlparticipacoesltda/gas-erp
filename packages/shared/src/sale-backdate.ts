@@ -1,4 +1,5 @@
 import {
+  DEFAULT_STORE_TIMEZONE,
   formatDateKeyInTimezone,
   getBusinessDayBounds,
   isValidDateKey,
@@ -46,6 +47,19 @@ export function isFutureBusinessDay(dateKey: string): boolean {
   return dateKey > today;
 }
 
+export function getSaleListBusinessDayKey(sale: {
+  saleDate?: string | Date | null;
+  createdAt: string | Date;
+}): string {
+  const value = sale.saleDate ?? sale.createdAt;
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isNaN(date.getTime())) {
+    return formatDateKeyInTimezone(date);
+  }
+  const key = typeof value === 'string' ? value.slice(0, 10) : '';
+  return key;
+}
+
 export function formatSaleDateLabel(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);
   if (!Number.isNaN(date.getTime())) {
@@ -60,10 +74,11 @@ export function formatSaleDateTimeLabel(sale: {
   saleDate?: string | Date | null;
   createdAt: string | Date;
 }): string {
-  const dateLabel = formatSaleDateLabel(sale.saleDate ?? sale.createdAt);
   const created =
     sale.createdAt instanceof Date ? sale.createdAt : new Date(sale.createdAt);
+  const dateLabel = getSaleListBusinessDayKey(sale).split('-').reverse().join('/');
   const timeLabel = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: DEFAULT_STORE_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
   }).format(created);

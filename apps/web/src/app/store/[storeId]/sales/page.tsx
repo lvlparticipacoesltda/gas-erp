@@ -15,6 +15,7 @@ import {
   canApproveMobileSales,
   formatSaleDateTimeLabel,
   formatDashboardDateRangeLabel,
+  getSaleListBusinessDayKey,
   formatWaitTime,
   getElapsedWaitingSeconds,
   getRouteDurationSeconds,
@@ -191,6 +192,16 @@ export default function SalesListPage() {
   const sales = salesPage?.data ?? [];
   const totalPages = salesPage?.totalPages ?? 1;
   const total = salesPage?.total ?? 0;
+
+  const filterFrom = effectiveDateFrom || effectiveDateTo;
+  const filterTo = effectiveDateTo || effectiveDateFrom;
+  const mismatchedSales =
+    filterFrom && filterTo
+      ? sales.filter((sale) => {
+          const key = getSaleListBusinessDayKey(sale);
+          return key < filterFrom || key > filterTo;
+        })
+      : [];
 
   if (loading && !salesPage) {
     return <PageLoader />;
@@ -376,6 +387,13 @@ export default function SalesListPage() {
         )}
         </div>
       </div>
+
+      {mismatchedSales.length > 0 && (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          O servidor retornou {mismatchedSales.length} venda(s) fora do período filtrado.
+          Faça o deploy da API mais recente ou recarregue a página.
+        </p>
+      )}
 
       <LoadingOverlay loading={isRefetching} minHeight="min-h-[50vh]" label="Aplicando filtros…">
       <PaginatedSection

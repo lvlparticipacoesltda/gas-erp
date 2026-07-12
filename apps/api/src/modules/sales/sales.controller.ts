@@ -23,7 +23,10 @@ export class SalesController {
     @Query('dateTo') dateTo?: string,
     @Query('delivererId') delivererId?: string,
   ) {
-    const hasDate = date || dateFrom || dateTo;
+    const normalizedDate = date?.trim() || undefined;
+    const normalizedDateFrom = dateFrom?.trim() || undefined;
+    const normalizedDateTo = dateTo?.trim() || undefined;
+    const hasDate = normalizedDate || normalizedDateFrom || normalizedDateTo;
     return this.salesService.findAll(
       user,
       storeId,
@@ -32,7 +35,9 @@ export class SalesController {
       Number(pageSize) || 20,
       backdatePending === 'true',
       mobilePending === 'true',
-      hasDate ? { date, dateFrom, dateTo } : undefined,
+      hasDate
+        ? { date: normalizedDate, dateFrom: normalizedDateFrom, dateTo: normalizedDateTo }
+        : undefined,
       delivererId || undefined,
     );
   }
