@@ -37,7 +37,7 @@ export default function MasterDashboardPage() {
     dateTo?: string;
     summary?: DailySummaryData;
   }>(
-    () => api(`/dashboard/master?${query}`, {}, getToken()),
+    (signal) => api(`/dashboard/master?${query}`, { signal }, getToken()),
     [query],
     { realtime: { type: 'org' } },
   );

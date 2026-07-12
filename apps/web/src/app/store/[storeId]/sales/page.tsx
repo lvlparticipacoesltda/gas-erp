@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
+import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
-import { useLiveQuery } from '@/hooks/use-live-query';
+import { useRealtimeRefetch } from '@/hooks/use-realtime-refetch';
 import { api, getStoredUser, getToken } from '@/lib/api';
-import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
 import {
   canManageSales,
@@ -82,13 +82,13 @@ export default function SalesListPage() {
     if (backdateFilter) params.set('backdatePending', 'true');
     if (mobileFilter) params.set('mobilePending', 'true');
     if (effectiveDateFrom || effectiveDateTo) {
-      const dateQuery = buildDashboardDateQuery(
-        effectiveDateFrom || effectiveDateTo,
-        effectiveDateTo || effectiveDateFrom,
-      );
-      for (const part of dateQuery.split('&')) {
-        const [key, value] = part.split('=');
-        if (key && value) params.set(key, decodeURIComponent(value));
+      const from = effectiveDateFrom || effectiveDateTo;
+      const to = effectiveDateTo || effectiveDateFrom;
+      if (from === to) {
+        params.set('date', from);
+      } else {
+        params.set('dateFrom', from);
+        params.set('dateTo', to);
       }
     }
     if (delivererId) params.set('delivererId', delivererId);
@@ -131,10 +131,61 @@ export default function SalesListPage() {
     setPage(1);
   }, [statusFilter, backdateFilter, mobileFilter, filterDate, dateFrom, dateTo, useDateRange, delivererId, storeId]);
 
-  const { data: salesPage, loading, isRefetching } = useLiveQuery<PaginatedResponse<Sale>>(
-    () => api(`/sales?${salesQuery}`, {}, getToken()),
+  const [salesPage, setSalesPage] = useState<PaginatedResponse<Sale> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
+  const hasLoadedOnce = useRef(false);
+  const loadGeneration = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadSales = useCallback(
+    (mode: 'initial' | 'refresh' | 'poll' = 'refresh') => {
+      if (!storeId) return;
+
+      let generation = loadGeneration.current;
+      if (mode !== 'poll') {
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+        generation = ++loadGeneration.current;
+        setSalesPage(null);
+        if (hasLoadedOnce.current) {
+          setIsRefetching(true);
+        } else {
+          setLoading(true);
+        }
+      }
+
+      const signal = mode !== 'poll' ? abortRef.current?.signal : undefined;
+
+      api<PaginatedResponse<Sale>>(`/sales?${salesQuery}`, { signal }, getToken())
+        .then((res) => {
+          if (mode !== 'poll' && generation !== loadGeneration.current) return;
+          setSalesPage(res);
+          hasLoadedOnce.current = true;
+        })
+        .catch((err) => {
+          if (err instanceof Error && err.name === 'AbortError') return;
+          if (mode !== 'poll' && generation !== loadGeneration.current) return;
+        })
+        .finally(() => {
+          if (mode !== 'poll' && generation !== loadGeneration.current) return;
+          setLoading(false);
+          setIsRefetching(false);
+        });
+    },
     [storeId, salesQuery],
-    { enabled: Boolean(storeId), realtime: { type: 'store', storeId } },
+  );
+
+  useEffect(() => {
+    loadSales(hasLoadedOnce.current ? 'refresh' : 'initial');
+    return () => abortRef.current?.abort();
+  }, [loadSales]);
+
+  useRealtimeRefetch(
+    storeId ? { type: 'store', storeId } : null,
+    () => loadSales('poll'),
+    Boolean(storeId),
   );
 
   const sales = salesPage?.data ?? [];
@@ -158,9 +209,13 @@ export default function SalesListPage() {
       />
 
       <div className="mb-6 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        {activeDateLabel && (
+        {activeDateLabel ? (
           <div className="inline-flex items-center rounded-full bg-brand-muted px-3 py-1 text-xs font-medium text-brand-dark">
             Filtrando data: {activeDateLabel}
+          </div>
+        ) : (
+          <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
+            Mostrando todas as datas — selecione um dia para filtrar
           </div>
         )}
 
@@ -322,8 +377,9 @@ export default function SalesListPage() {
         </div>
       </div>
 
+      <LoadingOverlay loading={isRefetching} minHeight="min-h-[50vh]" label="Aplicando filtros…">
       <PaginatedSection
-        loading={loading || isRefetching}
+        loading={false}
         pagination={{
           className: 'mt-4',
           page,
@@ -411,6 +467,7 @@ export default function SalesListPage() {
           </tbody>
         </Table>
       </PaginatedSection>
+      </LoadingOverlay>
     </>
   );
 }

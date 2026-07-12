@@ -19,7 +19,7 @@ export default function DailySummaryPage() {
   const query = useMemo(() => buildDashboardDateQuery(dateFrom, dateTo), [dateFrom, dateTo]);
 
   const { data, loading, isRefetching, error } = useLiveQuery<DailySummaryData>(
-    () => api(`/dashboard/store?storeId=${storeId}&${query}`, {}, getToken()),
+    (signal) => api(`/dashboard/store?storeId=${storeId}&${query}`, { signal }, getToken()),
     [storeId, query],
     { enabled: Boolean(storeId), realtime: { type: 'store', storeId } },
   );

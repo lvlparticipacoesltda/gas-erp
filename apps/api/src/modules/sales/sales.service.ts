@@ -94,24 +94,27 @@ export class SalesService {
     assertStoreAccess(user, storeId);
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
 
-    let saleIdsFilter: string[] | undefined;
+    let saleDateBounds: { start: Date; end: Date } | undefined;
     if (dateQuery?.date || dateQuery?.dateFrom || dateQuery?.dateTo) {
-      let dateFrom: string;
-      let dateTo: string;
       try {
-        ({ dateFrom, dateTo } = resolveDashboardDateRange(dateQuery));
+        const { start, end } = resolveDashboardDateRange(dateQuery);
+        saleDateBounds = { start, end };
       } catch (error) {
         throw new BadRequestException(
           error instanceof Error ? error.message : 'Intervalo de datas inválido',
         );
       }
+    }
 
+    let saleIdsFilter: string[] | undefined;
+    if (saleDateBounds) {
+      const { start, end } = saleDateBounds;
       const rows = await this.prisma.$queryRaw<{ id: string }[]>`
         SELECT id
         FROM "Sale"
         WHERE "storeId" = ${storeId}
-          AND (timezone('America/Sao_Paulo', "saleDate")::date >= ${dateFrom}::date)
-          AND (timezone('America/Sao_Paulo', "saleDate")::date <= ${dateTo}::date)
+          AND COALESCE("saleDate", "createdAt") >= ${start}
+          AND COALESCE("saleDate", "createdAt") < ${end}
       `;
       saleIdsFilter = rows.map((row) => row.id);
       if (saleIdsFilter.length === 0) {
