@@ -20,8 +20,23 @@ export class StockController {
     @Query('storeId') storeId: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('date') date?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.stockService.getMovements(user, storeId, Number(page) || 1, Number(pageSize) || 20);
+    const normalizedDate = date?.trim() || undefined;
+    const normalizedDateFrom = dateFrom?.trim() || undefined;
+    const normalizedDateTo = dateTo?.trim() || undefined;
+    const hasDate = normalizedDate || normalizedDateFrom || normalizedDateTo;
+    return this.stockService.getMovements(
+      user,
+      storeId,
+      Number(page) || 1,
+      Number(pageSize) || 20,
+      hasDate
+        ? { date: normalizedDate, dateFrom: normalizedDateFrom, dateTo: normalizedDateTo }
+        : undefined,
+    );
   }
 
   @Post('adjust')

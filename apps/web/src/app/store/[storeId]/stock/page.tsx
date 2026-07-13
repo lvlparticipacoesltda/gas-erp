@@ -1,14 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import type { PaginatedResponse } from '@gas-erp/shared';
-import { canManageStock } from '@gas-erp/shared';
+import {
+  canManageStock,
+  formatDashboardDateRangeLabel,
+  getSaleBusinessDayKey,
+  todayDateKey,
+  type PaginatedResponse,
+} from '@gas-erp/shared';
 
 interface MovementTransfer {
   id: string;
@@ -62,17 +67,56 @@ export default function StockPage() {
   const currentUser = getStoredUser<{ role: string }>();
   const canEditStock = currentUser ? canManageStock(currentUser.role) : false;
   const [products, setProducts] = useState<Product[]>([]);
-  const [movements, setMovements] = useState<Movement[]>([]);
   const [adjustForm, setAdjustForm] = useState({ productId: '', quantity: 0, reason: 'Ajuste manual de estoque' });
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [ready, setReady] = useState(false);
+  const [movements, setMovements] = useState<Movement[]>([]);
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [movementsPage, setMovementsPage] = useState(1);
   const [movementsTotalPages, setMovementsTotalPages] = useState(1);
   const [movementsTotal, setMovementsTotal] = useState(0);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [useDateRange, setUseDateRange] = useState(false);
+  const [filterDate, setFilterDate] = useState('');
 
   const MOVEMENTS_PAGE_SIZE = 20;
+  const loadGeneration = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const effectiveDateFrom = useDateRange ? dateFrom : filterDate;
+  const effectiveDateTo = useDateRange ? dateTo : filterDate;
+
+  const movementsQuery = useMemo(() => {
+    const params = new URLSearchParams({
+      storeId,
+      page: String(movementsPage),
+      pageSize: String(MOVEMENTS_PAGE_SIZE),
+    });
+    if (effectiveDateFrom || effectiveDateTo) {
+      const from = effectiveDateFrom || effectiveDateTo;
+      const to = effectiveDateTo || effectiveDateFrom;
+      if (from === to) {
+        params.set('date', from);
+      } else {
+        params.set('dateFrom', from);
+        params.set('dateTo', to);
+      }
+    }
+    return params.toString();
+  }, [storeId, movementsPage, effectiveDateFrom, effectiveDateTo]);
+
+  const activeDateLabel =
+    effectiveDateFrom || effectiveDateTo
+      ? formatDashboardDateRangeLabel(
+          effectiveDateFrom || effectiveDateTo,
+          effectiveDateTo || effectiveDateFrom,
+        )
+      : null;
+
+  const filterFrom = effectiveDateFrom || effectiveDateTo;
+  const filterTo = effectiveDateTo || effectiveDateFrom;
 
   async function loadProducts() {
     const res = await api<PaginatedResponse<Product>>(
@@ -90,21 +134,35 @@ export default function StockPage() {
     return product.stockBalances?.[0] ?? { available: 0, inTransit: 0, lent: 0 };
   }
 
-  async function loadMovements() {
+  const loadMovements = useCallback(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const generation = ++loadGeneration.current;
+
+    setMovements([]);
     setMovementsLoading(true);
-    try {
-      const m = await api<PaginatedResponse<Movement>>(
-        `/stock/movements?storeId=${storeId}&page=${movementsPage}&pageSize=${MOVEMENTS_PAGE_SIZE}`,
-        {},
-        getToken(),
-      );
-      setMovements(m.data);
-      setMovementsTotalPages(m.totalPages);
-      setMovementsTotal(m.total);
-    } finally {
-      setMovementsLoading(false);
-    }
-  }
+
+    api<PaginatedResponse<Movement>>(
+      `/stock/movements?${movementsQuery}`,
+      { signal: controller.signal },
+      getToken(),
+    )
+      .then((m) => {
+        if (generation !== loadGeneration.current) return;
+        setMovements(m.data);
+        setMovementsTotalPages(m.totalPages);
+        setMovementsTotal(m.total);
+      })
+      .catch((err) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        if (generation !== loadGeneration.current) return;
+      })
+      .finally(() => {
+        if (generation !== loadGeneration.current) return;
+        setMovementsLoading(false);
+      });
+  }, [movementsQuery]);
 
   useEffect(() => {
     setMovementsPage(1);
@@ -116,10 +174,14 @@ export default function StockPage() {
   }, [storeId]);
 
   useEffect(() => {
+    setMovementsPage(1);
+  }, [filterDate, dateFrom, dateTo, useDateRange, storeId]);
+
+  useEffect(() => {
     if (!ready) return;
     loadMovements();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movementsPage, ready]);
+    return () => abortRef.current?.abort();
+  }, [ready, loadMovements]);
 
   async function handleAdjust(e: React.FormEvent) {
     e.preventDefault();
@@ -150,6 +212,14 @@ export default function StockPage() {
       setFormError(err instanceof Error ? err.message : 'Erro ao ajustar estoque');
     }
   }
+
+  const mismatchedMovements =
+    filterFrom && filterTo
+      ? movements.filter((movement) => {
+          const key = getSaleBusinessDayKey(new Date(movement.createdAt));
+          return key < filterFrom || key > filterTo;
+        })
+      : [];
 
   if (!ready) {
     return <PageLoader />;
@@ -234,6 +304,105 @@ export default function StockPage() {
       </Table>
 
       <h2 className="mb-3 mt-8 font-semibold">Movimentações recentes</h2>
+
+      <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        {activeDateLabel ? (
+          <div className="inline-flex items-center rounded-full bg-brand-muted px-3 py-1 text-xs font-medium text-brand-dark">
+            Filtrando data: {activeDateLabel}
+          </div>
+        ) : (
+          <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
+            Mostrando todas as datas — selecione um dia para filtrar
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="w-full max-w-sm">
+            {useDateRange ? (
+              <>
+                <Label>Período</Label>
+                <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-slate-600">De</span>
+                    <Input
+                      type="date"
+                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
+                      value={dateFrom}
+                      max={dateTo || todayDateKey()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDateFrom(value);
+                        if (dateTo && value > dateTo) setDateTo(value);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-slate-600">Até</span>
+                    <Input
+                      type="date"
+                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      max={todayDateKey()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDateTo(value);
+                        if (dateFrom && value < dateFrom) setDateFrom(value);
+                      }}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <Label>Data da movimentação</Label>
+                <Input
+                  type="date"
+                  className="mt-1 min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
+                  value={filterDate}
+                  max={todayDateKey()}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-500">Deixe em branco para listar todas as datas</p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setUseDateRange((current) => !current);
+                setDateFrom('');
+                setDateTo('');
+                setFilterDate('');
+              }}
+              className="mt-2 text-xs font-medium text-brand hover:underline"
+            >
+              {useDateRange ? 'Usar apenas um dia' : 'Filtrar por período (de/até)'}
+            </button>
+          </div>
+
+          {(filterDate || dateFrom || dateTo) && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setFilterDate('');
+                setDateFrom('');
+                setDateTo('');
+              }}
+            >
+              Limpar filtro
+            </Button>
+          )}
+        </div>
+
+        {mismatchedMovements.length > 0 && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Atenção: {mismatchedMovements.length} movimentação(ões) fora do intervalo selecionado. Atualize a página ou
+            aguarde o deploy da API.
+          </p>
+        )}
+      </div>
+
       <PaginatedSection
         loading={movementsLoading}
         pagination={{

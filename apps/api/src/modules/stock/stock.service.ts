@@ -1,7 +1,13 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { adjustStockSchema, AuthUser, canManageStock } from '@gas-erp/shared';
+import {
+  adjustStockSchema,
+  AuthUser,
+  canManageStock,
+  DashboardDateQuery,
+  resolveDashboardDateRange,
+} from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
 
@@ -20,10 +26,49 @@ export class StockService {
     });
   }
 
-  async getMovements(user: AuthUser, storeId: string, page = 1, pageSize = 20) {
+  async getMovements(
+    user: AuthUser,
+    storeId: string,
+    page = 1,
+    pageSize = 20,
+    dateQuery?: DashboardDateQuery,
+  ) {
     assertStoreAccess(user, storeId);
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-    const where = { storeId };
+
+    let movementIdsFilter: string[] | undefined;
+    if (dateQuery?.date || dateQuery?.dateFrom || dateQuery?.dateTo) {
+      let dateFrom: string;
+      let dateTo: string;
+      try {
+        ({ dateFrom, dateTo } = resolveDashboardDateRange(dateQuery));
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'Intervalo de datas inválido',
+        );
+      }
+
+      const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT id
+        FROM "StockMovement"
+        WHERE "storeId" = ${storeId}
+          AND DATE(
+            (("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')
+          ) >= ${dateFrom}::date
+          AND DATE(
+            (("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')
+          ) <= ${dateTo}::date
+      `;
+      movementIdsFilter = rows.map((row) => row.id);
+      if (movementIdsFilter.length === 0) {
+        return paginatedResult([], 0, p, ps);
+      }
+    }
+
+    const where = {
+      storeId,
+      ...(movementIdsFilter ? { id: { in: movementIdsFilter } } : {}),
+    };
     const [data, total] = await Promise.all([
       this.prisma.stockMovement.findMany({
         where,
