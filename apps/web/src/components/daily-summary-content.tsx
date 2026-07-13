@@ -56,6 +56,7 @@ export interface DailySummaryData {
       delivererName: string;
       completedCount: number;
       cancelledCount: number;
+      glpQuantity: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
       avgTotalDeliveryTimeSeconds: number | null;
@@ -154,6 +155,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 <thead className="bg-slate-50 text-left">
                   <tr>
                     <th className="p-3">Entregador</th>
+                    <th className="p-3">GLP entregue</th>
                     <th className="p-3">Rotas realizadas</th>
                     <th className="p-3">Rotas canceladas</th>
                     <th className="p-3">Tempo médio até aceitar</th>
@@ -165,6 +167,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                   {rows.map((d) => (
                     <tr key={d.delivererId} className="border-t border-slate-100">
                       <td className="p-3">{d.delivererName}</td>
+                      <td className="p-3 font-semibold text-brand-dark">{d.glpQuantity}</td>
                       <td className="p-3">{d.completedCount}</td>
                       <td className="p-3">{d.cancelledCount}</td>
                       <td className="p-3">{formatWaitTime(d.avgWaitTimeSeconds)}</td>

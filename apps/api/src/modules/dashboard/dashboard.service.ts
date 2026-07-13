@@ -83,6 +83,7 @@ type DashboardPayload = {
       delivererName: string;
       completedCount: number;
       cancelledCount: number;
+      glpQuantity: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
       avgTotalDeliveryTimeSeconds: number | null;
@@ -282,7 +283,7 @@ export class DashboardService {
 
     const showFinancial = canViewFinancialMargins(user.role);
 
-    const [saleAgg, paymentRows, itemGroups, movements, deliveries, saleItemsDetail, salesForPaymentAlloc] =
+    const [saleAgg, paymentRows, itemGroups, movements, deliveries, saleItemsDetail, salesForPaymentAlloc, glpSaleItems] =
       await Promise.all([
       this.prisma.sale.aggregate({
         where: saleWhere,
@@ -354,6 +355,16 @@ export class DashboardService {
             },
           })
         : Promise.resolve([]),
+      this.prisma.saleItem.findMany({
+        where: {
+          sale: { ...saleWhere, delivererId: { not: null } },
+          product: { productType: { equals: 'GLP', mode: 'insensitive' } },
+        },
+        select: {
+          quantity: true,
+          sale: { select: { delivererId: true } },
+        },
+      }),
     ]);
 
     const revenue = toNumber(saleAgg._sum.total);
@@ -475,6 +486,21 @@ export class DashboardService {
       })),
     );
 
+    const glpQuantityByDelivererId = new Map<string, number>();
+    for (const item of glpSaleItems) {
+      const delivererId = item.sale.delivererId;
+      if (!delivererId) continue;
+      glpQuantityByDelivererId.set(
+        delivererId,
+        (glpQuantityByDelivererId.get(delivererId) ?? 0) + item.quantity,
+      );
+    }
+
+    const byDeliverer = routeStats.byDeliverer.map((row) => ({
+      ...row,
+      glpQuantity: glpQuantityByDelivererId.get(row.delivererId) ?? 0,
+    }));
+
     const financialSummary = showFinancial
       ? (() => {
           const totalCost = computeSaleCogs(saleItemsDetail);
@@ -525,7 +551,7 @@ export class DashboardService {
         completedCount: routeStats.counts.completed,
         cancelledCount: routeStats.counts.cancelled,
         slowDeliveries: routeStats.slowDeliveries,
-        byDeliverer: routeStats.byDeliverer,
+        byDeliverer,
       },
     };
   }

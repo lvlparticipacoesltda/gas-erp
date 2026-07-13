@@ -9,6 +9,8 @@ export type DelivererRouteStatsRow = {
   completedCount: number;
   /** Rotas atribuídas e canceladas antes da conclusão. */
   cancelledCount: number;
+  /** Unidades de produtos com tipo GLP nas vendas contabilizadas do entregador. */
+  glpQuantity: number;
   avgWaitTimeSeconds: number | null;
   avgRouteDurationSeconds: number | null;
   avgTotalDeliveryTimeSeconds: number | null;
@@ -167,6 +169,7 @@ export function aggregateDelivererRouteStats(
       delivererName: stats.delivererName,
       completedCount: stats.completedCount,
       cancelledCount: stats.cancelledCount,
+      glpQuantity: 0,
       avgWaitTimeSeconds: averageSeconds(stats.waitTimes),
       avgRouteDurationSeconds: averageSeconds(stats.routeTimes),
       avgTotalDeliveryTimeSeconds: averageSeconds(stats.totalTimes),
