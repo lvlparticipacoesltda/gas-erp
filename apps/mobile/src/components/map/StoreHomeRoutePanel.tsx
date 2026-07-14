@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
 
@@ -9,15 +9,25 @@ export function StoreHomeRoutePanel({
   distanceLabel,
   routeLoading,
   routeError,
+  onOpenGoogleMaps,
+  onOpenWaze,
 }: {
   storeName: string;
   etaLabel: string | null;
   distanceLabel: string | null;
   routeLoading: boolean;
   routeError: string | null;
+  onOpenGoogleMaps: () => void;
+  onOpenWaze: () => void;
 }) {
+  const statusText = routeLoading
+    ? 'Calculando rota…'
+    : routeError
+      ? routeError
+      : [etaLabel, distanceLabel].filter(Boolean).join(' · ') || 'Navegando até a unidade';
+
   return (
-    <View style={[styles.wrap, { paddingBottom: spacing.md }]}>
+    <View style={styles.wrap}>
       <View style={styles.card}>
         <View style={styles.header}>
           <View style={styles.iconWrap}>
@@ -31,17 +41,35 @@ export function StoreHomeRoutePanel({
           </View>
         </View>
 
-        {routeLoading ? (
-          <Text style={styles.meta}>Calculando rota…</Text>
-        ) : routeError ? (
-          <Text style={styles.error}>{routeError}</Text>
-        ) : (
-          <Text style={styles.meta}>
-            {[etaLabel, distanceLabel].filter(Boolean).join(' · ') || 'Navegando até a unidade'}
-          </Text>
-        )}
+        <Text
+          style={routeError && !routeLoading ? styles.error : styles.meta}
+          numberOfLines={2}
+        >
+          {statusText}
+        </Text>
 
-        <Text style={styles.hint}>Toque no botão Home novamente para sair desta rota</Text>
+        <View style={styles.navRow}>
+          <Pressable
+            style={({ pressed }) => [styles.navBtn, pressed && styles.navBtnPressed]}
+            onPress={onOpenGoogleMaps}
+            accessibilityLabel="Abrir no Google Maps"
+          >
+            <Ionicons name="navigate-outline" size={16} color="#FFF" />
+            <Text style={styles.navLabel}>Maps</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.navBtn, pressed && styles.navBtnPressed]}
+            onPress={onOpenWaze}
+            accessibilityLabel="Abrir no Waze"
+          >
+            <Ionicons name="car-outline" size={16} color="#FFF" />
+            <Text style={styles.navLabel}>Waze</Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.hint} numberOfLines={1}>
+          Toque no botão Home novamente para sair desta rota
+        </Text>
       </View>
     </View>
   );
@@ -51,12 +79,14 @@ const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   card: {
+    minHeight: 168,
     backgroundColor: colors.primary,
     borderRadius: radius.lg,
     padding: spacing.md,
-    gap: spacing.xs,
+    gap: spacing.sm,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 10,
@@ -89,19 +119,38 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   meta: {
-    marginTop: spacing.xs,
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
   },
   error: {
-    marginTop: spacing.xs,
     fontSize: 13,
     fontWeight: '600',
     color: '#FEE2E2',
   },
+  navRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  navBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  navBtnPressed: { opacity: 0.85 },
+  navLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFF',
+  },
   hint: {
-    marginTop: spacing.xs,
     fontSize: 12,
     color: 'rgba(255,255,255,0.8)',
   },

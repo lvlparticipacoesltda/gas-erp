@@ -53,6 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new ApiError('Este aplicativo é exclusivo para entregadores.', 403);
     }
 
+    // Evita herdar rota/GPS de outra conta no mesmo aparelho.
+    await stopAllTracking().catch(() => undefined);
+
     await saveSession(res.accessToken, res.user, res.organization ?? null);
     setState({
       token: res.accessToken,

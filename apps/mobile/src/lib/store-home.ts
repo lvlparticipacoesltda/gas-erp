@@ -42,3 +42,11 @@ export function assertStoreNavigable(store: DelivererMeStore): boolean {
   );
   return false;
 }
+
+export function toStoreDestination(store: DelivererMeStore) {
+  return {
+    latitude: store.latitude,
+    longitude: store.longitude,
+    address: buildStoreAddress(store) || store.address,
+  };
+}

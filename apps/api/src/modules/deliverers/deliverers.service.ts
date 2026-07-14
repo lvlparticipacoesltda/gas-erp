@@ -271,6 +271,7 @@ export class DeliverersService {
       FROM "DeliveryTrackingPoint" tp
       INNER JOIN "Delivery" d ON d.id = tp."deliveryId"
       WHERE d."delivererId" IN (${Prisma.join(delivererIds)})
+        AND d.status = 'IN_PROGRESS'
       ORDER BY d."delivererId", tp."recordedAt" DESC
     `;
 

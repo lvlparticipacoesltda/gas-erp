@@ -27,6 +27,8 @@ export function ActiveRoutePanel({
   canFinish,
   finishHint,
   onFinish,
+  onOpenGoogleMaps,
+  onOpenWaze,
 }: {
   delivery: Delivery;
   etaLabel: string | null;
@@ -37,6 +39,8 @@ export function ActiveRoutePanel({
   canFinish: boolean;
   finishHint?: string | null;
   onFinish: () => void;
+  onOpenGoogleMaps: () => void;
+  onOpenWaze: () => void;
 }) {
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -93,6 +97,23 @@ export function ActiveRoutePanel({
           {routeError ? <Text style={styles.error}>{routeError}</Text> : null}
         </View>
       ) : null}
+
+      <View style={styles.navRow}>
+        <Button
+          label="Maps"
+          variant="secondary"
+          icon={<Ionicons name="navigate-outline" size={16} color={colors.text} />}
+          onPress={onOpenGoogleMaps}
+          style={styles.navBtn}
+        />
+        <Button
+          label="Waze"
+          variant="secondary"
+          icon={<Ionicons name="car-outline" size={16} color={colors.text} />}
+          onPress={onOpenWaze}
+          style={styles.navBtn}
+        />
+      </View>
 
       {finishHint ? <Text style={styles.hint}>{finishHint}</Text> : null}
 
@@ -217,5 +238,7 @@ const styles = StyleSheet.create({
   address: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
   hint: { fontSize: 12, color: colors.textFaint },
   error: { fontSize: 12, color: colors.danger },
+  navRow: { flexDirection: 'row', gap: spacing.sm },
+  navBtn: { flex: 1 },
   actions: { flexDirection: 'row', gap: spacing.sm },
 });

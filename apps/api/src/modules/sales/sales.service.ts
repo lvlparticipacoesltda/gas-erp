@@ -1098,12 +1098,15 @@ export class SalesService {
       let pushCancelled: { delivererId: string; deliveryId: string } | null = null;
 
       if (data.status === 'IN_DELIVERY' && data.delivererId) {
+        const previousDelivery = sale.delivery;
         const delivery = await tx.delivery.upsert({
           where: { saleId: id },
           update: {
             delivererId: data.delivererId,
             status: DeliveryStatus.PENDING,
             pendingReminderSentAt: null,
+            startedAt: null,
+            completedAt: null,
           },
           create: {
             saleId: id,
@@ -1112,6 +1115,21 @@ export class SalesService {
           },
           select: { id: true, delivererId: true },
         });
+
+        // Pontos de GPS ficam no delivery — ao trocar entregador (ou reabrir rota),
+        // limpar trilha para o novo entregador não herdar a localização do anterior.
+        if (
+          previousDelivery
+          && (
+            previousDelivery.delivererId !== data.delivererId
+            || previousDelivery.status !== DeliveryStatus.PENDING
+          )
+        ) {
+          await tx.deliveryTrackingPoint.deleteMany({
+            where: { deliveryId: delivery.id },
+          });
+        }
+
         if (data.delivererId !== sale.delivererId || !sale.delivery) {
           pushNewDelivery = { delivererId: delivery.delivererId, deliveryId: delivery.id };
         }

@@ -30,7 +30,7 @@ export async function openGoogleMaps(dest: string | NavigationDestination): Prom
   const target = typeof dest === 'string' ? { address: dest } : dest;
   const label = destinationLabel(target);
   if (!label) {
-    Alert.alert('Ops', 'Endereço da loja incompleto. Peça ao master para cadastrar o endereço.');
+    Alert.alert('Ops', 'Destino incompleto para abrir a navegação.');
     return;
   }
 
@@ -54,7 +54,7 @@ export async function openWaze(dest: string | NavigationDestination): Promise<vo
   } else {
     const address = target.address?.trim();
     if (!address) {
-      Alert.alert('Ops', 'Endereço da loja incompleto. Peça ao master para cadastrar o endereço.');
+      Alert.alert('Ops', 'Destino incompleto para abrir a navegação.');
       return;
     }
     const query = encodeURIComponent(address);

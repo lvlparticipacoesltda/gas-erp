@@ -18,7 +18,7 @@ import { useRouteNavigation } from '../../hooks/useRouteNavigation';
 import { useRoutePreview } from '../../hooks/useRoutePreview';
 import { useStoreHomeNavigation } from '../../hooks/useStoreHomeNavigation';
 import { useAuth } from '../../lib/auth';
-import { updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
+import { deliveryAddress, updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
 import { useDeliveriesContext } from '../../lib/deliveries-context';
 import { useDelivererAvailability } from '../../lib/deliverer-availability-context';
 import {
@@ -27,7 +27,8 @@ import {
 } from '../../lib/start-delivery-route';
 import { focusDeliveryRoute } from '../../lib/switch-delivery-route';
 import { getActiveDeliveryId, stopDeliveryTracking } from '../../lib/location';
-import { assertStoreNavigable, fetchMyStores } from '../../lib/store-home';
+import { openGoogleMaps, openWaze } from '../../lib/navigation';
+import { assertStoreNavigable, fetchMyStores, toStoreDestination } from '../../lib/store-home';
 import { colors, radius, spacing } from '../../theme';
 import type { Delivery } from '../../types';
 import type { DelivererMeStore } from '@gas-erp/shared';
@@ -288,16 +289,33 @@ export function DeliveryMapHome() {
     && !selected
     && !(paymentsOpen && !paymentsMinimized);
   const showSelectedPanel = Boolean(!homeMode && selected);
-  const showBottomPanel = showActivePanel || showSelectedPanel || showHomePanel;
   const fabCount = actionableDeliveries.length;
-  const [bottomPanelHeight, setBottomPanelHeight] = useState(0);
-  const fabBottom = showBottomPanel
-    ? Math.max(bottomPanelHeight + 12, showHomePanel ? 200 : 158)
-    : '3%';
+  /** Posição fixa dos FABs — não muda ao ativar Home / painéis. */
+  const fabBottom = 210;
 
-  useEffect(() => {
-    if (!showBottomPanel) setBottomPanelHeight(0);
-  }, [showBottomPanel]);
+  const openDeliveryExternalNav = useCallback(
+    (app: 'maps' | 'waze') => {
+      if (!navigationDelivery) return;
+      const dest = {
+        latitude: navigationDelivery.destination?.latitude ?? routeDestination?.latitude ?? null,
+        longitude: navigationDelivery.destination?.longitude ?? routeDestination?.longitude ?? null,
+        address: deliveryAddress(navigationDelivery),
+      };
+      if (app === 'maps') void openGoogleMaps(dest);
+      else void openWaze(dest);
+    },
+    [navigationDelivery, routeDestination],
+  );
+
+  const openHomeExternalNav = useCallback(
+    (app: 'maps' | 'waze') => {
+      if (!homeStore) return;
+      const dest = toStoreDestination(homeStore);
+      if (app === 'maps') void openGoogleMaps(dest);
+      else void openWaze(dest);
+    },
+    [homeStore],
+  );
 
   const handleNavigateHome = useCallback(async () => {
     if (homeBusy) return;
@@ -464,25 +482,19 @@ export function DeliveryMapHome() {
       ) : null}
 
       {showHomePanel && homeStore ? (
-        <View
-          style={styles.bottomOverlay}
-          pointerEvents="box-none"
-          onLayout={(e) => setBottomPanelHeight(e.nativeEvent.layout.height)}
-        >
+        <View style={styles.bottomOverlay} pointerEvents="box-none">
           <StoreHomeRoutePanel
             storeName={homeStore.name}
             etaLabel={homeEtaLabel}
             distanceLabel={homeDistanceLabel}
             routeLoading={homeRouteLoading}
             routeError={homeRouteError}
+            onOpenGoogleMaps={() => openHomeExternalNav('maps')}
+            onOpenWaze={() => openHomeExternalNav('waze')}
           />
         </View>
       ) : showActivePanel && navigationDelivery ? (
-        <View
-          style={styles.bottomOverlay}
-          pointerEvents="box-none"
-          onLayout={(e) => setBottomPanelHeight(e.nativeEvent.layout.height)}
-        >
+        <View style={styles.bottomOverlay} pointerEvents="box-none">
           <ActiveRoutePanel
             delivery={navigationDelivery}
             etaLabel={etaLabel}
@@ -493,14 +505,12 @@ export function DeliveryMapHome() {
             canFinish={canFinish}
             finishHint={finishHint}
             onFinish={() => setPaymentsOpen(true)}
+            onOpenGoogleMaps={() => openDeliveryExternalNav('maps')}
+            onOpenWaze={() => openDeliveryExternalNav('waze')}
           />
         </View>
       ) : showSelectedPanel && selected ? (
-        <View
-          style={styles.bottomOverlay}
-          pointerEvents="box-none"
-          onLayout={(e) => setBottomPanelHeight(e.nativeEvent.layout.height)}
-        >
+        <View style={styles.bottomOverlay} pointerEvents="box-none">
           <SelectedDeliveryPanel
             delivery={selected}
             busy={busy}
@@ -632,7 +642,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: 3,
     borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.12,
@@ -642,7 +652,6 @@ const styles = StyleSheet.create({
   },
   homeFabActive: {
     backgroundColor: colors.primary,
-    borderWidth: 3,
     borderColor: '#FFFFFF',
     shadowColor: colors.primary,
     shadowOpacity: 0.45,
@@ -651,8 +660,8 @@ const styles = StyleSheet.create({
   },
   homeFabDot: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 4,
+    right: 4,
     width: 10,
     height: 10,
     borderRadius: 5,
