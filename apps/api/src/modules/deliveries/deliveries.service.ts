@@ -12,6 +12,7 @@ import { assertStoreAccess } from '../../common/guards';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
 import { RoutingService } from '../../common/routing/routing.service';
 import { StoreRealtimeService } from '../../common/realtime/store-realtime.service';
+import { StockService } from '../stock/stock.service';
 
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
 
@@ -99,6 +100,7 @@ export class DeliveriesService {
     private geocoding: GeocodingService,
     private routing: RoutingService,
     private realtime: StoreRealtimeService,
+    private stock: StockService,
   ) {}
 
   async findByStore(user: AuthUser, storeId: string) {
@@ -274,7 +276,15 @@ export class DeliveriesService {
     const { status } = updateDeliveryStatusSchema.parse(input);
     const delivery = await this.prisma.delivery.findUnique({
       where: { id: deliveryId },
-      include: { deliverer: true, sale: { include: { store: true } } },
+      include: {
+        deliverer: true,
+        sale: {
+          include: {
+            store: true,
+            items: true,
+          },
+        },
+      },
     });
     if (!delivery || delivery.sale.store.organizationId !== user.organizationId) {
       throw new NotFoundException('Entrega não encontrada');
@@ -293,53 +303,70 @@ export class DeliveriesService {
       throw new ForbiddenException('Apenas o entregador responsável pode iniciar a rota');
     }
 
-    const updated = await this.prisma.delivery.update({
-      where: { id: deliveryId },
-      data: {
-        status: status as DeliveryStatus,
-        startedAt: status === 'IN_PROGRESS' ? new Date() : delivery.startedAt,
-        completedAt: status === 'DELIVERED' ? new Date() : undefined,
-      },
-      include: {
-        sale: { include: { customer: true } },
-        deliverer: { include: { user: { select: { name: true } } } },
-      },
-    });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (status === 'DELIVERED') {
+        await this.stock.deductSaleItems(
+          tx,
+          delivery.sale.storeId,
+          delivery.sale.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+          user.id,
+          delivery.saleId,
+        );
+      }
 
-    if (status === 'DELIVERED') {
-      await this.prisma.sale.update({
-        where: { id: delivery.saleId },
-        data: { status: SaleStatus.DELIVERED, deliveredAt: new Date() },
-      });
-      await this.prisma.saleStatusLog.create({
+      const next = await tx.delivery.update({
+        where: { id: deliveryId },
         data: {
-          saleId: delivery.saleId,
-          status: SaleStatus.DELIVERED,
-          userId: user.id,
+          status: status as DeliveryStatus,
+          startedAt: status === 'IN_PROGRESS' ? new Date() : delivery.startedAt,
+          completedAt: status === 'DELIVERED' ? new Date() : undefined,
+        },
+        include: {
+          sale: { include: { customer: true } },
+          deliverer: { include: { user: { select: { name: true } } } },
         },
       });
-      await this.prisma.deliverer.update({
-        where: { id: delivery.delivererId },
-        data: { status: 'AVAILABLE' },
-      });
-    } else if (status === 'IN_PROGRESS') {
-      await this.prisma.sale.update({
-        where: { id: delivery.saleId },
-        data: { status: SaleStatus.IN_DELIVERY },
-      });
-      await this.prisma.saleStatusLog.create({
-        data: {
-          saleId: delivery.saleId,
-          status: SaleStatus.IN_DELIVERY,
-          userId: user.id,
-          notes: 'Entregador iniciou a rota',
-        },
-      });
-      await this.prisma.deliverer.update({
-        where: { id: delivery.delivererId },
-        data: { status: 'ON_DELIVERY' },
-      });
-    }
+
+      if (status === 'DELIVERED') {
+        await tx.sale.update({
+          where: { id: delivery.saleId },
+          data: { status: SaleStatus.DELIVERED, deliveredAt: new Date() },
+        });
+        await tx.saleStatusLog.create({
+          data: {
+            saleId: delivery.saleId,
+            status: SaleStatus.DELIVERED,
+            userId: user.id,
+          },
+        });
+        await tx.deliverer.update({
+          where: { id: delivery.delivererId },
+          data: { status: 'AVAILABLE' },
+        });
+      } else if (status === 'IN_PROGRESS') {
+        await tx.sale.update({
+          where: { id: delivery.saleId },
+          data: { status: SaleStatus.IN_DELIVERY },
+        });
+        await tx.saleStatusLog.create({
+          data: {
+            saleId: delivery.saleId,
+            status: SaleStatus.IN_DELIVERY,
+            userId: user.id,
+            notes: 'Entregador iniciou a rota',
+          },
+        });
+        await tx.deliverer.update({
+          where: { id: delivery.delivererId },
+          data: { status: 'ON_DELIVERY' },
+        });
+      }
+
+      return next;
+    });
 
     try {
       this.realtime.notifyStoreChange(

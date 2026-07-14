@@ -681,12 +681,13 @@ export class SalesService {
     userId: string,
     isPickup: boolean,
   ): Promise<{ id: string; delivererId: string } | null> {
-    for (const item of data.items) {
-      await this.stockService.deductForSale(
+    // Retirada (portaria) já é venda finalizada → baixa na criação.
+    // Entrega: estoque só baixa quando a venda for marcada como DELIVERED.
+    if (isPickup) {
+      await this.stockService.deductSaleItems(
         tx,
         data.storeId,
-        item.productId,
-        item.quantity,
+        data.items,
         userId,
         saleId,
       );
@@ -1057,17 +1058,33 @@ export class SalesService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       if (data.status === 'CANCELLED') {
-        await Promise.all(
-          sale.items.map((item) =>
-            this.stockService.restoreForCancelledSale(
-              tx,
-              sale.storeId,
-              item.productId,
-              item.quantity,
-              user.id,
-              sale.id,
+        const hadDeduction = await this.stockService.hasSaleStockDeduction(tx, sale.id);
+        if (hadDeduction) {
+          await Promise.all(
+            sale.items.map((item) =>
+              this.stockService.restoreForCancelledSale(
+                tx,
+                sale.storeId,
+                item.productId,
+                item.quantity,
+                user.id,
+                sale.id,
+              ),
             ),
-          ),
+          );
+        }
+      }
+
+      if (data.status === 'DELIVERED') {
+        await this.stockService.deductSaleItems(
+          tx,
+          sale.storeId,
+          sale.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+          user.id,
+          sale.id,
         );
       }
 

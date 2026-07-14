@@ -26,7 +26,7 @@ Monorepo Gas ERP — gestão multi-loja para distribuidoras de GLP.
 - **StorePaymentMethod** = formas de pagamento por loja com taxas (`PaymentFeeMode`)
 - **StockBalance** por loja; **StockTransfer** entre lojas
 - **ProductStoreSetting.supplierCost** = custo fornecedor por loja; **SaleItem.unitCost** = snapshot na venda (margem histórica)
-- **Sale** → baixa estoque; cancelamento repõe; `saleDate` (dia operacional); `backdateApproval` para lançamentos retroativos; `mobileApproval` para vendas criadas pelo app do entregador
+- **Sale** → baixa estoque ao finalizar (DELIVERED / PORTARIA); cancelamento repõe se já houve baixa; `saleDate` (dia operacional); `backdateApproval` para lançamentos retroativos; `mobileApproval` para vendas criadas pelo app do entregador
 - **SaleBackdateLog** — auditoria de solicitação/aprovação/rejeição de data anterior
 - **SaleMobileApprovalLog** — auditoria de aprovação de venda mobile
 - **Delivery** + **DeliveryTrackingPoint** para GPS (app entregador); `pendingReminderSentAt` para lembrete push

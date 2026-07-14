@@ -13,6 +13,9 @@ import { paginate, paginatedResult } from '../../common/utils/pagination';
 
 type DbClient = PrismaService | Prisma.TransactionClient;
 
+/** Motivo padrão da baixa de estoque por venda (usado para idempotência e estorno). */
+const SALE_STOCK_OUT_REASON = 'Ref. à venda de mercadorias.';
+
 @Injectable()
 export class StockService {
   constructor(private prisma: PrismaService) {}
@@ -237,10 +240,36 @@ export class StockService {
         userId,
         type: StockMovementType.OUT,
         quantity,
-        reason: 'Ref. à venda de mercadorias.',
+        reason: SALE_STOCK_OUT_REASON,
         referenceId: saleId,
       },
     });
+  }
+
+  /** Indica se a venda já gerou baixa de estoque (evita duplicar / permite cancelar sem estorno indevido). */
+  async hasSaleStockDeduction(db: DbClient, saleId: string): Promise<boolean> {
+    const count = await db.stockMovement.count({
+      where: {
+        referenceId: saleId,
+        type: StockMovementType.OUT,
+        reason: SALE_STOCK_OUT_REASON,
+      },
+    });
+    return count > 0;
+  }
+
+  /** Baixa todos os itens da venda uma única vez (entrega / portaria). */
+  async deductSaleItems(
+    db: DbClient,
+    storeId: string,
+    items: { productId: string; quantity: number }[],
+    userId: string,
+    saleId: string,
+  ) {
+    if (await this.hasSaleStockDeduction(db, saleId)) return;
+    for (const item of items) {
+      await this.deductForSale(db, storeId, item.productId, item.quantity, userId, saleId);
+    }
   }
 
   async restoreForCancelledSale(
