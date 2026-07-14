@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   decodePolyline,
   distanceToPolylineMeters,
   formatDistanceMeters,
+  haversineDistanceMeters,
   type DeliveryRouteResponse,
+  type DeliveryRouteStep,
   type LatLng,
 } from '@gas-erp/shared';
 import { fetchDeliveryRoute, logRouteDebug } from '../lib/routing';
@@ -12,12 +14,60 @@ import type { DriverPosition } from './useDriverLocation';
 const REROUTE_DISTANCE_M = 60;
 const REROUTE_DEBOUNCE_MS = 30_000;
 
+export interface NextManeuver {
+  instruction: string;
+  maneuver?: string;
+  distanceMeters: number;
+  distanceLabel: string;
+}
+
 function formatDuration(seconds: number): string {
   const mins = Math.round(seconds / 60);
   if (mins < 60) return `~${mins} min`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m > 0 ? `~${h}h ${m}min` : `~${h}h`;
+}
+
+/**
+ * Determina a próxima manobra a partir da posição do motorista.
+ * O motorista está trafegando pelo passo mais próximo; a manobra a anunciar é
+ * a do fim desse passo (início do próximo), com a distância até esse ponto.
+ */
+function computeNextManeuver(
+  driver: LatLng,
+  steps: DeliveryRouteStep[] | undefined,
+): NextManeuver | null {
+  if (!steps || steps.length === 0) return null;
+
+  let currentIndex = 0;
+  let bestDistance = Infinity;
+  for (let i = 0; i < steps.length; i++) {
+    const d = distanceToPolylineMeters(driver, [
+      steps[i].startLocation,
+      steps[i].endLocation,
+    ]);
+    if (d < bestDistance) {
+      bestDistance = d;
+      currentIndex = i;
+    }
+  }
+
+  const currentStep = steps[currentIndex];
+  const upcomingStep = steps[currentIndex + 1] ?? currentStep;
+  const distanceMeters = haversineDistanceMeters(
+    driver.latitude,
+    driver.longitude,
+    currentStep.endLocation.latitude,
+    currentStep.endLocation.longitude,
+  );
+
+  return {
+    instruction: upcomingStep.instruction,
+    maneuver: upcomingStep.maneuver,
+    distanceMeters,
+    distanceLabel: formatDistanceMeters(distanceMeters),
+  };
 }
 
 export function useRouteNavigation(
@@ -98,6 +148,11 @@ export function useRouteNavigation(
   const etaLabel = route ? formatDuration(route.durationSeconds) : null;
   const distanceLabel = route ? formatDistanceMeters(route.distanceMeters) : null;
 
+  const nextManeuver = useMemo(() => {
+    if (!enabled || !driverPosition || !route?.steps) return null;
+    return computeNextManeuver(driverPosition, route.steps);
+  }, [enabled, driverPosition?.latitude, driverPosition?.longitude, route?.steps]);
+
   return {
     route,
     polyline,
@@ -105,6 +160,7 @@ export function useRouteNavigation(
     error,
     etaLabel,
     distanceLabel,
+    nextManeuver,
     refreshRoute: () => {
       if (driverPosition) void loadRoute(driverPosition, true);
     },

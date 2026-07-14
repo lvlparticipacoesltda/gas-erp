@@ -17,6 +17,7 @@ import {
   formatCompletedDeliveryPhases,
   getDeliveryDisplayStatus,
 } from '@gas-erp/shared';
+import { CustomerPhoneLink } from '@/components/CustomerPhoneLink';
 import { DeliverySaleSummary } from '@/components/DeliverySaleSummary';
 import { DestinationMarker } from '@/components/map/DestinationMarker';
 import { useDriverMarkerTracksViewChanges } from '@/components/map/DriverMarker';
@@ -241,6 +242,8 @@ export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
           {delivery.sale.customer?.name ?? 'Cliente não identificado'}
         </Text>
 
+        <CustomerPhoneLink phone={delivery.sale.customer?.phone} />
+
         {address ? (
           <Text style={styles.address}>{address}</Text>
         ) : null}
@@ -304,9 +307,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surfaceAlt,
   },
-  map: { ...StyleSheet.absoluteFillObject },
+  map: { ...StyleSheet.absoluteFill },
   mapOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(244, 238, 232, 0.72)',
     alignItems: 'center',
     justifyContent: 'center',

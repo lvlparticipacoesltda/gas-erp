@@ -86,6 +86,12 @@ export class PushService {
       return false;
     }
 
+    const activeRoute = await this.prisma.delivery.findFirst({
+      where: { delivererId, status: 'IN_PROGRESS' },
+      select: { id: true },
+    });
+    if (activeRoute) return false;
+
     const customer = delivery.sale.customer?.name ?? 'Cliente';
     const address = formatAddress(delivery.sale);
     const body = address

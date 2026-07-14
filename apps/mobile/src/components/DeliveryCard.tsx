@@ -7,6 +7,7 @@ import {
   getRouteDurationSeconds,
   getWaitTimeSeconds,
 } from '@gas-erp/shared';
+import { CustomerPhoneLink } from './CustomerPhoneLink';
 import { Badge, Card } from './ui';
 import { DeliverySaleSummary } from './DeliverySaleSummary';
 import { deliveryAddress } from '../lib/deliveries';
@@ -43,9 +44,11 @@ function waitLabel(delivery: Delivery): string {
 export function DeliveryCard({
   delivery,
   onPress,
+  highlighted = false,
 }: {
   delivery: Delivery;
   onPress: () => void;
+  highlighted?: boolean;
 }) {
   const display = getDeliveryDisplayStatus({
     status: delivery.status,
@@ -55,12 +58,13 @@ export function DeliveryCard({
   const wait = waitLabel(delivery);
 
   return (
-    <Card onPress={onPress} style={styles.card}>
+    <Card onPress={onPress} style={[styles.card, highlighted && styles.cardHighlighted]}>
       <View style={styles.header}>
         <Badge label={display.label} tone={display.tone} />
         {wait ? <Text style={styles.wait}>{wait}</Text> : null}
       </View>
       <Text style={styles.customer}>{delivery.sale.customer?.name ?? 'Cliente não identificado'}</Text>
+      <CustomerPhoneLink phone={delivery.sale.customer?.phone} />
       {address ? (
         <Text style={styles.address} numberOfLines={2}>
           {address}
@@ -73,6 +77,10 @@ export function DeliveryCard({
 
 const styles = StyleSheet.create({
   card: { gap: spacing.sm },
+  cardHighlighted: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   wait: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
   customer: { fontSize: 16, fontWeight: '700', color: colors.text },

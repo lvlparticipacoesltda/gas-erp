@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CustomerPhoneLink } from '../CustomerPhoneLink';
 import { Button } from '../ui';
 import { DeliverySaleSummary } from '../DeliverySaleSummary';
 import { deliveryAddress } from '../../lib/deliveries';
@@ -23,9 +24,9 @@ export function ActiveRoutePanel({
   routeLoading,
   routeError,
   busy,
+  canFinish,
+  finishHint,
   onFinish,
-  onOpenGoogleMaps,
-  onOpenWaze,
 }: {
   delivery: Delivery;
   etaLabel: string | null;
@@ -33,11 +34,12 @@ export function ActiveRoutePanel({
   routeLoading: boolean;
   routeError: string | null;
   busy: boolean;
+  canFinish: boolean;
+  finishHint?: string | null;
   onFinish: () => void;
-  onOpenGoogleMaps: () => void;
-  onOpenWaze: () => void;
 }) {
   const [elapsed, setElapsed] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const address = deliveryAddress(delivery);
 
   useEffect(() => {
@@ -49,55 +51,58 @@ export function ActiveRoutePanel({
   }, [delivery.startedAt]);
 
   return (
-    <View style={styles.panel}>
-      <View style={styles.timerRow}>
+    <View style={styles.compactPanel}>
+      <Pressable
+        style={styles.header}
+        onPress={() => setExpanded((v) => !v)}
+        accessibilityLabel={expanded ? 'Recolher detalhes da entrega' : 'Expandir detalhes da entrega'}
+      >
         <View style={styles.pulse} />
         <View style={styles.flex}>
-          <Text style={styles.customer}>{delivery.sale.customer?.name ?? 'Cliente'}</Text>
+          <Text style={styles.customer} numberOfLines={1}>
+            {delivery.sale.customer?.name ?? 'Cliente'}
+          </Text>
           <Text style={styles.timer}>{formatElapsed(elapsed)} em rota</Text>
         </View>
         {distanceLabel || etaLabel ? (
           <View style={styles.meta}>
-            {distanceLabel ? <Text style={styles.metaText}>{distanceLabel}</Text> : null}
+            {distanceLabel ? <Text style={styles.metaStrong}>{distanceLabel}</Text> : null}
             {etaLabel ? <Text style={styles.metaText}>{etaLabel}</Text> : null}
           </View>
         ) : null}
-      </View>
+        <Ionicons
+          name={expanded ? 'chevron-down' : 'chevron-up'}
+          size={20}
+          color={colors.textMuted}
+        />
+      </Pressable>
 
-      {address ? (
-        <Text style={styles.address} numberOfLines={2}>
-          {address}
-        </Text>
+      {expanded ? (
+        <View style={styles.details}>
+          {address ? (
+            <Text style={styles.address} numberOfLines={2}>
+              {address}
+            </Text>
+          ) : null}
+
+          <CustomerPhoneLink phone={delivery.sale.customer?.phone} />
+
+          <DeliverySaleSummary sale={delivery.sale} />
+
+          {routeLoading ? <Text style={styles.hint}>Calculando rota...</Text> : null}
+          {routeError ? <Text style={styles.error}>{routeError}</Text> : null}
+        </View>
       ) : null}
 
-      <DeliverySaleSummary sale={delivery.sale} />
+      {finishHint ? <Text style={styles.hint}>{finishHint}</Text> : null}
 
-      {routeLoading ? <Text style={styles.hint}>Calculando rota...</Text> : null}
-      {routeError ? (
-        <Text style={styles.error}>
-          {routeError}
-          {'\n'}Use Maps ou Waze abaixo se o endereço estiver correto.
-        </Text>
-      ) : null}
-
-      <View style={styles.navRow}>
-        <Button
-          label="Maps"
-          variant="secondary"
-          icon={<Ionicons name="navigate-outline" size={16} color={colors.text} />}
-          onPress={onOpenGoogleMaps}
-          style={styles.navBtn}
-        />
-        <Button
-          label="Waze"
-          variant="secondary"
-          icon={<Ionicons name="car-outline" size={16} color={colors.text} />}
-          onPress={onOpenWaze}
-          style={styles.navBtn}
-        />
-      </View>
-
-      <Button label="Concluir entrega" variant="success" onPress={onFinish} loading={busy} />
+      <Button
+        label="Concluir entrega"
+        variant="success"
+        onPress={onFinish}
+        loading={busy}
+        disabled={!canFinish}
+      />
     </View>
   );
 }
@@ -105,7 +110,7 @@ export function ActiveRoutePanel({
 export function SelectedDeliveryPanel({
   delivery,
   busy,
-  hasActiveRoute,
+  switchingRoute,
   etaLabel,
   distanceLabel,
   routeLoading,
@@ -115,7 +120,7 @@ export function SelectedDeliveryPanel({
 }: {
   delivery: Delivery;
   busy: boolean;
-  hasActiveRoute: boolean;
+  switchingRoute?: boolean;
   etaLabel?: string | null;
   distanceLabel?: string | null;
   routeLoading?: boolean;
@@ -142,28 +147,21 @@ export function SelectedDeliveryPanel({
         </Text>
       ) : null}
 
+      <CustomerPhoneLink phone={delivery.sale.customer?.phone} />
+
       <DeliverySaleSummary sale={delivery.sale} />
 
       {routeLoading ? <Text style={styles.hint}>Calculando rota...</Text> : null}
-      {routeError ? (
-        <Text style={styles.error}>
-          {routeError}
-          {'\n'}Você ainda pode iniciar a rota e navegar pelo Maps/Waze.
-        </Text>
-      ) : null}
+      {routeError ? <Text style={styles.error}>{routeError}</Text> : null}
       <View style={styles.actions}>
         <Button label="Voltar" variant="secondary" onPress={onClear} style={styles.flex} />
         <Button
-          label="Iniciar rota"
+          label={switchingRoute ? 'Trocar rota' : 'Iniciar rota'}
           onPress={onStart}
           loading={busy}
-          disabled={hasActiveRoute}
           style={styles.flex}
         />
       </View>
-      {hasActiveRoute ? (
-        <Text style={styles.hint}>Conclua a rota atual antes de iniciar outra.</Text>
-      ) : null}
     </View>
   );
 }
@@ -185,6 +183,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     elevation: 12,
   },
+  compactPanel: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 12,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  details: { gap: spacing.md },
   flex: { flex: 1 },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   pulse: {
@@ -196,11 +212,10 @@ const styles = StyleSheet.create({
   customer: { fontSize: 17, fontWeight: '800', color: colors.text },
   timer: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginTop: 2 },
   meta: { alignItems: 'flex-end' },
+  metaStrong: { fontSize: 14, fontWeight: '800', color: colors.primary },
   metaText: { fontSize: 12, fontWeight: '700', color: colors.primary },
   address: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
   hint: { fontSize: 12, color: colors.textFaint },
   error: { fontSize: 12, color: colors.danger },
-  navRow: { flexDirection: 'row', gap: spacing.sm },
-  navBtn: { flex: 1 },
   actions: { flexDirection: 'row', gap: spacing.sm },
 });

@@ -34,6 +34,11 @@ export class PendingDeliveryReminderService implements OnModuleInit, OnModuleDes
     const pending = await this.prisma.delivery.findMany({
       where: {
         status: 'PENDING',
+        deliverer: {
+          deliveries: {
+            none: { status: 'IN_PROGRESS' },
+          },
+        },
         OR: [
           { pendingReminderSentAt: null, createdAt: { lte: cutoff } },
           { pendingReminderSentAt: { lte: cutoff } },

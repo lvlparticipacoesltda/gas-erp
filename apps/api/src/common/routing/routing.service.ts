@@ -1,6 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { DeliveryRouteResponse } from '@gas-erp/shared';
+import type { DeliveryRouteResponse, DeliveryRouteStep } from '@gas-erp/shared';
 
 interface CacheEntry {
   result: DeliveryRouteResponse;
@@ -122,6 +122,13 @@ export class RoutingService {
         legs: Array<{
           distance: { value: number };
           duration: { value: number };
+          steps?: Array<{
+            html_instructions?: string;
+            maneuver?: string;
+            distance?: { value: number };
+            start_location: { lat: number; lng: number };
+            end_location: { lat: number; lng: number };
+          }>;
         }>;
       }>;
     };
@@ -133,6 +140,20 @@ export class RoutingService {
 
     const route = data.routes[0];
     const leg = route.legs[0];
+    const steps: DeliveryRouteStep[] = (leg.steps ?? []).map((step) => ({
+      instruction: this.stripHtml(step.html_instructions ?? ''),
+      distanceMeters: step.distance?.value ?? 0,
+      maneuver: step.maneuver,
+      startLocation: {
+        latitude: step.start_location.lat,
+        longitude: step.start_location.lng,
+      },
+      endLocation: {
+        latitude: step.end_location.lat,
+        longitude: step.end_location.lng,
+      },
+    }));
+
     return {
       encodedPolyline: route.overview_polyline.points,
       distanceMeters: leg.distance.value,
@@ -147,6 +168,21 @@ export class RoutingService {
           longitude: route.bounds.southwest.lng,
         },
       },
+      steps: steps.length > 0 ? steps : undefined,
     };
+  }
+
+  private stripHtml(html: string): string {
+    return html
+      .replace(/<div[^>]*>/gi, '. ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&#39;/gi, "'")
+      .replace(/&quot;/gi, '"')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }

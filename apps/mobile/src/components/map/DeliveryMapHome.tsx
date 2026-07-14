@@ -8,21 +8,33 @@ import { Loading } from '../ui';
 import { ActiveRoutePanel, SelectedDeliveryPanel } from './ActiveRoutePanel';
 import { DeliveryPickerSheet } from './DeliveryPickerSheet';
 import { DriverMap, type DriverMapRef } from './DriverMap';
+import { ManeuverBanner } from './ManeuverBanner';
+import { useDeliveryFinishProximity } from '../../hooks/useDeliveryFinishProximity';
+import { useEnrichedDeliveryDestinations } from '../../hooks/useEnrichedDeliveryDestinations';
 import { useDriverLocation } from '../../hooks/useDriverLocation';
 import { useRouteNavigation } from '../../hooks/useRouteNavigation';
 import { useRoutePreview } from '../../hooks/useRoutePreview';
 import { useAuth } from '../../lib/auth';
-import { deliveryAddress, updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
+import { updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
 import { useDeliveriesContext } from '../../lib/deliveries-context';
 import { useDelivererAvailability } from '../../lib/deliverer-availability-context';
-import { openGoogleMaps, openWaze } from '../../lib/navigation';
 import {
   cancelDeliveryRouteOnError,
   startDeliveryRoute,
 } from '../../lib/start-delivery-route';
-import { stopDeliveryTracking } from '../../lib/location';
+import { focusDeliveryRoute } from '../../lib/switch-delivery-route';
+import { getActiveDeliveryId, stopDeliveryTracking } from '../../lib/location';
 import { colors, radius, spacing } from '../../theme';
 import type { Delivery } from '../../types';
+
+function dedupeDeliveries(deliveries: Delivery[]): Delivery[] {
+  const seen = new Set<string>();
+  return deliveries.filter((delivery) => {
+    if (seen.has(delivery.id)) return false;
+    seen.add(delivery.id);
+    return true;
+  });
+}
 
 export function DeliveryMapHome() {
   const insets = useSafeAreaInsets();
@@ -31,32 +43,59 @@ export function DeliveryMapHome() {
   const fabIconSize = screenWidth * 0.065;
   const { deliveryId: deliveryIdParam } = useLocalSearchParams<{ deliveryId?: string }>();
   const { user, organization, logout } = useAuth();
-  const { pending, inProgress, loading, refreshing, error, refresh, hasActiveRoute } =
+  const { pending, inProgress, loading, refreshing, error, refresh, getById } =
     useDeliveriesContext();
   const { isUnavailable } = useDelivererAvailability();
 
-  const activeDelivery = inProgress[0] ?? null;
+  const [navigationDeliveryId, setNavigationDeliveryId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selected, setSelected] = useState<Delivery | null>(null);
   const [busy, setBusy] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [paymentsMinimized, setPaymentsMinimized] = useState(false);
   const mapRef = useRef<DriverMapRef>(null);
+  const navigationSyncedRef = useRef(false);
+
+  const actionableDeliveries = useMemo(
+    () => dedupeDeliveries([...inProgress, ...pending]),
+    [inProgress, pending],
+  );
+
+  const navigationDelivery = useMemo(() => {
+    if (navigationDeliveryId) {
+      const focused = getById(navigationDeliveryId);
+      if (focused?.status === 'IN_PROGRESS') return focused;
+    }
+    return inProgress[0] ?? null;
+  }, [navigationDeliveryId, inProgress, getById]);
 
   const { position: driverPosition } = useDriverLocation(!isUnavailable);
-  const routeEnabled = Boolean(activeDelivery?.status === 'IN_PROGRESS');
-  const previewEnabled = Boolean(selected && !activeDelivery);
+  const routeEnabled = Boolean(navigationDelivery?.status === 'IN_PROGRESS' && !selected);
+  const previewEnabled = Boolean(selected && selected.status === 'PENDING');
   const {
     polyline,
     loading: routeLoading,
     error: routeError,
     etaLabel,
     distanceLabel,
+    nextManeuver,
   } = useRouteNavigation(
-    activeDelivery?.id ?? null,
+    navigationDelivery?.id ?? null,
     driverPosition,
     routeEnabled,
   );
+
+  const routeDestination = useMemo(() => {
+    if (polyline.length === 0) return null;
+    return polyline[polyline.length - 1];
+  }, [polyline]);
+
+  const { canFinish, finishHint } = useDeliveryFinishProximity(
+    navigationDelivery,
+    driverPosition,
+    routeDestination,
+  );
+
   const {
     polyline: previewPolyline,
     loading: previewLoading,
@@ -70,6 +109,39 @@ export function DeliveryMapHome() {
   );
 
   useEffect(() => {
+    if (navigationSyncedRef.current) return;
+    if (inProgress.length === 0) {
+      setNavigationDeliveryId(null);
+      navigationSyncedRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const storedId = await getActiveDeliveryId();
+      if (cancelled) return;
+
+      const stored = storedId ? inProgress.find((d) => d.id === storedId) : null;
+      setNavigationDeliveryId(stored?.id ?? inProgress[0]?.id ?? null);
+      navigationSyncedRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inProgress]);
+
+  useEffect(() => {
+    if (!navigationDeliveryId) return;
+    const stillActive = inProgress.some((d) => d.id === navigationDeliveryId);
+    if (!stillActive && inProgress[0]) {
+      setNavigationDeliveryId(inProgress[0].id);
+    } else if (!stillActive) {
+      setNavigationDeliveryId(null);
+    }
+  }, [inProgress, navigationDeliveryId]);
+
+  useEffect(() => {
     if (!deliveryIdParam) return;
     const fromParam =
       pending.find((d) => d.id === deliveryIdParam)
@@ -78,32 +150,60 @@ export function DeliveryMapHome() {
       fromParam
       && (fromParam.status === 'PENDING' || fromParam.status === 'IN_PROGRESS')
     ) {
-      setSelected(fromParam);
+      if (fromParam.status === 'IN_PROGRESS') {
+        setNavigationDeliveryId(fromParam.id);
+        setSelected(null);
+      } else {
+        setSelected(fromParam);
+      }
     }
   }, [deliveryIdParam, pending, inProgress]);
 
-  const deliveriesOnMap = useMemo(() => {
-    const list = [...pending];
-    if (activeDelivery?.destination && !list.some((d) => d.id === activeDelivery.id)) {
-      list.push(activeDelivery);
-    }
-    return list;
-  }, [pending, activeDelivery]);
+  const deliveriesOnMap = useMemo(
+    () => dedupeDeliveries([...pending, ...inProgress]),
+    [pending, inProgress],
+  );
+  const enrichedDeliveriesOnMap = useEnrichedDeliveryDestinations(
+    deliveriesOnMap,
+    driverPosition,
+  );
+  const showDeliveriesOverview =
+    !routeEnabled && enrichedDeliveriesOnMap.length > 0 && !selected;
+
+  const handleSelectDelivery = useCallback(
+    async (delivery: Delivery) => {
+      if (delivery.status === 'IN_PROGRESS') {
+        if (delivery.id === navigationDelivery?.id) {
+          setSelected(null);
+          return;
+        }
+
+        setBusy(true);
+        try {
+          await focusDeliveryRoute(delivery);
+          setNavigationDeliveryId(delivery.id);
+          setSelected(null);
+        } catch (err) {
+          Alert.alert('Erro', err instanceof Error ? err.message : 'Não foi possível trocar a rota.');
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+
+      setSelected(delivery);
+    },
+    [navigationDelivery?.id],
+  );
 
   const handleStartRoute = useCallback(async () => {
     if (!selected) return;
-    if (hasActiveRoute) {
-      Alert.alert(
-        'Rota em andamento',
-        'Você já tem uma entrega em rota. Conclua-a antes de iniciar outra.',
-      );
-      return;
-    }
 
     setBusy(true);
     try {
       await startDeliveryRoute(selected);
       await refresh();
+      setNavigationDeliveryId(selected.id);
       setSelected(null);
     } catch (err) {
       await cancelDeliveryRouteOnError();
@@ -111,20 +211,23 @@ export function DeliveryMapHome() {
     } finally {
       setBusy(false);
     }
-  }, [selected, hasActiveRoute, refresh]);
+  }, [selected, refresh]);
 
   const handleFinishRoute = useCallback(
     async (
       payments: { storePaymentMethodId: string; amount: number }[],
       unitPrice?: number,
     ) => {
-      if (!activeDelivery) return;
+      if (!navigationDelivery) return;
       setBusy(true);
       try {
-        await updateSalePayments(activeDelivery.sale.id, payments, unitPrice);
-        await updateDeliveryStatus(activeDelivery.id, 'DELIVERED');
+        await updateSalePayments(navigationDelivery.sale.id, payments, unitPrice);
+        await updateDeliveryStatus(navigationDelivery.id, 'DELIVERED');
         await stopDeliveryTracking().catch(() => undefined);
         setPaymentsOpen(false);
+        setNavigationDeliveryId(null);
+        setSelected(null);
+        navigationSyncedRef.current = false;
         await refresh();
       } catch (err) {
         throw err;
@@ -132,10 +235,16 @@ export function DeliveryMapHome() {
         setBusy(false);
       }
     },
-    [activeDelivery, refresh],
+    [navigationDelivery, refresh],
   );
 
-  const addressForNav = activeDelivery ? deliveryAddress(activeDelivery) : '';
+  const showActivePanel =
+    navigationDelivery?.status === 'IN_PROGRESS'
+    && !selected
+    && !(paymentsOpen && !paymentsMinimized);
+  const showSelectedPanel = Boolean(selected);
+  const showBottomPanel = showActivePanel || showSelectedPanel;
+  const fabCount = actionableDeliveries.length;
 
   return (
     <View style={styles.root}>
@@ -145,13 +254,22 @@ export function DeliveryMapHome() {
         routePolyline={polyline}
         previewPolyline={previewPolyline}
         followDriver={routeEnabled}
-        pendingDeliveries={deliveriesOnMap}
+        idleFollow={
+          !routeEnabled
+          && !isUnavailable
+          && Boolean(driverPosition)
+          && actionableDeliveries.length === 0
+        }
+        showDeliveriesOverview={showDeliveriesOverview}
+        pendingDeliveries={enrichedDeliveriesOnMap}
         selectedDeliveryId={selected?.id}
-        activeDeliveryId={activeDelivery?.id}
-        onSelectPendingDelivery={(delivery) => {
-          setSelected(delivery);
-          setPickerOpen(false);
-        }}
+        activeDeliveryId={navigationDelivery?.id}
+        routeEndLabel={
+          navigationDelivery?.sale.customer?.name
+          ?? selected?.sale.customer?.name
+          ?? null
+        }
+        onSelectPendingDelivery={handleSelectDelivery}
       />
 
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
@@ -172,13 +290,17 @@ export function DeliveryMapHome() {
               onPress={() => mapRef.current?.recenter()}
               style={styles.iconButton}
               hitSlop={8}
-              accessibilityLabel="Recentralizar mapa na sua posição"
+              accessibilityLabel="Ver entregas e sua posição no mapa"
             >
               <Ionicons name="locate" size={22} color={colors.primary} />
             </Pressable>
           ) : null}
         </View>
       </View>
+
+      {routeEnabled && nextManeuver ? (
+        <ManeuverBanner maneuver={nextManeuver} topInset={insets.top + 64} />
+      ) : null}
 
       {isUnavailable ? (
         <View style={[styles.banner, { top: insets.top + 64 }]}>
@@ -193,7 +315,7 @@ export function DeliveryMapHome() {
         </View>
       ) : null}
 
-      {!activeDelivery && !selected ? (
+      {!isUnavailable && fabCount > 0 ? (
         <Pressable
           style={[
             styles.fab,
@@ -201,39 +323,50 @@ export function DeliveryMapHome() {
               width: fabSize,
               height: fabSize,
               borderRadius: fabSize / 2,
+              bottom: showBottomPanel ? 148 : '3%',
             },
           ]}
           onPress={() => setPickerOpen(true)}
+          accessibilityLabel="Ver lista de entregas"
         >
           <Ionicons name="list" size={fabIconSize} color={colors.navy} />
-          {pending.length > 0 ? (
-            <View style={[styles.fabBadge, { minWidth: fabSize * 0.36, height: fabSize * 0.36, borderRadius: fabSize * 0.18 }]}>
-              <Text style={[styles.fabBadgeText, { fontSize: fabSize * 0.2 }]}>{pending.length}</Text>
+          {fabCount > 0 ? (
+            <View
+              style={[
+                styles.fabBadge,
+                {
+                  minWidth: fabSize * 0.36,
+                  height: fabSize * 0.36,
+                  borderRadius: fabSize * 0.18,
+                },
+              ]}
+            >
+              <Text style={[styles.fabBadgeText, { fontSize: fabSize * 0.2 }]}>{fabCount}</Text>
             </View>
           ) : null}
         </Pressable>
       ) : null}
 
-      {activeDelivery && !(paymentsOpen && !paymentsMinimized) ? (
+      {showActivePanel && navigationDelivery ? (
         <View style={styles.bottomOverlay} pointerEvents="box-none">
           <ActiveRoutePanel
-            delivery={activeDelivery}
+            delivery={navigationDelivery}
             etaLabel={etaLabel}
             distanceLabel={distanceLabel}
             routeLoading={routeLoading}
             routeError={routeError}
             busy={busy}
+            canFinish={canFinish}
+            finishHint={finishHint}
             onFinish={() => setPaymentsOpen(true)}
-            onOpenGoogleMaps={() => addressForNav && openGoogleMaps(addressForNav)}
-            onOpenWaze={() => addressForNav && openWaze(addressForNav)}
           />
         </View>
-      ) : selected ? (
+      ) : showSelectedPanel && selected ? (
         <View style={styles.bottomOverlay} pointerEvents="box-none">
           <SelectedDeliveryPanel
             delivery={selected}
             busy={busy}
-            hasActiveRoute={hasActiveRoute}
+            switchingRoute={Boolean(navigationDelivery)}
             etaLabel={previewEtaLabel}
             distanceLabel={previewDistanceLabel}
             routeLoading={previewLoading}
@@ -246,30 +379,32 @@ export function DeliveryMapHome() {
 
       <DeliveryPickerSheet
         visible={pickerOpen}
+        inProgress={inProgress}
         pending={pending}
+        activeId={navigationDelivery?.id}
         loading={loading}
         refreshing={refreshing}
         error={error}
         onRefresh={refresh}
         onClose={() => setPickerOpen(false)}
-        onSelect={setSelected}
+        onSelect={handleSelectDelivery}
       />
 
-      {activeDelivery ? (
+      {navigationDelivery ? (
         <FinishPaymentsModal
           visible={paymentsOpen}
-          saleId={activeDelivery.sale.id}
-          storeId={activeDelivery.sale.storeId ?? user?.storeIds[0] ?? ''}
-          saleTotal={Number(activeDelivery.sale.total ?? 0)}
-          gasDoPovoBenefit={activeDelivery.sale.gasDoPovoBenefit}
-          itemQuantity={activeDelivery.sale.items[0]?.quantity ?? 1}
-          itemCount={activeDelivery.sale.items.length}
+          saleId={navigationDelivery.sale.id}
+          storeId={navigationDelivery.sale.storeId ?? user?.storeIds[0] ?? ''}
+          saleTotal={Number(navigationDelivery.sale.total ?? 0)}
+          gasDoPovoBenefit={navigationDelivery.sale.gasDoPovoBenefit}
+          itemQuantity={navigationDelivery.sale.items[0]?.quantity ?? 1}
+          itemCount={navigationDelivery.sale.items.length}
           initialUnitPrice={
-            activeDelivery.sale.items[0]?.unitPrice != null
-              ? Number(activeDelivery.sale.items[0].unitPrice)
+            navigationDelivery.sale.items[0]?.unitPrice != null
+              ? Number(navigationDelivery.sale.items[0].unitPrice)
               : undefined
           }
-          initialPayments={activeDelivery.sale.payments}
+          initialPayments={navigationDelivery.sale.payments}
           onClose={() => {
             setPaymentsOpen(false);
             setPaymentsMinimized(false);
@@ -337,7 +472,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: '4%',
-    bottom: '3%',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FACC15',
@@ -345,6 +479,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
+    zIndex: 16,
   },
   fabBadge: {
     position: 'absolute',

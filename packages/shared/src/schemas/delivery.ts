@@ -30,13 +30,23 @@ export const deliveryRouteBoundsSchema = z.object({
   southwest: deliveryDestinationSchema,
 });
 
+export const deliveryRouteStepSchema = z.object({
+  instruction: z.string(),
+  distanceMeters: z.number(),
+  maneuver: z.string().optional(),
+  startLocation: deliveryDestinationSchema,
+  endLocation: deliveryDestinationSchema,
+});
+
 export const deliveryRouteResponseSchema = z.object({
   encodedPolyline: z.string(),
   distanceMeters: z.number(),
   durationSeconds: z.number(),
   bounds: deliveryRouteBoundsSchema,
+  steps: z.array(deliveryRouteStepSchema).optional(),
 });
 
 export type DeliveryDestination = z.infer<typeof deliveryDestinationSchema>;
 export type DeliveryRouteQuery = z.infer<typeof deliveryRouteQuerySchema>;
+export type DeliveryRouteStep = z.infer<typeof deliveryRouteStepSchema>;
 export type DeliveryRouteResponse = z.infer<typeof deliveryRouteResponseSchema>;

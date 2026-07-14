@@ -44,6 +44,22 @@ export function deliveryAddress(delivery: Delivery): string {
   return delivery.deliveryAddress?.trim() || buildAddress(delivery.sale);
 }
 
+/** Endereço curto para pills e badges no mapa (rua + bairro/cidade). */
+export function shortDeliveryAddress(delivery: Delivery): string {
+  const sale = delivery.sale;
+  const street = [sale.deliveryStreet, sale.deliveryNumber].filter(Boolean).join(', ');
+  const neighborhood = sale.deliveryNeighborhood?.trim();
+  const city = sale.deliveryCity?.trim();
+
+  if (street && neighborhood) return `${street} · ${neighborhood}`;
+  if (street && city) return `${street} · ${city}`;
+  if (street) return street;
+
+  const full = deliveryAddress(delivery);
+  if (!full) return 'Endereço não informado';
+  return full.length > 52 ? `${full.slice(0, 49)}…` : full;
+}
+
 /** Verdadeiro quando a entrega ocorreu no dia corrente (para o histórico). */
 export function isToday(iso?: string | null): boolean {
   if (!iso) return false;
