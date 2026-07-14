@@ -244,22 +244,12 @@ export default function MasterStoresPage() {
                 value={editForm}
                 onChange={(address) => setEditForm({ ...editForm, ...address })}
               />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>Complemento</Label>
-                  <Input
-                    value={editForm.complement}
-                    onChange={(e) => setEditForm({ ...editForm, complement: e.target.value })}
-                    placeholder="Sala, bloco…"
-                  />
-                </div>
-                <div>
-                  <Label>Ponto de referência</Label>
-                  <Input
-                    value={editForm.landmark}
-                    onChange={(e) => setEditForm({ ...editForm, landmark: e.target.value })}
-                  />
-                </div>
+              <div>
+                <Label>Ponto de referência</Label>
+                <Input
+                  value={editForm.landmark}
+                  onChange={(e) => setEditForm({ ...editForm, landmark: e.target.value })}
+                />
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -306,22 +296,12 @@ export default function MasterStoresPage() {
                 value={form}
                 onChange={(address) => setForm({ ...form, ...address })}
               />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>Complemento</Label>
-                  <Input
-                    value={form.complement}
-                    onChange={(e) => setForm({ ...form, complement: e.target.value })}
-                    placeholder="Sala, bloco…"
-                  />
-                </div>
-                <div>
-                  <Label>Ponto de referência</Label>
-                  <Input
-                    value={form.landmark}
-                    onChange={(e) => setForm({ ...form, landmark: e.target.value })}
-                  />
-                </div>
+              <div>
+                <Label>Ponto de referência</Label>
+                <Input
+                  value={form.landmark}
+                  onChange={(e) => setForm({ ...form, landmark: e.target.value })}
+                />
               </div>
               <Button type="submit">Cadastrar</Button>
               {formError && <p className="text-sm text-red-600">{formError}</p>}

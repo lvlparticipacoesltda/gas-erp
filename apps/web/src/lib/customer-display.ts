@@ -25,6 +25,7 @@ export function phoneQueryMatches(phone: string | undefined, query: string): boo
 export interface CustomerAddress {
   street: string;
   number?: string;
+  complement?: string;
   neighborhood?: string;
   city: string;
   state: string;
@@ -34,8 +35,11 @@ export interface CustomerAddress {
 export function formatAddressShort(addr?: CustomerAddress): string {
   if (!addr) return 'Sem endereço cadastrado';
   const street = [addr.street, addr.number].filter(Boolean).join(', ');
-  const parts = [street, addr.neighborhood, [addr.city, addr.state].filter(Boolean).join(' - ')].filter(
-    Boolean,
-  );
+  const withComplement = [street, addr.complement].filter(Boolean).join(' — ');
+  const parts = [
+    withComplement,
+    addr.neighborhood,
+    [addr.city, addr.state].filter(Boolean).join(' - '),
+  ].filter(Boolean);
   return parts.join(' · ') || 'Sem endereço cadastrado';
 }

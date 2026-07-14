@@ -6,12 +6,14 @@ export function parsePrice(value: number | string | undefined): number {
 export function formatSaleAddress(parts: {
   street?: string | null;
   number?: string | null;
+  complement?: string | null;
   neighborhood?: string | null;
   city?: string | null;
   state?: string | null;
   landmark?: string | null;
   deliveryStreet?: string | null;
   deliveryNumber?: string | null;
+  deliveryComplement?: string | null;
   deliveryNeighborhood?: string | null;
   deliveryCity?: string | null;
   deliveryState?: string | null;
@@ -21,13 +23,14 @@ export function formatSaleAddress(parts: {
     parts.street ?? parts.deliveryStreet,
     parts.number ?? parts.deliveryNumber,
   ].filter(Boolean).join(', ');
+  const complement = parts.complement ?? parts.deliveryComplement;
   const area = [
     parts.neighborhood ?? parts.deliveryNeighborhood,
     parts.city ?? parts.deliveryCity,
     parts.state ?? parts.deliveryState,
   ].filter(Boolean).join(' - ');
   const extra = (parts.landmark ?? parts.deliveryLandmark) ? ` (${parts.landmark ?? parts.deliveryLandmark})` : '';
-  return [line, area].filter(Boolean).join(' — ') + extra;
+  return [[line, complement].filter(Boolean).join(' — '), area].filter(Boolean).join(' — ') + extra;
 }
 
 export function timeAgo(iso: string): string {

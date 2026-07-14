@@ -18,6 +18,7 @@ interface CustomerAddress {
   id?: string;
   street: string;
   number?: string;
+  complement?: string;
   neighborhood?: string;
   city: string;
   state: string;
@@ -65,6 +66,7 @@ const emptyForm: CustomerForm = {
   zipCode: '',
   street: '',
   number: '',
+  complement: '',
   neighborhood: '',
   city: '',
   state: 'SP',
@@ -78,6 +80,7 @@ function addressFromCustomer(addr?: CustomerAddress): CustomerAddressForm {
     zipCode: addr?.zipCode ?? '',
     street: addr?.street ?? '',
     number: addr?.number ?? '',
+    complement: addr?.complement ?? '',
     neighborhood: addr?.neighborhood ?? '',
     city: addr?.city ?? '',
     state: addr?.state ?? 'SP',

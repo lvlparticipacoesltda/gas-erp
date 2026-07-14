@@ -81,6 +81,7 @@ const emptyQuickAddress: CustomerAddressForm = {
   zipCode: '',
   street: '',
   number: '',
+  complement: '',
   neighborhood: '',
   city: '',
   state: 'SP',

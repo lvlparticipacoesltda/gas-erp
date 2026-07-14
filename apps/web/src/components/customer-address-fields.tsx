@@ -14,6 +14,7 @@ export interface CustomerAddressForm {
   zipCode: string;
   street: string;
   number: string;
+  complement: string;
   neighborhood: string;
   city: string;
   state: string;
@@ -33,6 +34,7 @@ export function customerAddressPayload(form: CustomerAddressForm) {
   return {
     street: form.street,
     number: form.number || undefined,
+    complement: form.complement.trim() || undefined,
     neighborhood: form.neighborhood || undefined,
     city: form.city,
     state: form.state,
@@ -312,12 +314,21 @@ export function CustomerAddressFields({ value, onChange }: CustomerAddressFields
           />
         </div>
         <div>
-          <Label>Bairro</Label>
+          <Label>Complemento</Label>
           <Input
-            value={value.neighborhood}
-            onChange={(e) => setField('neighborhood', e.target.value)}
+            value={value.complement}
+            onChange={(e) => setField('complement', e.target.value)}
+            placeholder="Apto, bloco, fundos…"
           />
         </div>
+      </div>
+
+      <div>
+        <Label>Bairro</Label>
+        <Input
+          value={value.neighborhood}
+          onChange={(e) => setField('neighborhood', e.target.value)}
+        />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_5rem]">
