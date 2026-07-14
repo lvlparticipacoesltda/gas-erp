@@ -26,7 +26,6 @@ export const pushNotificationDataSchema = z.object({
     'NEW_DELIVERY',
     'DELIVERY_CANCELLED',
     'PENDING_DELIVERY_REMINDER',
-    'GPS_STALE',
   ]),
   deliveryId: z.string().min(1).optional(),
 });
