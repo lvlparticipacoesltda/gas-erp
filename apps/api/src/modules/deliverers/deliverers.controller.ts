@@ -23,6 +23,17 @@ export class DeliverersController {
     return this.service.getMe(user);
   }
 
+  @Get('me/stores/:storeId/route')
+  @UseGuards(RolesGuard)
+  @Roles('DELIVERER')
+  getStoreRoute(
+    @CurrentUser() user: AuthUser,
+    @Param('storeId') storeId: string,
+    @Query() query: unknown,
+  ) {
+    return this.service.getStoreRoute(user, storeId, query);
+  }
+
   @Put('me/push-token')
   @UseGuards(RolesGuard)
   @Roles('DELIVERER')

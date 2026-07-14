@@ -8,18 +8,12 @@ import {
   type DeliveryRouteStep,
   type LatLng,
 } from '@gas-erp/shared';
-import { fetchDeliveryRoute, logRouteDebug } from '../lib/routing';
+import { fetchStoreRoute, logRouteDebug } from '../lib/routing';
 import type { DriverPosition } from './useDriverLocation';
+import type { NextManeuver } from './useRouteNavigation';
 
 const REROUTE_DISTANCE_M = 60;
 const REROUTE_DEBOUNCE_MS = 30_000;
-
-export type NextManeuver = {
-  instruction: string;
-  maneuver?: string;
-  distanceMeters: number;
-  distanceLabel: string;
-};
 
 function formatDuration(seconds: number): string {
   const mins = Math.round(seconds / 60);
@@ -29,11 +23,6 @@ function formatDuration(seconds: number): string {
   return m > 0 ? `~${h}h ${m}min` : `~${h}h`;
 }
 
-/**
- * Determina a próxima manobra a partir da posição do motorista.
- * O motorista está trafegando pelo passo mais próximo; a manobra a anunciar é
- * a do fim desse passo (início do próximo), com a distância até esse ponto.
- */
 function computeNextManeuver(
   driver: LatLng,
   steps: DeliveryRouteStep[] | undefined,
@@ -70,8 +59,9 @@ function computeNextManeuver(
   };
 }
 
-export function useRouteNavigation(
-  deliveryId: string | null,
+/** Navegação nativa até a unidade (modo “voltar à base”). */
+export function useStoreHomeNavigation(
+  storeId: string | null,
   driverPosition: DriverPosition | null,
   enabled: boolean,
 ) {
@@ -82,29 +72,29 @@ export function useRouteNavigation(
   const lastRerouteAt = useRef(0);
   const fetchingRef = useRef(false);
   const initialLoadedRef = useRef(false);
-  const prevDeliveryIdRef = useRef<string | null>(null);
+  const prevStoreIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (deliveryId !== prevDeliveryIdRef.current) {
-      prevDeliveryIdRef.current = deliveryId;
+    if (storeId !== prevStoreIdRef.current) {
+      prevStoreIdRef.current = storeId;
       initialLoadedRef.current = false;
       setRoute(null);
       setPolyline([]);
       setError(null);
     }
-  }, [deliveryId]);
+  }, [storeId]);
 
   const loadRoute = useCallback(
     async (origin: DriverPosition, force = false) => {
-      if (!deliveryId || fetchingRef.current) return;
+      if (!storeId || fetchingRef.current) return;
       if (!force && Date.now() - lastRerouteAt.current < REROUTE_DEBOUNCE_MS) return;
 
       fetchingRef.current = true;
       setLoading(true);
       setError(null);
       try {
-        const result = await fetchDeliveryRoute(
-          deliveryId,
+        const result = await fetchStoreRoute(
+          storeId,
           origin.latitude,
           origin.longitude,
         );
@@ -112,25 +102,29 @@ export function useRouteNavigation(
         setPolyline(decodePolyline(result.encodedPolyline));
         lastRerouteAt.current = Date.now();
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao carregar rota';
-        logRouteDebug('navigation_failed', { deliveryId, message });
+        const raw = err instanceof Error ? err.message : 'Erro ao carregar rota até a loja';
+        const message =
+          /Cannot GET|404/i.test(raw)
+            ? 'Rota até a loja indisponível no servidor. Atualize a API (fly deploy) e tente de novo.'
+            : raw;
+        logRouteDebug('store_navigation_failed', { storeId, message: raw });
         setError(message);
       } finally {
         setLoading(false);
         fetchingRef.current = false;
       }
     },
-    [deliveryId],
+    [storeId],
   );
 
   useEffect(() => {
-    if (!enabled || !deliveryId || !driverPosition || initialLoadedRef.current) return;
+    if (!enabled || !storeId || !driverPosition || initialLoadedRef.current) return;
     initialLoadedRef.current = true;
     void loadRoute(driverPosition, true);
-  }, [enabled, deliveryId, driverPosition, loadRoute]);
+  }, [enabled, storeId, driverPosition, loadRoute]);
 
   useEffect(() => {
-    if (!enabled || !deliveryId || !driverPosition || polyline.length < 2) return;
+    if (!enabled || !storeId || !driverPosition || polyline.length < 2) return;
 
     const dist = distanceToPolylineMeters(driverPosition, polyline);
     if (dist > REROUTE_DISTANCE_M) {
@@ -138,15 +132,12 @@ export function useRouteNavigation(
     }
   }, [
     enabled,
-    deliveryId,
+    storeId,
     driverPosition?.latitude,
     driverPosition?.longitude,
     polyline,
     loadRoute,
   ]);
-
-  const etaLabel = route ? formatDuration(route.durationSeconds) : null;
-  const distanceLabel = route ? formatDistanceMeters(route.distanceMeters) : null;
 
   const nextManeuver = useMemo(() => {
     if (!enabled || !driverPosition || !route?.steps) return null;
@@ -154,15 +145,11 @@ export function useRouteNavigation(
   }, [enabled, driverPosition?.latitude, driverPosition?.longitude, route?.steps]);
 
   return {
-    route,
     polyline,
     loading,
     error,
-    etaLabel,
-    distanceLabel,
+    etaLabel: route ? formatDuration(route.durationSeconds) : null,
+    distanceLabel: route ? formatDistanceMeters(route.distanceMeters) : null,
     nextManeuver,
-    refreshRoute: () => {
-      if (driverPosition) void loadRoute(driverPosition, true);
-    },
   };
 }

@@ -66,28 +66,6 @@ export async function openWaze(dest: string | NavigationDestination): Promise<vo
   await openUrl(canOpenApp ? appUrl : webUrl, 'Não foi possível abrir o Waze.');
 }
 
-/**
- * Pergunta Maps ou Waze e abre a navegação até o destino.
- * Preferência: coordenadas quando disponíveis.
- */
-export function promptNavigateHome(dest: NavigationDestination, storeName?: string): void {
-  const label = destinationLabel(dest);
-  if (!label && !hasCoords(dest)) {
-    Alert.alert(
-      'Endereço incompleto',
-      'Esta loja ainda não tem endereço cadastrado. Peça ao master para configurar o endereço da unidade.',
-    );
-    return;
-  }
-
-  const title = storeName ? `Voltar à loja · ${storeName}` : 'Voltar à loja';
-  Alert.alert(title, 'Abrir navegação com:', [
-    { text: 'Cancelar', style: 'cancel' },
-    { text: 'Google Maps', onPress: () => void openGoogleMaps(dest) },
-    { text: 'Waze', onPress: () => void openWaze(dest) },
-  ]);
-}
-
 /** Abre o discador com o telefone informado. */
 export async function callPhone(phone: string): Promise<void> {
   const sanitized = phone.replace(/[^\d+]/g, '');

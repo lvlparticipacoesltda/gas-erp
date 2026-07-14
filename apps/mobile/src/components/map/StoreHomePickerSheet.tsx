@@ -29,7 +29,7 @@ export function StoreHomePickerSheet({
             <Ionicons name="close" size={22} color={colors.textMuted} />
           </Pressable>
         </View>
-        <Text style={styles.subtitle}>Selecione a unidade para navegar:</Text>
+        <Text style={styles.subtitle}>Escolha a unidade para traçar a rota no app:</Text>
         <View style={styles.list}>
           {stores.map((store) => {
             const address = buildStoreAddress(store);

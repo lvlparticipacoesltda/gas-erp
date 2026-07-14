@@ -10,11 +10,13 @@ import { DeliveryPickerSheet } from './DeliveryPickerSheet';
 import { DriverMap, type DriverMapRef } from './DriverMap';
 import { ManeuverBanner } from './ManeuverBanner';
 import { StoreHomePickerSheet } from './StoreHomePickerSheet';
+import { StoreHomeRoutePanel } from './StoreHomeRoutePanel';
 import { useDeliveryFinishProximity } from '../../hooks/useDeliveryFinishProximity';
 import { useEnrichedDeliveryDestinations } from '../../hooks/useEnrichedDeliveryDestinations';
 import { useDriverLocation } from '../../hooks/useDriverLocation';
 import { useRouteNavigation } from '../../hooks/useRouteNavigation';
 import { useRoutePreview } from '../../hooks/useRoutePreview';
+import { useStoreHomeNavigation } from '../../hooks/useStoreHomeNavigation';
 import { useAuth } from '../../lib/auth';
 import { updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
 import { useDeliveriesContext } from '../../lib/deliveries-context';
@@ -25,7 +27,7 @@ import {
 } from '../../lib/start-delivery-route';
 import { focusDeliveryRoute } from '../../lib/switch-delivery-route';
 import { getActiveDeliveryId, stopDeliveryTracking } from '../../lib/location';
-import { fetchMyStores, openHomeForStore } from '../../lib/store-home';
+import { assertStoreNavigable, fetchMyStores } from '../../lib/store-home';
 import { colors, radius, spacing } from '../../theme';
 import type { Delivery } from '../../types';
 import type { DelivererMeStore } from '@gas-erp/shared';
@@ -57,6 +59,7 @@ export function DeliveryMapHome() {
   const [homeBusy, setHomeBusy] = useState(false);
   const [homeStores, setHomeStores] = useState<DelivererMeStore[]>([]);
   const [homePickerOpen, setHomePickerOpen] = useState(false);
+  const [homeStore, setHomeStore] = useState<DelivererMeStore | null>(null);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [paymentsMinimized, setPaymentsMinimized] = useState(false);
   const mapRef = useRef<DriverMapRef>(null);
@@ -76,20 +79,40 @@ export function DeliveryMapHome() {
   }, [navigationDeliveryId, inProgress, getById]);
 
   const { position: driverPosition } = useDriverLocation(!isUnavailable);
-  const routeEnabled = Boolean(navigationDelivery?.status === 'IN_PROGRESS' && !selected);
-  const previewEnabled = Boolean(selected && selected.status === 'PENDING');
+  const homeMode = Boolean(homeStore);
+  const routeEnabled = Boolean(
+    !homeMode && navigationDelivery?.status === 'IN_PROGRESS' && !selected,
+  );
+  const previewEnabled = Boolean(!homeMode && selected && selected.status === 'PENDING');
   const {
-    polyline,
+    polyline: deliveryPolyline,
     loading: routeLoading,
     error: routeError,
     etaLabel,
     distanceLabel,
-    nextManeuver,
+    nextManeuver: deliveryManeuver,
   } = useRouteNavigation(
     navigationDelivery?.id ?? null,
     driverPosition,
     routeEnabled,
   );
+
+  const {
+    polyline: homePolyline,
+    loading: homeRouteLoading,
+    error: homeRouteError,
+    etaLabel: homeEtaLabel,
+    distanceLabel: homeDistanceLabel,
+    nextManeuver: homeManeuver,
+  } = useStoreHomeNavigation(
+    homeStore?.id ?? null,
+    driverPosition,
+    homeMode,
+  );
+
+  const polyline = homeMode ? homePolyline : deliveryPolyline;
+  const nextManeuver = homeMode ? homeManeuver : deliveryManeuver;
+  const navigationFollow = routeEnabled || homeMode;
 
   const routeDestination = useMemo(() => {
     if (polyline.length === 0) return null;
@@ -97,7 +120,7 @@ export function DeliveryMapHome() {
   }, [polyline]);
 
   const { canFinish, finishHint } = useDeliveryFinishProximity(
-    navigationDelivery,
+    homeMode ? null : navigationDelivery,
     driverPosition,
     routeDestination,
   );
@@ -174,10 +197,23 @@ export function DeliveryMapHome() {
     driverPosition,
   );
   const showDeliveriesOverview =
-    !routeEnabled && enrichedDeliveriesOnMap.length > 0 && !selected;
+    !navigationFollow && enrichedDeliveriesOnMap.length > 0 && !selected;
+
+  const activateHomeStore = useCallback((store: DelivererMeStore) => {
+    if (!assertStoreNavigable(store)) return;
+    setSelected(null);
+    setHomePickerOpen(false);
+    setHomeStore(store);
+  }, []);
+
+  const clearHomeMode = useCallback(() => {
+    setHomeStore(null);
+  }, []);
 
   const handleSelectDelivery = useCallback(
     async (delivery: Delivery) => {
+      clearHomeMode();
+
       if (delivery.status === 'IN_PROGRESS') {
         if (delivery.id === navigationDelivery?.id) {
           setSelected(null);
@@ -199,7 +235,7 @@ export function DeliveryMapHome() {
 
       setSelected(delivery);
     },
-    [navigationDelivery?.id],
+    [navigationDelivery?.id, clearHomeMode],
   );
 
   const handleStartRoute = useCallback(async () => {
@@ -207,6 +243,7 @@ export function DeliveryMapHome() {
 
     setBusy(true);
     try {
+      clearHomeMode();
       await startDeliveryRoute(selected);
       await refresh();
       setNavigationDeliveryId(selected.id);
@@ -217,7 +254,7 @@ export function DeliveryMapHome() {
     } finally {
       setBusy(false);
     }
-  }, [selected, refresh]);
+  }, [selected, refresh, clearHomeMode]);
 
   const handleFinishRoute = useCallback(
     async (
@@ -244,17 +281,32 @@ export function DeliveryMapHome() {
     [navigationDelivery, refresh],
   );
 
+  const showHomePanel = homeMode;
   const showActivePanel =
-    navigationDelivery?.status === 'IN_PROGRESS'
+    !homeMode
+    && navigationDelivery?.status === 'IN_PROGRESS'
     && !selected
     && !(paymentsOpen && !paymentsMinimized);
-  const showSelectedPanel = Boolean(selected);
-  const showBottomPanel = showActivePanel || showSelectedPanel;
+  const showSelectedPanel = Boolean(!homeMode && selected);
+  const showBottomPanel = showActivePanel || showSelectedPanel || showHomePanel;
   const fabCount = actionableDeliveries.length;
-  const fabBottom = showBottomPanel ? 148 : '3%';
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(0);
+  const fabBottom = showBottomPanel
+    ? Math.max(bottomPanelHeight + 12, showHomePanel ? 200 : 158)
+    : '3%';
+
+  useEffect(() => {
+    if (!showBottomPanel) setBottomPanelHeight(0);
+  }, [showBottomPanel]);
 
   const handleNavigateHome = useCallback(async () => {
     if (homeBusy) return;
+
+    if (homeStore) {
+      clearHomeMode();
+      return;
+    }
+
     setHomeBusy(true);
     try {
       const stores = await fetchMyStores();
@@ -266,7 +318,7 @@ export function DeliveryMapHome() {
         return;
       }
       if (stores.length === 1) {
-        openHomeForStore(stores[0]);
+        activateHomeStore(stores[0]);
         return;
       }
       setHomeStores(stores);
@@ -279,7 +331,7 @@ export function DeliveryMapHome() {
     } finally {
       setHomeBusy(false);
     }
-  }, [homeBusy]);
+  }, [homeBusy, homeStore, clearHomeMode, activateHomeStore]);
 
   return (
     <View style={styles.root}>
@@ -288,9 +340,9 @@ export function DeliveryMapHome() {
         driverPosition={driverPosition}
         routePolyline={polyline}
         previewPolyline={previewPolyline}
-        followDriver={routeEnabled}
+        followDriver={navigationFollow}
         idleFollow={
-          !routeEnabled
+          !navigationFollow
           && !isUnavailable
           && Boolean(driverPosition)
           && actionableDeliveries.length === 0
@@ -298,11 +350,13 @@ export function DeliveryMapHome() {
         showDeliveriesOverview={showDeliveriesOverview}
         pendingDeliveries={enrichedDeliveriesOnMap}
         selectedDeliveryId={selected?.id}
-        activeDeliveryId={navigationDelivery?.id}
+        activeDeliveryId={homeMode ? null : navigationDelivery?.id}
         routeEndLabel={
-          navigationDelivery?.sale.customer?.name
-          ?? selected?.sale.customer?.name
-          ?? null
+          homeMode
+            ? homeStore?.name ?? 'Base'
+            : navigationDelivery?.sale.customer?.name
+              ?? selected?.sale.customer?.name
+              ?? null
         }
         onSelectPendingDelivery={handleSelectDelivery}
       />
@@ -333,7 +387,7 @@ export function DeliveryMapHome() {
         </View>
       </View>
 
-      {routeEnabled && nextManeuver ? (
+      {navigationFollow && nextManeuver ? (
         <ManeuverBanner maneuver={nextManeuver} topInset={insets.top + 64} />
       ) : null}
 
@@ -353,6 +407,7 @@ export function DeliveryMapHome() {
       <Pressable
         style={[
           styles.homeFab,
+          homeMode && styles.homeFabActive,
           {
             width: fabSize,
             height: fabSize,
@@ -363,9 +418,17 @@ export function DeliveryMapHome() {
         ]}
         onPress={() => void handleNavigateHome()}
         disabled={homeBusy}
-        accessibilityLabel="Voltar à loja"
+        accessibilityLabel={homeMode ? 'Sair da rota até a base' : 'Traçar rota até a loja'}
+        accessibilityState={{ selected: homeMode }}
       >
-        <Ionicons name="home" size={fabIconSize} color={colors.navy} />
+        <Ionicons
+          name="home"
+          size={fabIconSize}
+          color={homeMode ? '#FFFFFF' : colors.navy}
+        />
+        {homeMode ? (
+          <View style={styles.homeFabDot} />
+        ) : null}
       </Pressable>
 
       {!isUnavailable && fabCount > 0 ? (
@@ -400,8 +463,26 @@ export function DeliveryMapHome() {
         </Pressable>
       ) : null}
 
-      {showActivePanel && navigationDelivery ? (
-        <View style={styles.bottomOverlay} pointerEvents="box-none">
+      {showHomePanel && homeStore ? (
+        <View
+          style={styles.bottomOverlay}
+          pointerEvents="box-none"
+          onLayout={(e) => setBottomPanelHeight(e.nativeEvent.layout.height)}
+        >
+          <StoreHomeRoutePanel
+            storeName={homeStore.name}
+            etaLabel={homeEtaLabel}
+            distanceLabel={homeDistanceLabel}
+            routeLoading={homeRouteLoading}
+            routeError={homeRouteError}
+          />
+        </View>
+      ) : showActivePanel && navigationDelivery ? (
+        <View
+          style={styles.bottomOverlay}
+          pointerEvents="box-none"
+          onLayout={(e) => setBottomPanelHeight(e.nativeEvent.layout.height)}
+        >
           <ActiveRoutePanel
             delivery={navigationDelivery}
             etaLabel={etaLabel}
@@ -415,7 +496,11 @@ export function DeliveryMapHome() {
           />
         </View>
       ) : showSelectedPanel && selected ? (
-        <View style={styles.bottomOverlay} pointerEvents="box-none">
+        <View
+          style={styles.bottomOverlay}
+          pointerEvents="box-none"
+          onLayout={(e) => setBottomPanelHeight(e.nativeEvent.layout.height)}
+        >
           <SelectedDeliveryPanel
             delivery={selected}
             busy={busy}
@@ -447,10 +532,7 @@ export function DeliveryMapHome() {
         visible={homePickerOpen}
         stores={homeStores}
         onClose={() => setHomePickerOpen(false)}
-        onSelect={(store) => {
-          setHomePickerOpen(false);
-          openHomeForStore(store);
-        }}
+        onSelect={activateHomeStore}
       />
 
       {navigationDelivery ? (
@@ -557,6 +639,26 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
     zIndex: 16,
+  },
+  homeFabActive: {
+    backgroundColor: colors.primary,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  homeFabDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#22C55E',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   fabBadge: {
     position: 'absolute',

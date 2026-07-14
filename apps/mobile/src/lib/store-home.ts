@@ -1,9 +1,8 @@
 import { Alert } from 'react-native';
 import type { DelivererMeStore } from '@gas-erp/shared';
 import { api } from './api';
-import { promptNavigateHome, type NavigationDestination } from './navigation';
 
-/** Monta texto de endereço da loja para Maps/Waze (fallback sem coords). */
+/** Monta texto de endereço da loja para rota/fallback. */
 export function buildStoreAddress(store: DelivererMeStore): string {
   const parts: string[] = [];
   const street = [store.street, store.number].filter(Boolean).join(', ');
@@ -30,26 +29,16 @@ export function storeHasNavigableAddress(store: DelivererMeStore): boolean {
   return Boolean(buildStoreAddress(store));
 }
 
-export function toStoreDestination(store: DelivererMeStore): NavigationDestination {
-  return {
-    latitude: store.latitude,
-    longitude: store.longitude,
-    address: buildStoreAddress(store) || store.address,
-  };
-}
-
 export async function fetchMyStores(): Promise<DelivererMeStore[]> {
   const me = await api<{ stores?: DelivererMeStore[] }>('/deliverers/me');
   return me.stores ?? [];
 }
 
-export function openHomeForStore(store: DelivererMeStore): void {
-  if (!storeHasNavigableAddress(store)) {
-    Alert.alert(
-      'Endereço incompleto',
-      `A loja "${store.name}" ainda não tem endereço cadastrado. Peça ao master para configurar o endereço da unidade.`,
-    );
-    return;
-  }
-  promptNavigateHome(toStoreDestination(store), store.name);
+export function assertStoreNavigable(store: DelivererMeStore): boolean {
+  if (storeHasNavigableAddress(store)) return true;
+  Alert.alert(
+    'Endereço incompleto',
+    `A loja "${store.name}" ainda não tem endereço cadastrado. Peça ao master para configurar o endereço da unidade.`,
+  );
+  return false;
 }

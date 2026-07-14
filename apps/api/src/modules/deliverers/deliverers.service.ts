@@ -3,12 +3,13 @@ import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@gas-erp/database';
 import { DeliveryStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { createDelivererSchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS, canManageDeliverers, canToggleDelivererAvailability, delivererSuggestQuerySchema, haversineDistanceMeters, isDelivererAssignableForSale } from '@gas-erp/shared';
+import { createDelivererSchema, deliveryRouteQuerySchema, registerPushTokenSchema, updateDelivererSchema, updateDelivererPositionSchema, DELIVERER_POSITION_STALE_MS, DELIVERER_POSITION_LIVE_MS, canManageDeliverers, canToggleDelivererAvailability, delivererSuggestQuerySchema, haversineDistanceMeters, isDelivererAssignableForSale } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
 import { assertSharedStoreAccess, assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { AuditService } from '../../common/audit/audit.service';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
+import { RoutingService } from '../../common/routing/routing.service';
 
 function buildDeliveryAddress(sale: {
   deliveryStreet: string | null;
@@ -30,6 +31,30 @@ function buildDeliveryAddress(sale: {
   return parts.length ? parts.join(', ') : null;
 }
 
+function buildStoreAddress(store: {
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
+  landmark: string | null;
+  address: string | null;
+}): string | null {
+  const parts: string[] = [];
+  const streetLine = [store.street, store.number].filter(Boolean).join(', ');
+  if (streetLine) parts.push(streetLine);
+  if (store.complement) parts.push(store.complement);
+  if (store.neighborhood) parts.push(store.neighborhood);
+  const cityLine = [store.city, store.state].filter(Boolean).join(' - ');
+  if (cityLine) parts.push(cityLine);
+  if (store.zipCode) parts.push(store.zipCode);
+  if (store.landmark) parts.push(`Ref.: ${store.landmark}`);
+  if (parts.length) return parts.join(', ');
+  return store.address?.trim() || null;
+}
+
 @Injectable()
 export class DeliverersService {
   private readonly logger = new Logger(DeliverersService.name);
@@ -38,6 +63,7 @@ export class DeliverersService {
     private prisma: PrismaService,
     private audit: AuditService,
     private geocoding: GeocodingService,
+    private routing: RoutingService,
   ) {}
 
   private readonly include = {
@@ -424,6 +450,77 @@ export class DeliverersService {
       sharingLocation,
       stores,
     };
+  }
+
+  /** Rota nativa do entregador até uma unidade vinculada (voltar à base). */
+  async getStoreRoute(user: AuthUser, storeId: string, query: unknown) {
+    if (user.role !== 'DELIVERER') {
+      throw new ForbiddenException('Apenas entregadores podem traçar rota até a loja');
+    }
+
+    const { originLat, originLng } = deliveryRouteQuerySchema.parse(query);
+
+    const deliverer = await this.prisma.deliverer.findUnique({
+      where: { userId: user.id },
+      select: {
+        stores: {
+          where: { storeId },
+          select: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+                active: true,
+                street: true,
+                number: true,
+                complement: true,
+                neighborhood: true,
+                city: true,
+                state: true,
+                zipCode: true,
+                landmark: true,
+                latitude: true,
+                longitude: true,
+                address: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
+
+    const store = deliverer.stores[0]?.store;
+    if (!store || !store.active) {
+      throw new NotFoundException('Loja não encontrada ou não vinculada ao seu perfil');
+    }
+
+    const destAddress = buildStoreAddress(store);
+    const destLat = store.latitude;
+    const destLng = store.longitude;
+
+    if (
+      (destLat == null || destLng == null)
+      && !destAddress
+    ) {
+      throw new NotFoundException(
+        'Endereço da loja incompleto. Peça ao master para cadastrar o endereço da unidade.',
+      );
+    }
+
+    this.logger.log(
+      `GET store-route store=${storeId} origin=(${originLat},${originLng}) ` +
+        `coords=${destLat != null && destLng != null ? `(${destLat},${destLng})` : 'null'} ` +
+        `address="${destAddress ?? '—'}"`,
+    );
+
+    return this.routing.getRoute({
+      originLat,
+      originLng,
+      destLat: destLat ?? undefined,
+      destLng: destLng ?? undefined,
+      destAddress,
+    });
   }
 
   async updateMyPosition(user: AuthUser, input: unknown) {
