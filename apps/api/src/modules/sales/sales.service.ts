@@ -494,19 +494,7 @@ export class SalesService {
     }
 
     const pickup = sale.channel === 'IN_STORE';
-    const saleInput: CreateSaleInput = {
-      storeId: sale.storeId,
-      customerId: sale.customerId ?? undefined,
-      channel: sale.channel as CreateSaleInput['channel'],
-      fulfillmentType: pickup ? 'PICKUP' : 'DELIVERY',
-      delivererId: sale.delivererId ?? undefined,
-      items: sale.items.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: toNumber(item.unitPrice),
-        discount: toNumber(item.discount),
-      })),
-    };
+    const saleInput = this.buildSaleInputFromExisting(sale, pickup);
 
     await this.validateSaleReferences(user, saleInput);
 
@@ -718,20 +706,7 @@ export class SalesService {
     }
 
     const pickup = sale.channel === 'IN_STORE';
-
-    const saleInput: CreateSaleInput = {
-      storeId: sale.storeId,
-      customerId: sale.customerId ?? undefined,
-      channel: sale.channel as CreateSaleInput['channel'],
-      fulfillmentType: pickup ? 'PICKUP' : 'DELIVERY',
-      delivererId: sale.delivererId ?? undefined,
-      items: sale.items.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: toNumber(item.unitPrice),
-        discount: toNumber(item.discount),
-      })),
-    };
+    const saleInput = this.buildSaleInputFromExisting(sale, pickup);
 
     const now = new Date();
 
@@ -924,6 +899,52 @@ export class SalesService {
     });
 
     return new Map(settings.map((setting) => [setting.productId, toNumber(setting.supplierCost)]));
+  }
+
+  private buildSaleInputFromExisting(
+    sale: {
+      storeId: string;
+      customerId: string | null;
+      channel: string;
+      delivererId: string | null;
+      notes?: string | null;
+      deliveryStreet?: string | null;
+      deliveryNumber?: string | null;
+      deliveryComplement?: string | null;
+      deliveryNeighborhood?: string | null;
+      deliveryCity?: string | null;
+      deliveryState?: string | null;
+      deliveryLandmark?: string | null;
+      items: Array<{
+        productId: string;
+        quantity: number;
+        unitPrice: unknown;
+        discount: unknown;
+      }>;
+    },
+    pickup: boolean,
+  ): CreateSaleInput {
+    return {
+      storeId: sale.storeId,
+      customerId: sale.customerId ?? undefined,
+      channel: sale.channel as CreateSaleInput['channel'],
+      fulfillmentType: pickup ? 'PICKUP' : 'DELIVERY',
+      delivererId: sale.delivererId ?? undefined,
+      notes: sale.notes ?? undefined,
+      deliveryStreet: pickup ? undefined : sale.deliveryStreet ?? undefined,
+      deliveryNumber: pickup ? undefined : sale.deliveryNumber ?? undefined,
+      deliveryComplement: pickup ? undefined : sale.deliveryComplement ?? undefined,
+      deliveryNeighborhood: pickup ? undefined : sale.deliveryNeighborhood ?? undefined,
+      deliveryCity: pickup ? undefined : sale.deliveryCity ?? undefined,
+      deliveryState: pickup ? undefined : sale.deliveryState ?? undefined,
+      deliveryLandmark: pickup ? undefined : sale.deliveryLandmark ?? undefined,
+      items: sale.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: toNumber(item.unitPrice),
+        discount: toNumber(item.discount),
+      })),
+    };
   }
 
   private async validateSaleReferences(user: AuthUser, data: CreateSaleInput) {
