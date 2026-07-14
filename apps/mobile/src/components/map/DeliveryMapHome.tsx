@@ -9,6 +9,7 @@ import { ActiveRoutePanel, SelectedDeliveryPanel } from './ActiveRoutePanel';
 import { DeliveryPickerSheet } from './DeliveryPickerSheet';
 import { DriverMap, type DriverMapRef } from './DriverMap';
 import { ManeuverBanner } from './ManeuverBanner';
+import { StoreHomePickerSheet } from './StoreHomePickerSheet';
 import { useDeliveryFinishProximity } from '../../hooks/useDeliveryFinishProximity';
 import { useEnrichedDeliveryDestinations } from '../../hooks/useEnrichedDeliveryDestinations';
 import { useDriverLocation } from '../../hooks/useDriverLocation';
@@ -24,8 +25,10 @@ import {
 } from '../../lib/start-delivery-route';
 import { focusDeliveryRoute } from '../../lib/switch-delivery-route';
 import { getActiveDeliveryId, stopDeliveryTracking } from '../../lib/location';
+import { fetchMyStores, openHomeForStore } from '../../lib/store-home';
 import { colors, radius, spacing } from '../../theme';
 import type { Delivery } from '../../types';
+import type { DelivererMeStore } from '@gas-erp/shared';
 
 function dedupeDeliveries(deliveries: Delivery[]): Delivery[] {
   const seen = new Set<string>();
@@ -51,6 +54,9 @@ export function DeliveryMapHome() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selected, setSelected] = useState<Delivery | null>(null);
   const [busy, setBusy] = useState(false);
+  const [homeBusy, setHomeBusy] = useState(false);
+  const [homeStores, setHomeStores] = useState<DelivererMeStore[]>([]);
+  const [homePickerOpen, setHomePickerOpen] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [paymentsMinimized, setPaymentsMinimized] = useState(false);
   const mapRef = useRef<DriverMapRef>(null);
@@ -245,6 +251,35 @@ export function DeliveryMapHome() {
   const showSelectedPanel = Boolean(selected);
   const showBottomPanel = showActivePanel || showSelectedPanel;
   const fabCount = actionableDeliveries.length;
+  const fabBottom = showBottomPanel ? 148 : '3%';
+
+  const handleNavigateHome = useCallback(async () => {
+    if (homeBusy) return;
+    setHomeBusy(true);
+    try {
+      const stores = await fetchMyStores();
+      if (stores.length === 0) {
+        Alert.alert(
+          'Nenhuma loja',
+          'Você não está vinculado a nenhuma unidade. Contate a loja ou o master.',
+        );
+        return;
+      }
+      if (stores.length === 1) {
+        openHomeForStore(stores[0]);
+        return;
+      }
+      setHomeStores(stores);
+      setHomePickerOpen(true);
+    } catch (err) {
+      Alert.alert(
+        'Erro',
+        err instanceof Error ? err.message : 'Não foi possível carregar as lojas.',
+      );
+    } finally {
+      setHomeBusy(false);
+    }
+  }, [homeBusy]);
 
   return (
     <View style={styles.root}>
@@ -315,6 +350,24 @@ export function DeliveryMapHome() {
         </View>
       ) : null}
 
+      <Pressable
+        style={[
+          styles.homeFab,
+          {
+            width: fabSize,
+            height: fabSize,
+            borderRadius: fabSize / 2,
+            bottom: fabBottom,
+            opacity: homeBusy ? 0.7 : 1,
+          },
+        ]}
+        onPress={() => void handleNavigateHome()}
+        disabled={homeBusy}
+        accessibilityLabel="Voltar à loja"
+      >
+        <Ionicons name="home" size={fabIconSize} color={colors.navy} />
+      </Pressable>
+
       {!isUnavailable && fabCount > 0 ? (
         <Pressable
           style={[
@@ -323,7 +376,7 @@ export function DeliveryMapHome() {
               width: fabSize,
               height: fabSize,
               borderRadius: fabSize / 2,
-              bottom: showBottomPanel ? 148 : '3%',
+              bottom: fabBottom,
             },
           ]}
           onPress={() => setPickerOpen(true)}
@@ -388,6 +441,16 @@ export function DeliveryMapHome() {
         onRefresh={refresh}
         onClose={() => setPickerOpen(false)}
         onSelect={handleSelectDelivery}
+      />
+
+      <StoreHomePickerSheet
+        visible={homePickerOpen}
+        stores={homeStores}
+        onClose={() => setHomePickerOpen(false)}
+        onSelect={(store) => {
+          setHomePickerOpen(false);
+          openHomeForStore(store);
+        }}
       />
 
       {navigationDelivery ? (
@@ -477,6 +540,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#FACC15',
     shadowColor: '#000',
     shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 16,
+  },
+  homeFab: {
+    position: 'absolute',
+    left: '4%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 6,
     zIndex: 16,

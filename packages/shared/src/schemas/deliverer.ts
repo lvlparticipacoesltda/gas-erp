@@ -89,13 +89,35 @@ export const delivererPositionsResponseSchema = z.array(delivererPositionSchema)
 export type UpdateDelivererPositionInput = z.infer<typeof updateDelivererPositionSchema>;
 export type DelivererPendingDelivery = z.infer<typeof delivererPendingDeliverySchema>;
 
+export const delivererMeStoreSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  code: z.string(),
+  street: z.string().nullable(),
+  number: z.string().nullable(),
+  complement: z.string().nullable(),
+  neighborhood: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  zipCode: z.string().nullable(),
+  landmark: z.string().nullable(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  /** Texto livre legado, se houver. */
+  address: z.string().nullable(),
+});
+
 export const delivererMeSchema = z.object({
   id: z.string(),
   status: z.enum(DELIVERER_STATUSES),
   hasActiveRoute: z.boolean(),
   /** Se o app deve compartilhar GPS (disponível ou em rota ativa). */
   sharingLocation: z.boolean(),
+  /** Unidades vinculadas ao entregador (com endereço para voltar à loja). */
+  stores: z.array(delivererMeStoreSchema).optional(),
 });
+
+export type DelivererMeStore = z.infer<typeof delivererMeStoreSchema>;
 
 export type DelivererMe = z.infer<typeof delivererMeSchema>;
 export type DelivererPosition = z.infer<typeof delivererPositionSchema>;

@@ -1,19 +1,91 @@
 import { Alert, Linking } from 'react-native';
 
-/** Abre o Google Maps com rota até o endereço informado. */
-export async function openGoogleMaps(address: string): Promise<void> {
-  const destination = encodeURIComponent(address);
-  const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
+export type NavigationDestination = {
+  /** Endereço textual (fallback). */
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+function hasCoords(dest: NavigationDestination): dest is NavigationDestination & {
+  latitude: number;
+  longitude: number;
+} {
+  return (
+    typeof dest.latitude === 'number' &&
+    Number.isFinite(dest.latitude) &&
+    typeof dest.longitude === 'number' &&
+    Number.isFinite(dest.longitude)
+  );
+}
+
+function destinationLabel(dest: NavigationDestination): string | null {
+  if (hasCoords(dest)) return `${dest.latitude},${dest.longitude}`;
+  const address = dest.address?.trim();
+  return address || null;
+}
+
+/** Abre o Google Maps com rota até o destino (coords ou endereço). */
+export async function openGoogleMaps(dest: string | NavigationDestination): Promise<void> {
+  const target = typeof dest === 'string' ? { address: dest } : dest;
+  const label = destinationLabel(target);
+  if (!label) {
+    Alert.alert('Ops', 'Endereço da loja incompleto. Peça ao master para cadastrar o endereço.');
+    return;
+  }
+
+  const destination = encodeURIComponent(label);
+  const url = hasCoords(target)
+    ? `https://www.google.com/maps/dir/?api=1&destination=${target.latitude},${target.longitude}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
   await openUrl(url, 'Não foi possível abrir o Google Maps.');
 }
 
-/** Abre o Waze com rota até o endereço informado (fallback para web). */
-export async function openWaze(address: string): Promise<void> {
-  const query = encodeURIComponent(address);
-  const appUrl = `waze://?q=${query}&navigate=yes`;
-  const webUrl = `https://waze.com/ul?q=${query}&navigate=yes`;
+/** Abre o Waze com rota até o destino (coords ou endereço; fallback para web). */
+export async function openWaze(dest: string | NavigationDestination): Promise<void> {
+  const target = typeof dest === 'string' ? { address: dest } : dest;
+
+  let appUrl: string;
+  let webUrl: string;
+
+  if (hasCoords(target)) {
+    appUrl = `waze://?ll=${target.latitude},${target.longitude}&navigate=yes`;
+    webUrl = `https://waze.com/ul?ll=${target.latitude},${target.longitude}&navigate=yes`;
+  } else {
+    const address = target.address?.trim();
+    if (!address) {
+      Alert.alert('Ops', 'Endereço da loja incompleto. Peça ao master para cadastrar o endereço.');
+      return;
+    }
+    const query = encodeURIComponent(address);
+    appUrl = `waze://?q=${query}&navigate=yes`;
+    webUrl = `https://waze.com/ul?q=${query}&navigate=yes`;
+  }
+
   const canOpenApp = await Linking.canOpenURL(appUrl).catch(() => false);
   await openUrl(canOpenApp ? appUrl : webUrl, 'Não foi possível abrir o Waze.');
+}
+
+/**
+ * Pergunta Maps ou Waze e abre a navegação até o destino.
+ * Preferência: coordenadas quando disponíveis.
+ */
+export function promptNavigateHome(dest: NavigationDestination, storeName?: string): void {
+  const label = destinationLabel(dest);
+  if (!label && !hasCoords(dest)) {
+    Alert.alert(
+      'Endereço incompleto',
+      'Esta loja ainda não tem endereço cadastrado. Peça ao master para configurar o endereço da unidade.',
+    );
+    return;
+  }
+
+  const title = storeName ? `Voltar à loja · ${storeName}` : 'Voltar à loja';
+  Alert.alert(title, 'Abrir navegação com:', [
+    { text: 'Cancelar', style: 'cancel' },
+    { text: 'Google Maps', onPress: () => void openGoogleMaps(dest) },
+    { text: 'Waze', onPress: () => void openWaze(dest) },
+  ]);
 }
 
 /** Abre o discador com o telefone informado. */

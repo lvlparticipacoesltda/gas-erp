@@ -364,6 +364,29 @@ export class DeliverersService {
           select: { id: true },
           take: 1,
         },
+        stores: {
+          select: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                street: true,
+                number: true,
+                complement: true,
+                neighborhood: true,
+                city: true,
+                state: true,
+                zipCode: true,
+                landmark: true,
+                latitude: true,
+                longitude: true,
+                address: true,
+                active: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
@@ -371,11 +394,35 @@ export class DeliverersService {
     const hasActiveRoute = deliverer.deliveries.length > 0;
     const sharingLocation = deliverer.status !== 'OFFLINE' || hasActiveRoute;
 
+    const stores = deliverer.stores
+      .filter((row) => row.store.active)
+      .map((row) => {
+        const s = row.store;
+        return {
+          id: s.id,
+          name: s.name,
+          code: s.code,
+          street: s.street,
+          number: s.number,
+          complement: s.complement,
+          neighborhood: s.neighborhood,
+          city: s.city,
+          state: s.state,
+          zipCode: s.zipCode,
+          landmark: s.landmark,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          address: s.address,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
     return {
       id: deliverer.id,
       status: deliverer.status,
       hasActiveRoute,
       sharingLocation,
+      stores,
     };
   }
 
