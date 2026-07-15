@@ -19,11 +19,23 @@ export function updateDeliveryStatus(
 export function updateSalePayments(
   saleId: string,
   payments: { storePaymentMethodId: string; amount: number }[],
-  unitPrice?: number,
+  options?: {
+    unitPrice?: number;
+    itemPayments?: { id: string; storePaymentMethodId: string }[];
+    deliveryFeeStorePaymentMethodId?: string | null;
+  },
 ): Promise<unknown> {
+  const { unitPrice, itemPayments, deliveryFeeStorePaymentMethodId } = options ?? {};
   return api(`/sales/${saleId}/payments`, {
     method: 'PATCH',
-    body: { payments, ...(unitPrice !== undefined ? { unitPrice } : {}) },
+    body: {
+      ...(payments.length ? { payments } : {}),
+      ...(itemPayments?.length ? { itemPayments } : {}),
+      ...(unitPrice !== undefined ? { unitPrice } : {}),
+      ...(deliveryFeeStorePaymentMethodId !== undefined
+        ? { deliveryFeeStorePaymentMethodId }
+        : {}),
+    },
   });
 }
 

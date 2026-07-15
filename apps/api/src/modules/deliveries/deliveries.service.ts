@@ -115,7 +115,12 @@ export class DeliveriesService {
         sale: {
           include: {
             customer: true,
-            items: { include: { product: true } },
+            items: {
+              include: {
+                product: true,
+                storePaymentMethod: { select: { id: true, label: true, systemCode: true } },
+              },
+            },
             payments: true,
           },
         },
@@ -139,7 +144,12 @@ export class DeliveriesService {
         sale: {
           include: {
             customer: true,
-            items: { include: { product: true } },
+            items: {
+              include: {
+                product: true,
+                storePaymentMethod: { select: { id: true, label: true, systemCode: true } },
+              },
+            },
             payments: true,
           },
         },

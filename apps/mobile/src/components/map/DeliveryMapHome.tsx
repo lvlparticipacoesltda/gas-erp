@@ -275,14 +275,20 @@ export function DeliveryMapHome() {
   }, [selected, refresh, clearHomeMode]);
 
   const handleFinishRoute = useCallback(
-    async (
-      payments: { storePaymentMethodId: string; amount: number }[],
-      unitPrice?: number,
-    ) => {
+    async (payload: {
+      payments: { storePaymentMethodId: string; amount: number }[];
+      unitPrice?: number;
+      itemPayments?: { id: string; storePaymentMethodId: string }[];
+      deliveryFeeStorePaymentMethodId?: string | null;
+    }) => {
       if (!navigationDelivery) return;
       setBusy(true);
       try {
-        await updateSalePayments(navigationDelivery.sale.id, payments, unitPrice);
+        await updateSalePayments(navigationDelivery.sale.id, payload.payments, {
+          unitPrice: payload.unitPrice,
+          itemPayments: payload.itemPayments,
+          deliveryFeeStorePaymentMethodId: payload.deliveryFeeStorePaymentMethodId,
+        });
         await updateDeliveryStatus(navigationDelivery.id, 'DELIVERED');
         await stopDeliveryTracking().catch(() => undefined);
         setPaymentsOpen(false);
@@ -568,6 +574,7 @@ export function DeliveryMapHome() {
           saleId={navigationDelivery.sale.id}
           storeId={navigationDelivery.sale.storeId ?? user?.storeIds[0] ?? ''}
           saleTotal={Number(navigationDelivery.sale.total ?? 0)}
+          deliveryFee={Number(navigationDelivery.sale.deliveryFee ?? 0)}
           gasDoPovoBenefit={navigationDelivery.sale.gasDoPovoBenefit}
           itemQuantity={navigationDelivery.sale.items[0]?.quantity ?? 1}
           itemCount={navigationDelivery.sale.items.length}
@@ -577,6 +584,16 @@ export function DeliveryMapHome() {
               : undefined
           }
           initialPayments={navigationDelivery.sale.payments}
+          items={navigationDelivery.sale.items.map((item) => ({
+            id: item.id,
+            label: item.product.name,
+            quantity: item.quantity,
+            unitPrice: Number(item.unitPrice ?? 0),
+            storePaymentMethodId: item.storePaymentMethodId,
+          }))}
+          deliveryFeeStorePaymentMethodId={
+            navigationDelivery.sale.deliveryFeeStorePaymentMethodId
+          }
           onClose={() => {
             setPaymentsOpen(false);
             setPaymentsMinimized(false);

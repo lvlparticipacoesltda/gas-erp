@@ -13,7 +13,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getPaymentLinesSumErrorMessage } from '@gas-erp/shared';
+import {
+  allItemsHavePaymentMethod,
+  buildPaymentAllocationsFromItems,
+  getPaymentLinesSumErrorMessage,
+} from '@gas-erp/shared';
 import { Button } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, radius, spacing } from '@/theme';
@@ -26,23 +30,40 @@ import {
   type PaymentLine,
   type StorePaymentMethodOption,
 } from '@/components/SalePaymentsEditor';
+import {
+  SaleItemPaymentsEditor,
+  paymentMethodsForSale,
+} from '@/components/SaleItemPaymentsEditor';
+
+export interface FinishSaleItem {
+  id: string;
+  label: string;
+  quantity: number;
+  unitPrice: number;
+  storePaymentMethodId?: string | null;
+}
 
 interface FinishPaymentsModalProps {
   visible: boolean;
   saleId: string;
   storeId: string;
   saleTotal: number;
+  deliveryFee?: number;
   gasDoPovoBenefit?: boolean;
   itemQuantity?: number;
   itemCount?: number;
   initialUnitPrice?: number;
   initialPayments?: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
+  items?: FinishSaleItem[];
+  deliveryFeeStorePaymentMethodId?: string | null;
   onClose: () => void;
   onMinimizedChange?: (minimized: boolean) => void;
-  onConfirm: (
-    payments: { storePaymentMethodId: string; amount: number }[],
-    unitPrice?: number,
-  ) => Promise<void>;
+  onConfirm: (payload: {
+    payments: { storePaymentMethodId: string; amount: number }[];
+    unitPrice?: number;
+    itemPayments?: { id: string; storePaymentMethodId: string }[];
+    deliveryFeeStorePaymentMethodId?: string | null;
+  }) => Promise<void>;
 }
 
 function parseAmount(value: number | string | null | undefined): number {
@@ -97,11 +118,14 @@ export function FinishPaymentsModal({
   saleId,
   storeId,
   saleTotal: initialSaleTotal,
+  deliveryFee = 0,
   gasDoPovoBenefit = false,
   itemQuantity = 1,
   itemCount = 1,
   initialUnitPrice,
   initialPayments,
+  items = [],
+  deliveryFeeStorePaymentMethodId: initialFeeMethodId,
   onClose,
   onMinimizedChange,
   onConfirm,
@@ -111,6 +135,9 @@ export function FinishPaymentsModal({
   const [minimized, setMinimized] = useState(false);
   const [methods, setMethods] = useState<StorePaymentMethodOption[]>([]);
   const [lines, setLines] = useState<PaymentLine[]>([]);
+  const [paymentByProduct, setPaymentByProduct] = useState(false);
+  const [itemMethods, setItemMethods] = useState<Record<string, string>>({});
+  const [feeMethodId, setFeeMethodId] = useState('');
   const [loadingMethods, setLoadingMethods] = useState(false);
   const [loading, setLoading] = useState(false);
   const [methodsError, setMethodsError] = useState('');
@@ -118,16 +145,13 @@ export function FinishPaymentsModal({
   const [gdpUnitPrice, setGdpUnitPrice] = useState('');
   const openSessionRef = useRef<string | null>(null);
 
-  // O preço unitário GDP só pode ser ajustado em vendas com um único produto.
-  // Com mais itens (ex.: "taxa de entrega" como produto), o total é fixo e o
-  // backend recusa o ajuste — então não reenviamos o preço unitário.
   const canEditGdpUnitPrice = gasDoPovoBenefit && itemCount === 1 && initialUnitPrice != null;
   const parsedUnitPrice = Math.max(0, Number(gdpUnitPrice.replace(',', '.')) || 0);
-  const deliveryFee = canEditGdpUnitPrice
+  const deliveryFeeAmount = canEditGdpUnitPrice
     ? Math.max(0, initialSaleTotal - initialUnitPrice * itemQuantity)
-    : 0;
+    : deliveryFee;
   const saleTotal = canEditGdpUnitPrice && parsedUnitPrice > 0
-    ? parsedUnitPrice * itemQuantity + deliveryFee
+    ? parsedUnitPrice * itemQuantity + deliveryFeeAmount
     : initialSaleTotal;
 
   const gdpMethodId = methods.find((m) => m.systemCode === 'GDP')?.id;
@@ -165,16 +189,28 @@ export function FinishPaymentsModal({
       setGdpUnitPrice(String(initialUnitPrice));
     }
 
-    const activeOnly = 'false';
     let cancelled = false;
 
     api<StorePaymentMethodOption[]>(
-      `/stores/${storeId}/payment-methods?activeOnly=${activeOnly}`,
+      `/stores/${storeId}/payment-methods?activeOnly=false`,
     )
       .then((rows) => {
         if (cancelled) return;
         setMethods(rows);
-        setLines(buildInitialLines(rows, saleTotal, false, initialPayments));
+        setLines(buildInitialLines(rows, saleTotal, gasDoPovoBenefit, initialPayments));
+
+        const available = paymentMethodsForSale(rows);
+        const fallback = available.find((m) => m.systemCode === 'CASH') ?? available[0];
+        const nextItemMethods: Record<string, string> = {};
+        let hasItemMethods = false;
+        for (const item of items) {
+          const methodId = item.storePaymentMethodId || fallback?.id || '';
+          nextItemMethods[item.id] = methodId;
+          if (item.storePaymentMethodId) hasItemMethods = true;
+        }
+        setItemMethods(nextItemMethods);
+        setFeeMethodId(initialFeeMethodId || fallback?.id || '');
+        setPaymentByProduct(hasItemMethods || items.length > 1);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -189,19 +225,8 @@ export function FinishPaymentsModal({
     return () => {
       cancelled = true;
     };
-    // initialPayments é lido apenas na abertura do modal (guardado por openSessionRef).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, storeId, saleId, initialSaleTotal, gasDoPovoBenefit, initialUnitPrice]);
-
-  useEffect(() => {
-    if (!visible || !gasDoPovoBenefit || !gdpMethodId) return;
-    // Só sincroniza linha única GDP se o modal ainda não tiver formas mistas.
-    setLines((current) => {
-      if (current.length > 1) return current;
-      return createGdpPaymentLines(gdpMethodId, methods, saleTotal);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saleTotal, visible, gasDoPovoBenefit, gdpMethodId, methods]);
 
   useEffect(() => {
     if (!visible || minimized) return;
@@ -213,17 +238,49 @@ export function FinishPaymentsModal({
   }, [visible, minimized]);
 
   async function handleConfirm() {
-    if (gasDoPovoBenefit) {
-      if (!gdpMethodId) {
-        setError('Forma GDP não configurada nesta loja. Contate o gestor.');
-        return;
-      }
-      if (canEditGdpUnitPrice && parsedUnitPrice <= 0) {
-        setError('Informe um preço válido para o benefício Gás do Povo.');
-        return;
-      }
-      // Já não força 100% GDP — entregador pode misturar formas no modal.
+    if (canEditGdpUnitPrice && parsedUnitPrice <= 0) {
+      setError('Informe um preço válido para o benefício Gás do Povo.');
+      return;
     }
+
+    if (paymentByProduct) {
+      const itemRows = items.map((item) => ({
+        storePaymentMethodId: itemMethods[item.id] || null,
+        quantity: item.quantity,
+        unitPrice:
+          canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : item.unitPrice,
+      }));
+      if (!allItemsHavePaymentMethod(itemRows)) {
+        setError('Defina a forma de pagamento em todos os produtos.');
+        return;
+      }
+
+      const payments = buildPaymentAllocationsFromItems(
+        itemRows,
+        deliveryFeeAmount,
+        feeMethodId || null,
+      );
+
+      setLoading(true);
+      setError('');
+      try {
+        await onConfirm({
+          payments,
+          unitPrice: canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : undefined,
+          itemPayments: items.map((item) => ({
+            id: item.id,
+            storePaymentMethodId: itemMethods[item.id],
+          })),
+          deliveryFeeStorePaymentMethodId: feeMethodId || null,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Não foi possível salvar os pagamentos.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!paymentsMatchTotal(lines, saleTotal)) {
       setError(getPaymentLinesSumErrorMessage(lines, saleTotal));
       return;
@@ -232,9 +289,10 @@ export function FinishPaymentsModal({
     setLoading(true);
     setError('');
     try {
-      const payload = paymentLinesToPayload(lines);
-      const unitPricePayload = canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : undefined;
-      await onConfirm(payload, unitPricePayload);
+      await onConfirm({
+        payments: paymentLinesToPayload(lines),
+        unitPrice: canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : undefined,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar os pagamentos.');
     } finally {
@@ -329,20 +387,61 @@ export function FinishPaymentsModal({
             </View>
           ) : null}
 
-          <SalePaymentsEditor
-            methods={methods}
-            lines={lines}
-            onChange={setLines}
-            saleTotal={saleTotal}
-            loadingMethods={loadingMethods}
-            methodsError={methodsError}
-            gdpLocked={false}
-            showGdpOption
-            comfortable
-            onAmountFocus={() => {
-              scrollRef.current?.scrollToEnd({ animated: true });
-            }}
-          />
+          {items.length > 0 ? (
+            <View style={styles.modeRow}>
+              <Pressable
+                onPress={() => setPaymentByProduct(false)}
+                style={[styles.modeChip, !paymentByProduct && styles.modeChipActive]}
+              >
+                <Text style={[styles.modeChipText, !paymentByProduct && styles.modeChipTextActive]}>
+                  Por valor
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setPaymentByProduct(true)}
+                style={[styles.modeChip, paymentByProduct && styles.modeChipActive]}
+              >
+                <Text style={[styles.modeChipText, paymentByProduct && styles.modeChipTextActive]}>
+                  Por produto
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {paymentByProduct && items.length > 0 ? (
+            <SaleItemPaymentsEditor
+              methods={methods}
+              items={items.map((item) => ({
+                key: item.id,
+                label: item.label,
+                quantity: item.quantity,
+                unitPrice:
+                  canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : item.unitPrice,
+                storePaymentMethodId: itemMethods[item.id] || '',
+              }))}
+              onChangeItemMethod={(key, storePaymentMethodId) => {
+                setItemMethods((current) => ({ ...current, [key]: storePaymentMethodId }));
+              }}
+              deliveryFee={deliveryFeeAmount}
+              deliveryFeeStorePaymentMethodId={feeMethodId}
+              onChangeDeliveryFeeMethod={setFeeMethodId}
+            />
+          ) : (
+            <SalePaymentsEditor
+              methods={methods}
+              lines={lines}
+              onChange={setLines}
+              saleTotal={saleTotal}
+              loadingMethods={loadingMethods}
+              methodsError={methodsError}
+              gdpLocked={false}
+              showGdpOption
+              comfortable
+              onAmountFocus={() => {
+                scrollRef.current?.scrollToEnd({ animated: true });
+              }}
+            />
+          )}
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
@@ -395,6 +494,22 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
+  modeRow: { flexDirection: 'row', gap: spacing.sm },
+  modeChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+  },
+  modeChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.infoBg,
+  },
+  modeChipText: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
+  modeChipTextActive: { color: colors.primary },
   priceSection: {
     padding: spacing.lg,
     borderRadius: radius.md,

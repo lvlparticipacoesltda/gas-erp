@@ -27,6 +27,9 @@ export interface SaleItem {
   id: string;
   quantity: number;
   unitPrice?: number | string | null;
+  total?: number | string | null;
+  storePaymentMethodId?: string | null;
+  storePaymentMethod?: { id: string; label: string; systemCode: string | null } | null;
   product: { id: string; name: string };
 }
 
@@ -43,6 +46,8 @@ export interface Sale {
   createdAt: string;
   notes?: string | null;
   total?: number | string | null;
+  deliveryFee?: number | string | null;
+  deliveryFeeStorePaymentMethodId?: string | null;
   customer?: SaleCustomer | null;
   items: SaleItem[];
   deliveryStreet?: string | null;

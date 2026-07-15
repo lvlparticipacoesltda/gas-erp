@@ -15,6 +15,7 @@ import {
   MOBILE_APPROVAL_LABELS,
   PAYMENT_METHOD_LABELS,
   getPaymentLinesSumErrorMessage,
+  buildPaymentAllocationsFromItems,
   type PaginatedResponse,
   getSaleDisplayStatus,
 } from '@gas-erp/shared';
@@ -27,6 +28,10 @@ import {
   type PaymentLine,
   type StorePaymentMethodOption,
 } from '@/components/SalePaymentsEditor';
+import {
+  SaleItemPaymentsEditor,
+  paymentMethodsForSale,
+} from '@/components/SaleItemPaymentsEditor';
 import { Badge, Button, Card, Loading, StateMessage } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
@@ -128,6 +133,9 @@ export default function NewSaleScreen() {
   const [allPaymentMethods, setAllPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [gasDoPovoBenefit, setGasDoPovoBenefit] = useState(false);
+  const [paymentByProduct, setPaymentByProduct] = useState(false);
+  const [productPaymentMethodId, setProductPaymentMethodId] = useState('');
+  const [deliveryFeeMethodId, setDeliveryFeeMethodId] = useState('');
   const [unitPriceInput, setUnitPriceInput] = useState('');
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
   const [paymentMethodsError, setPaymentMethodsError] = useState('');
@@ -215,6 +223,12 @@ export default function NewSaleScreen() {
         setAllPaymentMethods(rows);
         const regular = rows.filter((m) => m.systemCode !== 'GDP' && m.enabled !== false);
         setPaymentMethods(regular);
+        const available = paymentMethodsForSale(rows);
+        const fallback = available.find((m) => m.systemCode === 'CASH') ?? available[0];
+        if (fallback) {
+          setProductPaymentMethodId((current) => current || fallback.id);
+          setDeliveryFeeMethodId((current) => current || fallback.id);
+        }
         if (!gasDoPovoBenefit) {
           setPaymentLines(createDefaultPaymentLines(regular, saleTotal));
         }
@@ -487,25 +501,43 @@ export default function NewSaleScreen() {
       setError('Informe o endereço de entrega ou use sua localização.');
       return;
     }
-    if (paymentLines.length === 0 && !gasDoPovoBenefit) {
+    if (paymentByProduct) {
+      if (!productPaymentMethodId) {
+        setError('Selecione a forma de pagamento do produto.');
+        return;
+      }
+      if (deliveryFee > 0 && !deliveryFeeMethodId) {
+        setError('Selecione a forma de pagamento da taxa de entrega.');
+        return;
+      }
+    } else if (paymentLines.length === 0 && !gasDoPovoBenefit) {
       setError('Nenhuma forma de pagamento disponível nesta loja.');
       return;
-    }
-    if (!gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, saleTotal)) {
+    } else if (!gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, saleTotal)) {
       setError(getPaymentLinesSumErrorMessage(paymentLines, saleTotal));
       return;
     }
-    const usesGdp =
-      gasDoPovoBenefit
-      || paymentLines.some((line) => {
-        const method = allPaymentMethods.find((m) => m.id === line.storePaymentMethodId);
-        return method?.systemCode === 'GDP';
-      });
-    const itemMethodId = !gasDoPovoBenefit && paymentLines.length === 1
-      ? paymentLines[0]?.storePaymentMethodId
-      : undefined;
     setSubmitting(true);
     try {
+      const itemPaymentsPayload = paymentByProduct
+        ? [{
+            productId,
+            quantity: qty,
+            unitPrice,
+            storePaymentMethodId: productPaymentMethodId,
+          }]
+        : [{ productId, quantity: qty, unitPrice }];
+      const paymentsPayload = paymentByProduct
+        ? buildPaymentAllocationsFromItems(
+            [{ storePaymentMethodId: productPaymentMethodId, quantity: qty, unitPrice }],
+            deliveryFee,
+            deliveryFeeMethodId || null,
+          )
+        : gasDoPovoBenefit
+          ? gdpPaymentMethod
+            ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: saleTotal }]
+            : [{ method: 'GDP', amount: saleTotal }]
+          : paymentLinesToPayload(paymentLines);
       await api('/sales/mobile', {
         method: 'POST',
         body: {
@@ -513,18 +545,12 @@ export default function NewSaleScreen() {
           customerId: selectedCustomer?.id,
           fulfillmentType: fulfillment,
           notes: notes.trim() || undefined,
-          gasDoPovoBenefit: usesGdp && (gasDoPovoBenefit || paymentLines.length === 1),
-          items: [{
-            productId,
-            quantity: qty,
-            unitPrice,
-            storePaymentMethodId: itemMethodId,
-          }],
-          payments: gasDoPovoBenefit
-            ? gdpPaymentMethod
-              ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: saleTotal }]
-              : [{ method: 'GDP', amount: saleTotal }]
-            : paymentLinesToPayload(paymentLines),
+          gasDoPovoBenefit: paymentByProduct ? undefined : gasDoPovoBenefit,
+          deliveryFeeStorePaymentMethodId: paymentByProduct
+            ? (deliveryFeeMethodId || undefined)
+            : undefined,
+          items: itemPaymentsPayload,
+          payments: paymentsPayload,
           deliveryStreet: fulfillment === 'DELIVERY' ? deliveryStreet : undefined,
           deliveryNumber: fulfillment === 'DELIVERY' ? deliveryNumber : undefined,
           deliveryNeighborhood: fulfillment === 'DELIVERY' ? deliveryNeighborhood : undefined,
@@ -751,45 +777,108 @@ export default function NewSaleScreen() {
       </Card>
 
       <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Benefício Gás do Povo</Text>
-        <Pressable
-          onPress={toggleGdpBenefit}
-          style={[styles.gdpToggle, gasDoPovoBenefit && styles.gdpToggleActive]}
-        >
-          <Text style={[styles.gdpToggleTitle, gasDoPovoBenefit && styles.gdpToggleTitleActive]}>
-            {gasDoPovoBenefit ? 'Sim — pagamento via GDP' : 'Não — toque para marcar como sim'}
-          </Text>
-          <Text style={[styles.gdpToggleHint, gasDoPovoBenefit && styles.gdpToggleHintActive]}>
-            {gasDoPovoBenefit
-              ? 'Ajuste o preço unitário acima; o pagamento fica como GDP'
-              : 'Você pode ajustar o preço unitário do produto acima'}
-          </Text>
-        </Pressable>
+        <Text style={styles.sectionTitle}>Como informar o pagamento?</Text>
+        <View style={styles.chips}>
+          <Pressable
+            onPress={() => {
+              setPaymentByProduct(false);
+            }}
+            style={[styles.chip, !paymentByProduct && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, !paymentByProduct && styles.chipTextActive]}>
+              Por valor
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setPaymentByProduct(true);
+              setGasDoPovoBenefit(false);
+              const available = paymentMethodsForSale(allPaymentMethods);
+              const fallback = available.find((m) => m.systemCode === 'CASH') ?? available[0];
+              if (fallback) {
+                setProductPaymentMethodId((current) => current || fallback.id);
+                setDeliveryFeeMethodId((current) => current || fallback.id);
+              }
+            }}
+            style={[styles.chip, paymentByProduct && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, paymentByProduct && styles.chipTextActive]}>
+              Por produto
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.hint}>
+          Use “Por produto” para pagar um item com GDP e outro com Pix/dinheiro.
+        </Text>
       </Card>
 
-      <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Formas de pagamento</Text>
-        <SalePaymentsEditor
-          methods={allPaymentMethods}
-          lines={paymentLines}
-          onChange={setPaymentLines}
-          saleTotal={saleTotal}
-          disabled={submitting || saleTotal <= 0 || gasDoPovoBenefit}
-          loadingMethods={loadingPaymentMethods}
-          methodsError={paymentMethodsError}
-          gdpLocked={gasDoPovoBenefit}
-          showGdpOption={Boolean(gdpPaymentMethod)}
-        />
-        {gasDoPovoBenefit ? (
-          <Text style={styles.hint}>
-            Pagamento: {PAYMENT_METHOD_LABELS.GDP} — {formatCurrency(saleTotal)}
-          </Text>
-        ) : (
-          <Text style={styles.hint}>
-            Para misturar GDP com outra forma, use “+ Adicionar forma” e escolha GDP em uma das linhas.
-          </Text>
-        )}
-      </Card>
+      {!paymentByProduct ? (
+        <>
+          <Card style={styles.section}>
+            <Text style={styles.sectionTitle}>Benefício Gás do Povo (venda inteira)</Text>
+            <Pressable
+              onPress={toggleGdpBenefit}
+              style={[styles.gdpToggle, gasDoPovoBenefit && styles.gdpToggleActive]}
+            >
+              <Text style={[styles.gdpToggleTitle, gasDoPovoBenefit && styles.gdpToggleTitleActive]}>
+                {gasDoPovoBenefit ? 'Sim — 100% GDP' : 'Não — toque para marcar como sim'}
+              </Text>
+              <Text style={[styles.gdpToggleHint, gasDoPovoBenefit && styles.gdpToggleHintActive]}>
+                {gasDoPovoBenefit
+                  ? 'Ajuste o preço unitário acima; o pagamento fica como GDP'
+                  : 'Ou use “Por produto” para misturar GDP com outras formas'}
+              </Text>
+            </Pressable>
+          </Card>
+
+          <Card style={styles.section}>
+            <Text style={styles.sectionTitle}>Formas de pagamento</Text>
+            <SalePaymentsEditor
+              methods={allPaymentMethods}
+              lines={paymentLines}
+              onChange={setPaymentLines}
+              saleTotal={saleTotal}
+              disabled={submitting || saleTotal <= 0 || gasDoPovoBenefit}
+              loadingMethods={loadingPaymentMethods}
+              methodsError={paymentMethodsError}
+              gdpLocked={gasDoPovoBenefit}
+              showGdpOption={Boolean(gdpPaymentMethod)}
+            />
+          </Card>
+        </>
+      ) : (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Pagamento por produto</Text>
+          {loadingPaymentMethods ? (
+            <Text style={styles.hint}>Carregando formas...</Text>
+          ) : paymentMethodsError ? (
+            <Text style={styles.error}>{paymentMethodsError}</Text>
+          ) : selectedProduct && unitPrice > 0 ? (
+            <SaleItemPaymentsEditor
+              methods={allPaymentMethods}
+              items={[{
+                key: productId,
+                label: selectedProduct.name,
+                quantity: qty,
+                unitPrice,
+                storePaymentMethodId: productPaymentMethodId
+                  || paymentMethodsForSale(allPaymentMethods)[0]?.id
+                  || '',
+              }]}
+              onChangeItemMethod={(_key, methodId) => setProductPaymentMethodId(methodId)}
+              deliveryFee={deliveryFee}
+              deliveryFeeStorePaymentMethodId={
+                deliveryFeeMethodId
+                || paymentMethodsForSale(allPaymentMethods)[0]?.id
+                || ''
+              }
+              onChangeDeliveryFeeMethod={setDeliveryFeeMethodId}
+            />
+          ) : (
+            <Text style={styles.hint}>Selecione o produto e o preço para definir as formas.</Text>
+          )}
+        </Card>
+      )}
 
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Entrega</Text>
