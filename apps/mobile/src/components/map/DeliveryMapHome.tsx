@@ -120,11 +120,28 @@ export function DeliveryMapHome() {
     return polyline[polyline.length - 1];
   }, [polyline]);
 
-  const { canFinish, finishHint } = useDeliveryFinishProximity(
+  const { canFinish, needsConfirmAway, finishHint } = useDeliveryFinishProximity(
     homeMode ? null : navigationDelivery,
     driverPosition,
     routeDestination,
   );
+
+  const handleRequestFinish = useCallback(() => {
+    if (!canFinish) return;
+    if (!needsConfirmAway) {
+      setPaymentsOpen(true);
+      return;
+    }
+    Alert.alert(
+      'Confirmar conclusão',
+      finishHint
+        ?? 'Não foi possível confirmar que você está perto do endereço. Deseja concluir a entrega mesmo assim?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Concluir', onPress: () => setPaymentsOpen(true) },
+      ],
+    );
+  }, [canFinish, needsConfirmAway, finishHint]);
 
   const {
     polyline: previewPolyline,
@@ -504,7 +521,7 @@ export function DeliveryMapHome() {
             busy={busy}
             canFinish={canFinish}
             finishHint={finishHint}
-            onFinish={() => setPaymentsOpen(true)}
+            onFinish={handleRequestFinish}
             onOpenGoogleMaps={() => openDeliveryExternalNav('maps')}
             onOpenWaze={() => openDeliveryExternalNav('waze')}
           />

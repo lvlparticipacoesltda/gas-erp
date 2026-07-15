@@ -3,8 +3,8 @@ import { formatDistanceMeters, haversineDistanceMeters } from '@gas-erp/shared';
 import type { DriverPosition } from '../hooks/useDriverLocation';
 import type { Delivery, DeliveryDestination } from '../types';
 
-/** Raio para liberar "Concluir entrega" — padrão de apps de entrega (~500 m). */
-export const DELIVERY_FINISH_RADIUS_METERS = 500;
+/** Raio em que a conclusão é liberada sem confirmação extra (~1 km). */
+export const DELIVERY_FINISH_RADIUS_METERS = 1000;
 
 function resolveDestinationCoords(
   delivery: Delivery | null,
@@ -49,36 +49,46 @@ export function useDeliveryFinishProximity(
     });
   }, [delivery?.id, distanceToDestination]);
 
-  const canFinish = useMemo(() => {
+  /** Dentro do raio (ou já desbloqueado antes) — conclui sem alerta de distância. */
+  const isNearDestination = useMemo(() => {
     if (!delivery) return false;
-    if (!destinationCoords) return false;
-    if (!driverPosition) return false;
     if (unlockedDeliveryIds.has(delivery.id)) return true;
-    if (
+    return (
       distanceToDestination != null
       && distanceToDestination <= DELIVERY_FINISH_RADIUS_METERS
-    ) {
-      return true;
+    );
+  }, [delivery, unlockedDeliveryIds, distanceToDestination]);
+
+  /**
+   * Sempre permite concluir em rota ativa.
+   * Antes, o botão ficava desabilitado fora do raio / sem GPS / sem destino —
+   * comum no iOS ao navegar no Maps/Waze (GPS congela) ou com geocode falho.
+   */
+  const canFinish = Boolean(delivery);
+
+  const needsConfirmAway = Boolean(delivery) && !isNearDestination;
+
+  const finishHint = useMemo(() => {
+    if (!delivery || isNearDestination) return null;
+    if (!destinationCoords) {
+      return 'Endereço sem ponto no mapa — você pode concluir mesmo assim.';
     }
-    return false;
+    if (!driverPosition) {
+      return 'Sem GPS no momento — volte ao app perto do cliente ou conclua mesmo assim.';
+    }
+    return `Você parece longe do cliente (${formatDistanceMeters(distanceToDestination ?? 0)}). Pode concluir mesmo assim.`;
   }, [
     delivery,
+    isNearDestination,
     destinationCoords,
     driverPosition,
-    unlockedDeliveryIds,
     distanceToDestination,
   ]);
 
-  const finishHint = useMemo(() => {
-    if (canFinish || !delivery) return null;
-    if (!destinationCoords) {
-      return 'Aguardando localização do endereço no mapa...';
-    }
-    if (!driverPosition) {
-      return 'Aguardando sua localização para liberar a conclusão.';
-    }
-    return `Aproxime-se do cliente (${formatDistanceMeters(distanceToDestination ?? 0)} restantes).`;
-  }, [canFinish, delivery, destinationCoords, driverPosition, distanceToDestination]);
-
-  return { canFinish, distanceToDestination, finishHint };
+  return {
+    canFinish,
+    needsConfirmAway,
+    distanceToDestination,
+    finishHint,
+  };
 }

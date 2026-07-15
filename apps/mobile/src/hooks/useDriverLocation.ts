@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
 import { requestLocationPermissionsWithDisclosure } from '../lib/location';
 
@@ -7,12 +8,6 @@ export interface DriverPosition {
   longitude: number;
   heading: number | null;
 }
-
-const DEFAULT_POSITION: DriverPosition = {
-  latitude: -23.9608,
-  longitude: -46.3336,
-  heading: null,
-};
 
 /** Posição do entregador em primeiro plano (mapa home). */
 export function useDriverLocation(enabled = true) {
@@ -25,20 +20,9 @@ export function useDriverLocation(enabled = true) {
 
     let cancelled = false;
 
-    async function start() {
-      const existing = await Location.getForegroundPermissionsAsync();
-      if (existing.status !== 'granted') {
-        const permissions = await requestLocationPermissionsWithDisclosure();
-        if (cancelled) return;
-        if (!permissions.foreground) {
-          setPermissionDenied(true);
-          setPosition(DEFAULT_POSITION);
-          return;
-        }
-      }
-
+    async function refreshOnce(highAccuracy = false) {
       const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: highAccuracy ? Location.Accuracy.High : Location.Accuracy.Balanced,
       }).catch(() => null);
       if (!cancelled && current) {
         setPosition({
@@ -47,6 +31,23 @@ export function useDriverLocation(enabled = true) {
           heading: current.coords.heading,
         });
       }
+    }
+
+    async function start() {
+      const existing = await Location.getForegroundPermissionsAsync();
+      if (existing.status !== 'granted') {
+        const permissions = await requestLocationPermissionsWithDisclosure();
+        if (cancelled) return;
+        if (!permissions.foreground) {
+          setPermissionDenied(true);
+          // Não inventa coordenada fake — bloquearia "perto do cliente" de forma irreversível.
+          setPosition(null);
+          return;
+        }
+      }
+
+      setPermissionDenied(false);
+      await refreshOnce();
 
       watchRef.current = await Location.watchPositionAsync(
         {
@@ -66,8 +67,15 @@ export function useDriverLocation(enabled = true) {
 
     void start();
 
+    // iOS: ao voltar do Maps/Waze o watch costuma estar congelado — força um fix fresco.
+    const onAppState = (state: AppStateStatus) => {
+      if (state === 'active') void refreshOnce(true);
+    };
+    const sub = AppState.addEventListener('change', onAppState);
+
     return () => {
       cancelled = true;
+      sub.remove();
       watchRef.current?.remove();
       watchRef.current = null;
     };
