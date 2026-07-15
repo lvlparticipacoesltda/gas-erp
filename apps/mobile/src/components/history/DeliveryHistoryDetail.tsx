@@ -18,6 +18,7 @@ import {
   getDeliveryDisplayStatus,
 } from '@gas-erp/shared';
 import { CustomerPhoneLink } from '@/components/CustomerPhoneLink';
+import { DeliveryNotes } from '@/components/DeliveryNotes';
 import { DeliverySaleSummary } from '@/components/DeliverySaleSummary';
 import { DestinationMarker } from '@/components/map/DestinationMarker';
 import { useDriverMarkerTracksViewChanges } from '@/components/map/DriverMarker';
@@ -247,6 +248,8 @@ export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
         {address ? (
           <Text style={styles.address}>{address}</Text>
         ) : null}
+
+        <DeliveryNotes notes={delivery.sale.notes} />
 
         <DeliverySaleSummary sale={delivery.sale} />
       </ScrollView>

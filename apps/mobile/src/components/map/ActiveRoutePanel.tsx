@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CustomerPhoneLink } from '../CustomerPhoneLink';
+import { DeliveryNotes } from '../DeliveryNotes';
 import { Button } from '../ui';
 import { DeliverySaleSummary } from '../DeliverySaleSummary';
 import { deliveryAddress } from '../../lib/deliveries';
@@ -91,12 +92,16 @@ export function ActiveRoutePanel({
 
           <CustomerPhoneLink phone={delivery.sale.customer?.phone} />
 
+          <DeliveryNotes notes={delivery.sale.notes} />
+
           <DeliverySaleSummary sale={delivery.sale} />
 
           {routeLoading ? <Text style={styles.hint}>Calculando rota...</Text> : null}
           {routeError ? <Text style={styles.error}>{routeError}</Text> : null}
         </View>
-      ) : null}
+      ) : (
+        <DeliveryNotes notes={delivery.sale.notes} numberOfLines={2} />
+      )}
 
       <View style={styles.navRow}>
         <Button
@@ -169,6 +174,8 @@ export function SelectedDeliveryPanel({
       ) : null}
 
       <CustomerPhoneLink phone={delivery.sale.customer?.phone} />
+
+      <DeliveryNotes notes={delivery.sale.notes} />
 
       <DeliverySaleSummary sale={delivery.sale} />
 

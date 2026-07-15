@@ -128,7 +128,7 @@ export default function NewSaleScreen() {
   const [allPaymentMethods, setAllPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [gasDoPovoBenefit, setGasDoPovoBenefit] = useState(false);
-  const [gdpUnitPrice, setGdpUnitPrice] = useState('');
+  const [unitPriceInput, setUnitPriceInput] = useState('');
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
   const [paymentMethodsError, setPaymentMethodsError] = useState('');
   const [fulfillment, setFulfillment] = useState<Fulfillment>('DELIVERY');
@@ -150,9 +150,7 @@ export default function NewSaleScreen() {
     [products, productId],
   );
   const catalogUnitPrice = selectedProduct ? productPrice(selectedProduct) : 0;
-  const unitPrice = gasDoPovoBenefit
-    ? Math.max(0, Number(gdpUnitPrice.replace(',', '.')) || 0)
-    : catalogUnitPrice;
+  const unitPrice = Math.max(0, Number(unitPriceInput.replace(',', '.')) || 0);
   const qty = Math.max(1, parseInt(quantity, 10) || 1);
   const lineTotal = unitPrice * qty;
   const deliveryFee =
@@ -266,10 +264,12 @@ export default function NewSaleScreen() {
   }, [saleTotal, regularPaymentMethods, gasDoPovoBenefit]);
 
   useEffect(() => {
-    if (gasDoPovoBenefit && selectedProduct) {
-      setGdpUnitPrice(String(catalogUnitPrice || ''));
+    if (!selectedProduct) {
+      setUnitPriceInput('');
+      return;
     }
-  }, [gasDoPovoBenefit, productId, catalogUnitPrice, selectedProduct]);
+    setUnitPriceInput(catalogUnitPrice > 0 ? String(catalogUnitPrice) : '');
+  }, [productId, catalogUnitPrice, selectedProduct]);
 
   const searchCustomers = useCallback(async (query: string) => {
     const term = query.trim();
@@ -484,7 +484,7 @@ export default function NewSaleScreen() {
       return;
     }
     if (unitPrice <= 0) {
-      setError('Produto sem preço cadastrado nesta loja.');
+      setError('Informe um preço unitário válido.');
       return;
     }
     if (fulfillment === 'DELIVERY' && !deliveryStreet.trim() && !deliveryCity.trim()) {
@@ -499,11 +499,6 @@ export default function NewSaleScreen() {
       setError(getPaymentLinesSumErrorMessage(paymentLines, saleTotal));
       return;
     }
-    if (gasDoPovoBenefit && unitPrice <= 0) {
-      setError('Informe um preço válido para o benefício Gás do Povo.');
-      return;
-    }
-
     setSubmitting(true);
     try {
       await api('/sales/mobile', {
@@ -531,7 +526,7 @@ export default function NewSaleScreen() {
       setSuccess('Venda enviada — aguardando aprovação da loja.');
       setNotes('');
       setGasDoPovoBenefit(false);
-      setGdpUnitPrice('');
+      setUnitPriceInput(catalogUnitPrice > 0 ? String(catalogUnitPrice) : '');
       setPaymentLines(createDefaultPaymentLines(paymentMethods, saleTotal));
       clearCustomerSelection();
       await loadData();
@@ -718,18 +713,19 @@ export default function NewSaleScreen() {
           placeholder="1"
           placeholderTextColor={colors.textFaint}
         />
-        {gasDoPovoBenefit ? (
-          <>
-            <Text style={styles.label}>Preço unitário (GDP)</Text>
-            <TextInput
-              style={styles.input}
-              value={gdpUnitPrice}
-              onChangeText={setGdpUnitPrice}
-              keyboardType="decimal-pad"
-              placeholder="0,00"
-              placeholderTextColor={colors.textFaint}
-            />
-          </>
+        <Text style={styles.label}>
+          {gasDoPovoBenefit ? 'Preço unitário (GDP)' : 'Preço unitário'}
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={unitPriceInput}
+          onChangeText={setUnitPriceInput}
+          keyboardType="decimal-pad"
+          placeholder="0,00"
+          placeholderTextColor={colors.textFaint}
+        />
+        {catalogUnitPrice > 0 && !gasDoPovoBenefit ? (
+          <Text style={styles.hint}>Catálogo: {formatCurrency(catalogUnitPrice)}</Text>
         ) : null}
         {unitPrice > 0 ? (
           <View style={styles.priceBox}>
@@ -755,8 +751,8 @@ export default function NewSaleScreen() {
           </Text>
           <Text style={[styles.gdpToggleHint, gasDoPovoBenefit && styles.gdpToggleHintActive]}>
             {gasDoPovoBenefit
-              ? 'Ajuste o preço unitário acima ou selecione GDP nas formas de pagamento'
-              : `Preço fixo: ${catalogUnitPrice > 0 ? formatCurrency(catalogUnitPrice) : '—'}`}
+              ? 'Ajuste o preço unitário acima; o pagamento fica como GDP'
+              : 'Você pode ajustar o preço unitário do produto acima'}
           </Text>
         </Pressable>
       </Card>

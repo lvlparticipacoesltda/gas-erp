@@ -8,6 +8,7 @@ import {
   getWaitTimeSeconds,
 } from '@gas-erp/shared';
 import { CustomerPhoneLink } from './CustomerPhoneLink';
+import { DeliveryNotes } from './DeliveryNotes';
 import { Badge, Card } from './ui';
 import { DeliverySaleSummary } from './DeliverySaleSummary';
 import { deliveryAddress } from '../lib/deliveries';
@@ -70,6 +71,7 @@ export function DeliveryCard({
           {address}
         </Text>
       ) : null}
+      <DeliveryNotes notes={delivery.sale.notes} numberOfLines={2} />
       <DeliverySaleSummary sale={delivery.sale} compact />
     </Card>
   );

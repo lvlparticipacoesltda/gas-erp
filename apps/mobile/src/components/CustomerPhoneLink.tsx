@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPhoneBr } from '@gas-erp/shared';
-import { callPhone } from '@/lib/navigation';
+import { openWhatsApp } from '@/lib/navigation';
 import { colors, radius, spacing } from '@/theme';
 
 export function CustomerPhoneLink({ phone }: { phone?: string | null }) {
@@ -10,13 +10,13 @@ export function CustomerPhoneLink({ phone }: { phone?: string | null }) {
 
   return (
     <Pressable
-      onPress={() => callPhone(phone)}
+      onPress={() => openWhatsApp(phone)}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      accessibilityLabel={`Ligar para ${formatted}`}
+      accessibilityLabel={`Abrir WhatsApp com ${formatted}`}
       accessibilityRole="button"
     >
-      <Ionicons name="call-outline" size={16} color={colors.primary} />
-      <Text style={styles.label}>Ligar</Text>
+      <Ionicons name="logo-whatsapp" size={16} color={colors.primary} />
+      <Text style={styles.label}>WhatsApp</Text>
       <Text style={styles.phone}>{formatted}</Text>
     </Pressable>
   );

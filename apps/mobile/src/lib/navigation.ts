@@ -1,4 +1,5 @@
 import { Alert, Linking } from 'react-native';
+import { stripPhoneDigits } from '@gas-erp/shared';
 
 export type NavigationDestination = {
   /** Endereço textual (fallback). */
@@ -66,10 +67,29 @@ export async function openWaze(dest: string | NavigationDestination): Promise<vo
   await openUrl(canOpenApp ? appUrl : webUrl, 'Não foi possível abrir o Waze.');
 }
 
-/** Abre o discador com o telefone informado. */
-export async function callPhone(phone: string): Promise<void> {
-  const sanitized = phone.replace(/[^\d+]/g, '');
-  await openUrl(`tel:${sanitized}`, 'Não foi possível iniciar a ligação.');
+/**
+ * Normaliza telefone BR para WhatsApp (E.164 sem +): 55 + DDD + número.
+ * Usa `stripPhoneDigits` (remove máscara e 55 duplicado quando já presente).
+ */
+export function toWhatsAppPhoneBr(phone: string): string | null {
+  const digits = stripPhoneDigits(phone);
+  if (digits.length < 10) return null;
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  return `55${digits}`;
+}
+
+/** Abre o chat do WhatsApp com o telefone (app nativo ou wa.me). */
+export async function openWhatsApp(phone: string): Promise<void> {
+  const e164 = toWhatsAppPhoneBr(phone);
+  if (!e164) {
+    Alert.alert('Ops', 'Telefone inválido para abrir o WhatsApp.');
+    return;
+  }
+
+  const appUrl = `whatsapp://send?phone=${e164}`;
+  const webUrl = `https://wa.me/${e164}`;
+  const canOpenApp = await Linking.canOpenURL(appUrl).catch(() => false);
+  await openUrl(canOpenApp ? appUrl : webUrl, 'Não foi possível abrir o WhatsApp.');
 }
 
 async function openUrl(url: string, errorMessage: string): Promise<void> {
