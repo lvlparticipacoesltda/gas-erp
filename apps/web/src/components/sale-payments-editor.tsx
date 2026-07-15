@@ -64,9 +64,11 @@ export function SalePaymentsEditor({
   const sumHint = !gdpLocked ? formatPaymentSumHint(paidTotal, saleTotal, formatCurrency) : null;
 
   const availableMethods = useMemo(() => {
-    const base = gdpLocked
-      ? methods.filter((m) => m.systemCode === 'GDP')
-      : methods.filter((m) => m.systemCode !== 'GDP');
+    if (gdpLocked) {
+      return methods.filter((m) => m.systemCode === 'GDP');
+    }
+    // Permite misturar GDP com outras formas (pagamento parcial Gás do Povo).
+    const base = methods.filter((m) => m.enabled !== false || m.systemCode === 'GDP');
     const baseIds = new Set(base.map((m) => m.id));
     const extras = methods.filter(
       (m) => lines.some((line) => line.storePaymentMethodId === m.id) && !baseIds.has(m.id),

@@ -165,7 +165,7 @@ export function FinishPaymentsModal({
       setGdpUnitPrice(String(initialUnitPrice));
     }
 
-    const activeOnly = gasDoPovoBenefit ? 'false' : 'true';
+    const activeOnly = 'false';
     let cancelled = false;
 
     api<StorePaymentMethodOption[]>(
@@ -174,7 +174,7 @@ export function FinishPaymentsModal({
       .then((rows) => {
         if (cancelled) return;
         setMethods(rows);
-        setLines(buildInitialLines(rows, saleTotal, gasDoPovoBenefit, initialPayments));
+        setLines(buildInitialLines(rows, saleTotal, false, initialPayments));
       })
       .catch((err) => {
         if (cancelled) return;
@@ -195,7 +195,11 @@ export function FinishPaymentsModal({
 
   useEffect(() => {
     if (!visible || !gasDoPovoBenefit || !gdpMethodId) return;
-    setLines(createGdpPaymentLines(gdpMethodId, methods, saleTotal));
+    // Só sincroniza linha única GDP se o modal ainda não tiver formas mistas.
+    setLines((current) => {
+      if (current.length > 1) return current;
+      return createGdpPaymentLines(gdpMethodId, methods, saleTotal);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleTotal, visible, gasDoPovoBenefit, gdpMethodId, methods]);
 
@@ -218,11 +222,9 @@ export function FinishPaymentsModal({
         setError('Informe um preço válido para o benefício Gás do Povo.');
         return;
       }
-      if (!paymentsMatchTotal([{ key: 'gdp', storePaymentMethodId: gdpMethodId, amount: saleTotal }], saleTotal)) {
-        setError('O valor do benefício Gás do Povo deve ser igual ao total da venda.');
-        return;
-      }
-    } else if (!paymentsMatchTotal(lines, saleTotal)) {
+      // Já não força 100% GDP — entregador pode misturar formas no modal.
+    }
+    if (!paymentsMatchTotal(lines, saleTotal)) {
       setError(getPaymentLinesSumErrorMessage(lines, saleTotal));
       return;
     }
@@ -230,9 +232,7 @@ export function FinishPaymentsModal({
     setLoading(true);
     setError('');
     try {
-      const payload = gasDoPovoBenefit && gdpMethodId
-        ? [{ storePaymentMethodId: gdpMethodId, amount: saleTotal }]
-        : paymentLinesToPayload(lines);
+      const payload = paymentLinesToPayload(lines);
       const unitPricePayload = canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : undefined;
       await onConfirm(payload, unitPricePayload);
     } catch (err) {
@@ -336,7 +336,8 @@ export function FinishPaymentsModal({
             saleTotal={saleTotal}
             loadingMethods={loadingMethods}
             methodsError={methodsError}
-            gdpLocked={gasDoPovoBenefit}
+            gdpLocked={false}
+            showGdpOption
             comfortable
             onAmountFocus={() => {
               scrollRef.current?.scrollToEnd({ animated: true });

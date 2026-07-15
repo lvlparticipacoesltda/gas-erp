@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { FULFILLMENT_TYPES, PAYMENT_METHODS, SALE_CHANNELS } from '../enums';
 import { getPaymentSumErrorMessage } from '../payment-sum-hint';
+import { anyItemHasPaymentMethod, allItemsHavePaymentMethod } from '../sale-item-payments';
 import { optionalId } from './helpers';
 
 export const saleItemSchema = z.object({
@@ -8,6 +9,8 @@ export const saleItemSchema = z.object({
   quantity: z.number().int().positive(),
   unitPrice: z.number().nonnegative(),
   discount: z.number().nonnegative().optional(),
+  /** Forma de pagamento deste produto (opcional). */
+  storePaymentMethodId: z.string().min(1).optional().nullable(),
 });
 
 export const salePaymentSchema = z
@@ -49,32 +52,42 @@ export const createSaleSchema = z.object({
   items: z.array(saleItemSchema).min(1),
   payments: z.array(salePaymentSchema).optional(),
   fulfillmentType: z.enum(FULFILLMENT_TYPES).optional(),
+  /** Preferência legada / atalho: se true e sem formas nos itens, força 100% GDP. */
   gasDoPovoBenefit: z.boolean().optional(),
+  /** Forma da taxa de entrega quando o pagamento é por produto. */
+  deliveryFeeStorePaymentMethodId: z.string().min(1).optional().nullable(),
   saleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   backdateRequestNotes: z.string().optional(),
 }).superRefine((data, ctx) => {
-  const benefit = data.gasDoPovoBenefit ?? false;
-  const payments = data.payments ?? [];
-  if (benefit && payments.some((p) => p.method && p.method !== 'GDP')) {
+  if (anyItemHasPaymentMethod(data.items) && !allItemsHavePaymentMethod(data.items)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Com benefício Gás do Povo, o pagamento deve ser GDP.',
-      path: ['payments'],
-    });
-  }
-  if (!benefit && payments.some((p) => p.method === 'GDP')) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'GDP só é permitido quando o benefício Gás do Povo está ativo.',
-      path: ['payments'],
+      message: 'Defina a forma de pagamento em todos os produtos.',
+      path: ['items'],
     });
   }
 });
 
+export const updateSaleItemPaymentSchema = z.object({
+  id: z.string().min(1),
+  storePaymentMethodId: z.string().min(1),
+});
+
 export const updateSalePaymentsSchema = z.object({
-  payments: z.array(salePaymentSchema).min(1, 'Informe ao menos uma forma de pagamento'),
+  payments: z.array(salePaymentSchema).optional(),
+  /** Atualiza forma de pagamento por item; quando enviado, os pagamentos são recalculados. */
+  itemPayments: z.array(updateSaleItemPaymentSchema).optional(),
+  deliveryFeeStorePaymentMethodId: z.string().min(1).optional().nullable(),
   /** Ajuste de preço unitário — permitido apenas com benefício Gás do Povo (validado na API). */
   unitPrice: z.number().nonnegative().optional(),
+}).superRefine((data, ctx) => {
+  if (!data.payments?.length && !data.itemPayments?.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Informe pagamentos ou formas por produto.',
+      path: ['payments'],
+    });
+  }
 });
 
 export type UpdateSalePaymentsInput = z.infer<typeof updateSalePaymentsSchema>;

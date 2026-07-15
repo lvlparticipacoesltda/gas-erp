@@ -18,7 +18,7 @@ export * from './schemas/delivery';
 export * from './permissions';
 export * from './sale-display';
 export * from './sale-financials';
-export * from './sale-pricing';
+export * from './sale-item-payments';
 export * from './sale-backdate';
 export * from './sale-mobile';
 export * from './sale-counting';

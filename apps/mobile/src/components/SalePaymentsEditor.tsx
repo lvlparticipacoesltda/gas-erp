@@ -85,10 +85,12 @@ export function resolveEditorMethods(
   if (gdpLocked) {
     return methods.filter((m) => m.systemCode === 'GDP');
   }
-  const regular = methods.filter((m) => m.systemCode !== 'GDP');
-  if (!showGdpOption) return regular;
+  const regular = methods.filter((m) => m.systemCode !== 'GDP' && m.enabled !== false);
   const gdp = methods.find((m) => m.systemCode === 'GDP');
-  return gdp ? [...regular, gdp] : regular;
+  if (showGdpOption && gdp) {
+    return [...regular, gdp];
+  }
+  return regular;
 }
 
 export function SalePaymentsEditor({

@@ -17,6 +17,9 @@ import {
   toNumber,
   isDelivererAssignableForSale,
   assertSalePaymentsTotal,
+  allItemsHavePaymentMethod,
+  anyItemHasPaymentMethod,
+  buildPaymentAllocationsFromItems,
   type DashboardDateQuery,
   resolveDashboardDateRange,
 } from '@gas-erp/shared';
@@ -63,8 +66,14 @@ export class SalesService {
     backdateApprovedBy: { select: { id: true, name: true } },
     mobileApprovedBy: { select: { id: true, name: true } },
     createdByDeliverer: { include: { user: { select: { id: true, name: true } } } },
-    items: { include: { product: true } },
-    payments: true,
+    items: {
+      include: {
+        product: true,
+        storePaymentMethod: { select: { id: true, label: true, systemCode: true } },
+      },
+    },
+    deliveryFeeStorePaymentMethod: { select: { id: true, label: true, systemCode: true } },
+    payments: { include: { storePaymentMethod: { select: { id: true, label: true, systemCode: true } } } },
     delivery: true,
     statusLogs: {
       orderBy: { createdAt: 'asc' as const },
@@ -172,25 +181,15 @@ export class SalesService {
     );
     const total = itemsTotal + deliveryFee;
 
-    const gasDoPovoBenefit = data.gasDoPovoBenefit ?? false;
-
-    let payments = data.payments?.length
-      ? data.payments
-      : [{ method: 'CASH' as const, amount: total }];
-
-    if (gasDoPovoBenefit) {
-      payments = [{ method: 'GDP' as const, amount: total }];
-    } else if (payments.some((p) => p.method === 'GDP')) {
-      throw new BadRequestException(
-        'Forma de pagamento GDP só é permitida com benefício Gás do Povo.',
-      );
-    }
-
-    const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
-      data.storeId,
-      payments,
+    const {
+      resolvedPayments,
       gasDoPovoBenefit,
-    );
+      deliveryFeeStorePaymentMethodId,
+    } = await this.resolveSalePaymentPlan(data.storeId, data.items, deliveryFee, {
+      payments: data.payments,
+      gasDoPovoBenefit: data.gasDoPovoBenefit,
+      deliveryFeeStorePaymentMethodId: data.deliveryFeeStorePaymentMethodId,
+    });
 
     const paidTotal = resolvedPayments.reduce((sum, payment) => sum + payment.amount, 0);
     if (total > 0 && paidTotal < total - 0.009) {
@@ -239,6 +238,7 @@ export class SalesService {
         total,
         gasDoPovoBenefit,
         deliveryFee,
+        deliveryFeeStorePaymentMethodId: deliveryFeeStorePaymentMethodId ?? undefined,
         notes: data.notes,
         saleDate: backdate.saleDate,
         backdateApproval: backdate.backdateApproval as BackdateApprovalStatus,
@@ -264,6 +264,7 @@ export class SalesService {
             unitCost: unitCostByProduct.get(item.productId) ?? 0,
             discount: item.discount ?? 0,
             total: item.quantity * item.unitPrice - (item.discount ?? 0),
+            storePaymentMethodId: item.storePaymentMethodId || undefined,
           })),
         },
         payments: { create: resolvedPayments },
@@ -368,25 +369,15 @@ export class SalesService {
     );
     const total = itemsTotal + deliveryFee;
 
-    const gasDoPovoBenefit = data.gasDoPovoBenefit ?? false;
-
-    let payments = data.payments?.length
-      ? data.payments
-      : [{ method: 'CASH' as const, amount: total }];
-
-    if (gasDoPovoBenefit) {
-      payments = [{ method: 'GDP' as const, amount: total }];
-    } else if (payments.some((p) => p.method === 'GDP')) {
-      throw new BadRequestException(
-        'Forma de pagamento GDP só é permitida com benefício Gás do Povo.',
-      );
-    }
-
-    const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
-      data.storeId,
-      payments,
+    const {
+      resolvedPayments,
       gasDoPovoBenefit,
-    );
+      deliveryFeeStorePaymentMethodId,
+    } = await this.resolveSalePaymentPlan(data.storeId, data.items, deliveryFee, {
+      payments: data.payments,
+      gasDoPovoBenefit: data.gasDoPovoBenefit,
+      deliveryFeeStorePaymentMethodId: data.deliveryFeeStorePaymentMethodId,
+    });
 
     const paidTotal = resolvedPayments.reduce((sum, payment) => sum + payment.amount, 0);
     if (total > 0 && paidTotal < total - 0.009) {
@@ -410,6 +401,7 @@ export class SalesService {
         total,
         gasDoPovoBenefit,
         deliveryFee,
+        deliveryFeeStorePaymentMethodId: deliveryFeeStorePaymentMethodId ?? undefined,
         notes: data.notes,
         mobileApproval: 'PENDING' as MobileApprovalStatus,
         deliveryStreet: isPickup ? undefined : data.deliveryStreet || undefined,
@@ -427,6 +419,7 @@ export class SalesService {
             unitCost: unitCostByProduct.get(item.productId) ?? 0,
             discount: item.discount ?? 0,
             total: item.quantity * item.unitPrice - (item.discount ?? 0),
+            storePaymentMethodId: item.storePaymentMethodId || undefined,
           })),
         },
         payments: { create: resolvedPayments },
@@ -1261,7 +1254,7 @@ export class SalesService {
   }
 
   async updatePayments(user: AuthUser, id: string, input: unknown) {
-    const { payments, unitPrice: submittedUnitPrice } = updateSalePaymentsSchema.parse(input);
+    const parsed = updateSalePaymentsSchema.parse(input);
     const sale = await this.prisma.sale.findUnique({
       where: { id },
       include: {
@@ -1282,7 +1275,7 @@ export class SalesService {
       throw new BadRequestException('Não é possível alterar pagamentos de venda cancelada.');
     }
 
-    const gasDoPovoBenefit = sale.gasDoPovoBenefit;
+    const submittedUnitPrice = parsed.unitPrice;
 
     if (submittedUnitPrice !== undefined && sale.items.length !== 1) {
       throw new BadRequestException(
@@ -1291,17 +1284,71 @@ export class SalesService {
     }
 
     let saleTotal = toNumber(sale.total);
+    let itemsForPlan = sale.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: toNumber(item.unitPrice),
+      discount: toNumber(item.discount),
+      storePaymentMethodId: item.storePaymentMethodId,
+    }));
 
     if (submittedUnitPrice !== undefined) {
       const deliveryFee = toNumber(sale.deliveryFee);
-      const item = sale.items[0];
-      const discount = toNumber(item.discount);
-      const itemTotal = item.quantity * submittedUnitPrice - discount;
+      const item = itemsForPlan[0];
+      const itemTotal = item.quantity * submittedUnitPrice - (item.discount ?? 0);
       saleTotal = itemTotal + deliveryFee;
+      itemsForPlan = [{ ...item, unitPrice: submittedUnitPrice }];
     }
 
+    if (parsed.itemPayments?.length) {
+      const byId = new Map(parsed.itemPayments.map((row) => [row.id, row.storePaymentMethodId]));
+      for (const row of parsed.itemPayments) {
+        if (!sale.items.some((item) => item.id === row.id)) {
+          throw new BadRequestException('Item de venda inválido para atualizar pagamento.');
+        }
+      }
+      itemsForPlan = sale.items.map((row) => {
+        const methodId = byId.get(row.id) ?? row.storePaymentMethodId;
+        return {
+          productId: row.productId,
+          quantity: row.quantity,
+          unitPrice:
+            submittedUnitPrice !== undefined && sale.items.length === 1
+              ? submittedUnitPrice
+              : toNumber(row.unitPrice),
+          discount: toNumber(row.discount),
+          storePaymentMethodId: methodId,
+        };
+      });
+    }
+
+    const deliveryFee = toNumber(sale.deliveryFee);
+    const {
+      resolvedPayments,
+      gasDoPovoBenefit,
+      deliveryFeeStorePaymentMethodId,
+    } = await this.resolveSalePaymentPlan(
+      sale.storeId,
+      itemsForPlan,
+      deliveryFee,
+      {
+        payments: parsed.payments,
+        gasDoPovoBenefit: parsed.itemPayments?.length
+          ? undefined
+          : parsed.payments?.some((p) => p.method === 'GDP')
+            ? true
+            : parsed.payments?.length
+              ? false
+              : sale.gasDoPovoBenefit,
+        deliveryFeeStorePaymentMethodId:
+          parsed.deliveryFeeStorePaymentMethodId !== undefined
+            ? parsed.deliveryFeeStorePaymentMethodId
+            : sale.deliveryFeeStorePaymentMethodId,
+      },
+    );
+
     try {
-      assertSalePaymentsTotal(payments, saleTotal);
+      assertSalePaymentsTotal(resolvedPayments, saleTotal);
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'Pagamentos inválidos.');
     }
@@ -1346,20 +1393,6 @@ export class SalesService {
       }
     }
 
-    if (gasDoPovoBenefit) {
-      if (payments.length !== 1 || payments.some((p) => p.method && p.method !== 'GDP')) {
-        throw new BadRequestException('Com benefício Gás do Povo, o pagamento deve ser 100% GDP.');
-      }
-    } else if (payments.some((p) => p.method === 'GDP')) {
-      throw new BadRequestException('GDP só é permitido com benefício Gás do Povo.');
-    }
-
-    const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
-      sale.storeId,
-      payments,
-      gasDoPovoBenefit,
-    );
-
     const previousPayments = sale.payments.map((p) => ({
       method: p.method,
       amount: toNumber(p.amount),
@@ -1379,11 +1412,25 @@ export class SalesService {
             total: itemTotal,
           },
         });
-        await tx.sale.update({
-          where: { id },
-          data: { total: saleTotal },
-        });
       }
+
+      if (parsed.itemPayments?.length) {
+        for (const row of parsed.itemPayments) {
+          await tx.saleItem.update({
+            where: { id: row.id },
+            data: { storePaymentMethodId: row.storePaymentMethodId },
+          });
+        }
+      }
+
+      await tx.sale.update({
+        where: { id },
+        data: {
+          total: saleTotal,
+          gasDoPovoBenefit,
+          deliveryFeeStorePaymentMethodId: deliveryFeeStorePaymentMethodId,
+        },
+      });
 
       await tx.salePayment.deleteMany({ where: { saleId: id } });
       await tx.salePayment.createMany({
@@ -1459,5 +1506,89 @@ export class SalesService {
         reason ? `Entregador indisponível: ${reason}.` : 'Entregador indisponível.',
       );
     }
+  }
+
+  /**
+   * Resolve pagamentos da venda: por produto (agregado) ou linhas livres / atalho GDP 100%.
+   * `gasDoPovoBenefit` final = há pelo menos um pagamento GDP.
+   */
+  private async resolveSalePaymentPlan(
+    storeId: string,
+    items: Array<{
+      productId: string;
+      quantity: number;
+      unitPrice: number;
+      discount?: number | null;
+      storePaymentMethodId?: string | null;
+    }>,
+    deliveryFee: number,
+    options: {
+      payments?: Array<{ method?: string; storePaymentMethodId?: string; amount: number }>;
+      gasDoPovoBenefit?: boolean;
+      deliveryFeeStorePaymentMethodId?: string | null;
+    },
+  ) {
+    const itemsTotal = items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice - (item.discount ?? 0),
+      0,
+    );
+    const total = itemsTotal + deliveryFee;
+
+    if (anyItemHasPaymentMethod(items) && !allItemsHavePaymentMethod(items)) {
+      throw new BadRequestException('Defina a forma de pagamento em todos os produtos.');
+    }
+
+    const fromItems = buildPaymentAllocationsFromItems(
+      items,
+      deliveryFee,
+      options.deliveryFeeStorePaymentMethodId,
+    );
+
+    let payments: Array<{ method?: string; storePaymentMethodId?: string; amount: number }>;
+    let deliveryFeeStorePaymentMethodId =
+      options.deliveryFeeStorePaymentMethodId?.trim() || null;
+
+    if (fromItems.length > 0) {
+      payments = fromItems;
+      if (deliveryFee > 0.009 && !deliveryFeeStorePaymentMethodId) {
+        deliveryFeeStorePaymentMethodId =
+          items.find((item) => item.storePaymentMethodId)?.storePaymentMethodId ?? null;
+      }
+    } else if (options.gasDoPovoBenefit && !(options.payments?.length)) {
+      // Atalho legado: benefício GDP sem linhas → 100% GDP.
+      payments = [{ method: 'GDP', amount: total }];
+    } else {
+      payments = options.payments?.length
+        ? options.payments
+        : [{ method: 'CASH', amount: total }];
+    }
+
+    const gdpMethod = await this.prisma.storePaymentMethod.findFirst({
+      where: { storeId, systemCode: 'GDP' },
+      select: { id: true },
+    });
+
+    const allowGdp =
+      Boolean(options.gasDoPovoBenefit)
+      || payments.some(
+        (p) =>
+          p.method === 'GDP'
+          || (gdpMethod != null && p.storePaymentMethodId === gdpMethod.id),
+      )
+      || items.some((item) => gdpMethod != null && item.storePaymentMethodId === gdpMethod.id);
+
+    const resolvedPayments = await this.paymentMethods.resolvePaymentsForSale(
+      storeId,
+      payments as Array<{ method?: import('@gas-erp/database').PaymentMethod; storePaymentMethodId?: string; amount: number }>,
+      { allowGdp },
+    );
+
+    const gasDoPovoBenefit = resolvedPayments.some((p) => p.method === 'GDP');
+
+    return {
+      resolvedPayments,
+      gasDoPovoBenefit,
+      deliveryFeeStorePaymentMethodId,
+    };
   }
 }

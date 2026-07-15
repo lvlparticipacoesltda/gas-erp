@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FULFILLMENT_TYPES } from '../enums';
+import { anyItemHasPaymentMethod, allItemsHavePaymentMethod } from '../sale-item-payments';
 import { optionalId } from './helpers';
 import { saleItemSchema, salePaymentSchema } from './sale';
 
@@ -12,6 +13,7 @@ export const createMobileSaleSchema = z
     items: z.array(saleItemSchema).min(1, 'Informe ao menos um produto'),
     payments: z.array(salePaymentSchema).optional(),
     gasDoPovoBenefit: z.boolean().optional(),
+    deliveryFeeStorePaymentMethodId: z.string().min(1).optional().nullable(),
     deliveryStreet: z.string().optional(),
     deliveryNumber: z.string().optional(),
     deliveryComplement: z.string().optional(),
@@ -21,20 +23,11 @@ export const createMobileSaleSchema = z
     deliveryLandmark: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    const benefit = data.gasDoPovoBenefit ?? false;
-    const payments = data.payments ?? [];
-    if (benefit && payments.some((p) => p.method && p.method !== 'GDP')) {
+    if (anyItemHasPaymentMethod(data.items) && !allItemsHavePaymentMethod(data.items)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Com benefício Gás do Povo, o pagamento deve ser GDP.',
-        path: ['payments'],
-      });
-    }
-    if (!benefit && payments.some((p) => p.method === 'GDP')) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'GDP só é permitido quando o benefício Gás do Povo está ativo.',
-        path: ['payments'],
+        message: 'Defina a forma de pagamento em todos os produtos.',
+        path: ['items'],
       });
     }
     if (data.fulfillmentType === 'DELIVERY') {

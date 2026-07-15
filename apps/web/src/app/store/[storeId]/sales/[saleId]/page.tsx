@@ -67,7 +67,12 @@ interface SaleDetail {
   customer?: { name: string; phone?: string | null } | null;
   deliverer?: { id: string; user: { name: string } } | null;
   attendant?: { id: string; name: string; email?: string } | null;
-  items: { quantity: number; unitPrice: number | string; product: { name: string } }[];
+  items: {
+    quantity: number;
+    unitPrice: number | string;
+    product: { name: string };
+    storePaymentMethod?: { id: string; label: string; systemCode: string | null } | null;
+  }[];
   payments: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
   delivery?: { id: string; status: string; startedAt?: string | null; completedAt?: string | null } | null;
   statusLogs: {
@@ -558,7 +563,12 @@ export default function SaleDetailPage() {
             <h3 className="mb-2 mt-6 font-medium">Itens</h3>
             <ul className="space-y-1 text-sm">
               {sale.items.map((item, i) => (
-                <li key={i}>{item.quantity}x {item.product.name} — {formatCurrency(item.unitPrice)}</li>
+                <li key={i}>
+                  {item.quantity}x {item.product.name} — {formatCurrency(item.unitPrice)}
+                  {item.storePaymentMethod?.label ? (
+                    <span className="text-slate-500"> · {item.storePaymentMethod.label}</span>
+                  ) : null}
+                </li>
               ))}
             </ul>
 
@@ -570,7 +580,7 @@ export default function SaleDetailPage() {
                   lines={paymentLines}
                   onChange={setPaymentLines}
                   saleTotal={saleTotal}
-                  gdpLocked={sale.gasDoPovoBenefit}
+                  gdpLocked={false}
                   gdpMethodId={paymentMethods.find((m) => m.systemCode === 'GDP')?.id}
                 />
                 <div className="flex flex-wrap gap-2">

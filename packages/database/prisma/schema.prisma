@@ -190,6 +190,8 @@ model StorePaymentMethod {
   store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payments     SalePayment[]
+  saleItems    SaleItem[]    @relation("SaleItemPaymentMethod")
+  salesFee     Sale[]        @relation("SaleDeliveryFeePaymentMethod")
 
   @@unique([storeId, systemCode])
   @@index([storeId])
@@ -518,6 +520,8 @@ model Sale {
   deliveryLandmark      String?
   gasDoPovoBenefit      Boolean     @default(false)
   deliveryFee           Decimal     @db.Decimal(12, 2) @default(0)
+  /** Forma de pagamento da taxa de entrega (quando o pagamento é por produto). */
+  deliveryFeeStorePaymentMethodId String?
   canceledReason        String?
   confirmedAt           DateTime?
   deliveredAt           DateTime?
@@ -543,6 +547,7 @@ model Sale {
   backdateApprovedBy User?     @relation("SaleBackdateApprover", fields: [backdateApprovedById], references: [id])
   mobileApprovedBy User?       @relation("SaleMobileApprover", fields: [mobileApprovedById], references: [id])
   createdByDeliverer Deliverer? @relation("SaleCreatedByDeliverer", fields: [createdByDelivererId], references: [id])
+  deliveryFeeStorePaymentMethod StorePaymentMethod? @relation("SaleDeliveryFeePaymentMethod", fields: [deliveryFeeStorePaymentMethodId], references: [id], onDelete: SetNull)
   items       SaleItem[]
   payments    SalePayment[]
   statusLogs  SaleStatusLog[]
@@ -557,6 +562,7 @@ model Sale {
   @@index([backdateApproval])
   @@index([mobileApproval])
   @@index([createdByDelivererId])
+  @@index([deliveryFeeStorePaymentMethodId])
 }
 
 model SaleBackdateLog {
@@ -588,19 +594,23 @@ model SaleMobileApprovalLog {
 }
 
 model SaleItem {
-  id        String  @id @default(cuid())
-  saleId    String
-  productId String
-  quantity  Int
-  unitPrice Decimal @db.Decimal(12, 2)
-  unitCost  Decimal @db.Decimal(12, 2) @default(0)
-  discount  Decimal @db.Decimal(12, 2) @default(0)
-  total     Decimal @db.Decimal(12, 2)
+  id                   String  @id @default(cuid())
+  saleId               String
+  productId            String
+  quantity             Int
+  unitPrice            Decimal @db.Decimal(12, 2)
+  unitCost             Decimal @db.Decimal(12, 2) @default(0)
+  discount             Decimal @db.Decimal(12, 2) @default(0)
+  total                Decimal @db.Decimal(12, 2)
+  /** Forma de pagamento deste produto (opcional; quando preenchido em todos os itens, agrega SalePayment). */
+  storePaymentMethodId String?
 
-  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  sale               Sale                 @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product            Product              @relation(fields: [productId], references: [id])
+  storePaymentMethod StorePaymentMethod?  @relation("SaleItemPaymentMethod", fields: [storePaymentMethodId], references: [id], onDelete: SetNull)
 
   @@index([saleId])
+  @@index([storePaymentMethodId])
 }
 
 model SalePayment {

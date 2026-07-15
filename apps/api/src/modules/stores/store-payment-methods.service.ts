@@ -202,8 +202,9 @@ export class StorePaymentMethodsService {
   async resolvePaymentsForSale(
     storeId: string,
     payments: Array<{ method?: PaymentMethod; storePaymentMethodId?: string; amount: number }>,
-    gasDoPovoBenefit: boolean,
+    options: { allowGdp?: boolean } = {},
   ) {
+    const allowGdp = options.allowGdp ?? false;
     const storeMethods = await this.prisma.storePaymentMethod.findMany({
       where: { storeId },
     });
@@ -229,7 +230,7 @@ export class StorePaymentMethodsService {
 
       const systemCode = methodRecord.systemCode as PaymentMethod | null;
 
-      if (!methodRecord.enabled && !(gasDoPovoBenefit && systemCode === 'GDP')) {
+      if (!methodRecord.enabled && !(allowGdp && systemCode === 'GDP')) {
         throw new BadRequestException(`Forma de pagamento "${methodRecord.label}" está desativada.`);
       }
 
@@ -238,11 +239,8 @@ export class StorePaymentMethodsService {
         (payment.method as PaymentMethod | undefined) ??
         PaymentMethod.OTHER;
 
-      if (gasDoPovoBenefit && systemCode !== 'GDP') {
-        throw new BadRequestException('Com benefício Gás do Povo, o pagamento deve ser GDP.');
-      }
-      if (!gasDoPovoBenefit && systemCode === 'GDP') {
-        throw new BadRequestException('GDP só é permitido com benefício Gás do Povo ativo.');
+      if (systemCode === 'GDP' && !allowGdp) {
+        throw new BadRequestException('GDP só é permitido em vendas com benefício Gás do Povo.');
       }
 
       const processingFee = computePaymentProcessingFee(payment.amount, {

@@ -242,10 +242,6 @@ export default function NewSaleScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gasDoPovoBenefit, gdpPaymentMethod?.id, saleTotal, allPaymentMethods.length]);
 
-  function enableGdpBenefit() {
-    setGasDoPovoBenefit(true);
-  }
-
   function toggleGdpBenefit() {
     setGasDoPovoBenefit((current) => !current);
   }
@@ -499,6 +495,15 @@ export default function NewSaleScreen() {
       setError(getPaymentLinesSumErrorMessage(paymentLines, saleTotal));
       return;
     }
+    const usesGdp =
+      gasDoPovoBenefit
+      || paymentLines.some((line) => {
+        const method = allPaymentMethods.find((m) => m.id === line.storePaymentMethodId);
+        return method?.systemCode === 'GDP';
+      });
+    const itemMethodId = !gasDoPovoBenefit && paymentLines.length === 1
+      ? paymentLines[0]?.storePaymentMethodId
+      : undefined;
     setSubmitting(true);
     try {
       await api('/sales/mobile', {
@@ -508,8 +513,13 @@ export default function NewSaleScreen() {
           customerId: selectedCustomer?.id,
           fulfillmentType: fulfillment,
           notes: notes.trim() || undefined,
-          gasDoPovoBenefit,
-          items: [{ productId, quantity: qty, unitPrice }],
+          gasDoPovoBenefit: usesGdp && (gasDoPovoBenefit || paymentLines.length === 1),
+          items: [{
+            productId,
+            quantity: qty,
+            unitPrice,
+            storePaymentMethodId: itemMethodId,
+          }],
           payments: gasDoPovoBenefit
             ? gdpPaymentMethod
               ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: saleTotal }]
@@ -769,13 +779,16 @@ export default function NewSaleScreen() {
           methodsError={paymentMethodsError}
           gdpLocked={gasDoPovoBenefit}
           showGdpOption={Boolean(gdpPaymentMethod)}
-          onGdpSelected={enableGdpBenefit}
         />
         {gasDoPovoBenefit ? (
           <Text style={styles.hint}>
             Pagamento: {PAYMENT_METHOD_LABELS.GDP} — {formatCurrency(saleTotal)}
           </Text>
-        ) : null}
+        ) : (
+          <Text style={styles.hint}>
+            Para misturar GDP com outra forma, use “+ Adicionar forma” e escolha GDP em uma das linhas.
+          </Text>
+        )}
       </Card>
 
       <Card style={styles.section}>

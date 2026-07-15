@@ -15,6 +15,10 @@ import {
   type SalePaymentLine,
   type StorePaymentMethodOption,
 } from '@/components/sale-payments-editor';
+import {
+  SaleItemPaymentsEditor,
+  paymentMethodsForSale,
+} from '@/components/sale-item-payments-editor';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { parsePrice } from '@/lib/sale-utils';
@@ -29,6 +33,8 @@ import {
   todayBusinessDateKey,
   isDelivererAssignableForSale,
   formatDistanceMeters,
+  allItemsHavePaymentMethod,
+  buildPaymentAllocationsFromItems,
   type PaginatedResponse,
   type DelivererSuggestResponse,
 } from '@gas-erp/shared';
@@ -52,6 +58,7 @@ type SaleLineItem = {
   productId: string;
   quantity: number;
   unitPrice: number;
+  storePaymentMethodId?: string;
 };
 
 const STEPS = [
@@ -68,6 +75,8 @@ export default function NewSalePage() {
   const [deliverers, setDeliverers] = useState<Deliverer[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
   const [paymentLines, setPaymentLines] = useState<SalePaymentLine[]>([]);
+  const [paymentByProduct, setPaymentByProduct] = useState(false);
+  const [deliveryFeeMethodId, setDeliveryFeeMethodId] = useState('');
   const [delivererDistances, setDelivererDistances] = useState<Record<string, string>>({});
   const [suggestNote, setSuggestNote] = useState('');
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -410,7 +419,12 @@ export default function NewSalePage() {
         setError('O total da venda deve ser maior que zero.');
         return;
       }
-      if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
+      if (paymentByProduct) {
+        if (!allItemsHavePaymentMethod(lineItems)) {
+          setError('Defina a forma de pagamento em todos os produtos.');
+          return;
+        }
+      } else if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
         setError(getPaymentLinesSumErrorMessage(paymentLines, total));
         return;
       }
@@ -433,7 +447,12 @@ export default function NewSalePage() {
       setError('Informe o motivo para registrar a venda com data anterior.');
       return;
     }
-    if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
+    if (paymentByProduct) {
+      if (!allItemsHavePaymentMethod(lineItems)) {
+        setError('Defina a forma de pagamento em todos os produtos.');
+        return;
+      }
+    } else if (!draft.gasDoPovoBenefit && !paymentsMatchTotal(paymentLines, total)) {
       setError(getPaymentLinesSumErrorMessage(paymentLines, total));
       return;
     }
@@ -458,17 +477,35 @@ export default function NewSalePage() {
           deliveryNeighborhood: draft.deliveryNeighborhood,
           deliveryCity: draft.deliveryCity,
           deliveryState: draft.deliveryState,
-          gasDoPovoBenefit: draft.gasDoPovoBenefit,
+          gasDoPovoBenefit: paymentByProduct
+            ? undefined
+            : draft.gasDoPovoBenefit,
+          deliveryFeeStorePaymentMethodId: paymentByProduct
+            ? (deliveryFeeMethodId || undefined)
+            : undefined,
           items: lineItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
+            storePaymentMethodId: paymentByProduct
+              ? item.storePaymentMethodId
+              : undefined,
           })),
-          payments: draft.gasDoPovoBenefit
-            ? gdpPaymentMethod
-              ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: total }]
-              : [{ method: 'GDP', amount: total }]
-            : salePaymentLinesToPayload(paymentLines),
+          payments: paymentByProduct
+            ? buildPaymentAllocationsFromItems(
+                lineItems.map((item) => ({
+                  storePaymentMethodId: item.storePaymentMethodId,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                })),
+                deliveryFee,
+                deliveryFeeMethodId || null,
+              )
+            : draft.gasDoPovoBenefit
+              ? gdpPaymentMethod
+                ? [{ storePaymentMethodId: gdpPaymentMethod.id, amount: total }]
+                : [{ method: 'GDP', amount: total }]
+              : salePaymentLinesToPayload(paymentLines),
         }),
       }, getToken());
       router.push(`/store/${storeId}/sales`);
@@ -688,49 +725,130 @@ export default function NewSalePage() {
               )}
 
               <div className="mt-6">
-                <Label>Benefício Gás do Povo</Label>
-                <button
-                  type="button"
-                  onClick={() => setDraft((d) => {
-                    const nextGdp = !d.gasDoPovoBenefit;
-                    if (!nextGdp) {
-                      setLineItems((items) =>
-                        items.map((item) => ({
-                          ...item,
-                          unitPrice: resolveProductUnitPrice(item.productId),
-                        })),
-                      );
-                    }
-                    return { ...d, gasDoPovoBenefit: nextGdp };
-                  })}
-                  className={cn(
-                    'mt-2 w-full rounded-xl border px-4 py-3 text-left text-sm transition',
-                    draft.gasDoPovoBenefit
-                      ? 'border-brand bg-brand-muted text-brand-dark'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300',
-                  )}
-                >
-                  <span className="font-medium">Benefício Gás do Povo</span>
-                  <span className="mt-1 block text-xs opacity-80">
-                    {draft.gasDoPovoBenefit
-                      ? 'Sim — pagamento via GDP (forma de pagamento desativada)'
-                      : 'Não — toque para marcar como sim'}
-                  </span>
-                </button>
+                <Label>Como informar o pagamento?</Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentByProduct(false)}
+                    className={cn(
+                      'rounded-xl border px-4 py-2 text-sm font-medium transition',
+                      !paymentByProduct
+                        ? 'border-brand bg-brand-muted text-brand-dark'
+                        : 'border-slate-200 bg-white text-slate-700',
+                    )}
+                  >
+                    Por valor (formas da venda)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentByProduct(true);
+                      setDraft((d) => ({ ...d, gasDoPovoBenefit: false }));
+                      const defaults = paymentMethodsForSale(paymentMethods);
+                      const fallback = defaults.find((m) => m.systemCode === 'CASH') ?? defaults[0];
+                      if (fallback) {
+                        setLineItems((items) =>
+                          items.map((item) => ({
+                            ...item,
+                            storePaymentMethodId: item.storePaymentMethodId || fallback.id,
+                          })),
+                        );
+                        setDeliveryFeeMethodId((current) => current || fallback.id);
+                      }
+                    }}
+                    className={cn(
+                      'rounded-xl border px-4 py-2 text-sm font-medium transition',
+                      paymentByProduct
+                        ? 'border-brand bg-brand-muted text-brand-dark'
+                        : 'border-slate-200 bg-white text-slate-700',
+                    )}
+                  >
+                    Por produto (ex.: GDP + Pix)
+                  </button>
+                </div>
               </div>
 
-              <div className="mt-6">
-                <Label>Pagamento</Label>
-                <SalePaymentsEditor
-                  className="mt-2"
-                  methods={paymentMethods}
-                  lines={paymentLines}
-                  onChange={setPaymentLines}
-                  saleTotal={total}
-                  gdpLocked={draft.gasDoPovoBenefit}
-                  gdpMethodId={gdpPaymentMethod?.id}
-                />
-              </div>
+              {!paymentByProduct ? (
+                <>
+                  <div className="mt-6">
+                    <Label>Benefício Gás do Povo (venda inteira)</Label>
+                    <button
+                      type="button"
+                      onClick={() => setDraft((d) => {
+                        const nextGdp = !d.gasDoPovoBenefit;
+                        if (!nextGdp) {
+                          setLineItems((items) =>
+                            items.map((item) => ({
+                              ...item,
+                              unitPrice: resolveProductUnitPrice(item.productId),
+                            })),
+                          );
+                        }
+                        return { ...d, gasDoPovoBenefit: nextGdp };
+                      })}
+                      className={cn(
+                        'mt-2 w-full rounded-xl border px-4 py-3 text-left text-sm transition',
+                        draft.gasDoPovoBenefit
+                          ? 'border-brand bg-brand-muted text-brand-dark'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300',
+                      )}
+                    >
+                      <span className="font-medium">Benefício Gás do Povo</span>
+                      <span className="mt-1 block text-xs opacity-80">
+                        {draft.gasDoPovoBenefit
+                          ? 'Sim — 100% GDP nesta venda'
+                          : 'Não — ou use “Por produto” para misturar GDP com outras formas'}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="mt-6">
+                    <Label>Pagamento</Label>
+                    <SalePaymentsEditor
+                      className="mt-2"
+                      methods={paymentMethods}
+                      lines={paymentLines}
+                      onChange={setPaymentLines}
+                      saleTotal={total}
+                      gdpLocked={draft.gasDoPovoBenefit}
+                      gdpMethodId={gdpPaymentMethod?.id}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="mt-6">
+                  <Label>Pagamento por produto</Label>
+                  <SaleItemPaymentsEditor
+                    className="mt-2"
+                    methods={paymentMethods}
+                    items={lineItems.map((item) => ({
+                      key: item.productId,
+                      label: products.find((p) => p.id === item.productId)?.name ?? 'Produto',
+                      quantity: item.quantity,
+                      unitPrice: item.unitPrice,
+                      storePaymentMethodId: item.storePaymentMethodId
+                        || paymentMethodsForSale(paymentMethods)[0]?.id
+                        || '',
+                    }))}
+                    onChangeItemMethod={(productId, storePaymentMethodId) => {
+                      setLineItems((items) =>
+                        items.map((item) =>
+                          item.productId === productId
+                            ? { ...item, storePaymentMethodId }
+                            : item,
+                        ),
+                      );
+                    }}
+                    deliveryFee={deliveryFee}
+                    deliveryFeeStorePaymentMethodId={
+                      deliveryFeeMethodId
+                      || paymentMethodsForSale(paymentMethods)[0]?.id
+                      || ''
+                    }
+                    onChangeDeliveryFeeMethod={setDeliveryFeeMethodId}
+                  />
+                </div>
+              )}
             </Card>
 
             <Card>
