@@ -18,3 +18,35 @@ FROM (
 WHERE d.id = sub."delivererId"
   AND d.status <> 'OFFLINE'
   AND d."availableStoreId" IS NULL;
+
+-- Multi-unidade: unidade da rota IN_PROGRESS mais recente.
+UPDATE "Deliverer" d
+SET "availableStoreId" = sub."storeId"
+FROM (
+  SELECT DISTINCT ON (del."delivererId")
+    del."delivererId",
+    s."storeId" AS "storeId"
+  FROM "Delivery" del
+  INNER JOIN "Sale" s ON s.id = del."saleId"
+  WHERE del.status = 'IN_PROGRESS'
+  ORDER BY del."delivererId", del."startedAt" DESC NULLS LAST, del."createdAt" DESC
+) sub
+WHERE d.id = sub."delivererId"
+  AND d.status <> 'OFFLINE'
+  AND d."availableStoreId" IS NULL;
+
+-- Multi-unidade: se ainda null, unidade da PENDING mais recente.
+UPDATE "Deliverer" d
+SET "availableStoreId" = sub."storeId"
+FROM (
+  SELECT DISTINCT ON (del."delivererId")
+    del."delivererId",
+    s."storeId" AS "storeId"
+  FROM "Delivery" del
+  INNER JOIN "Sale" s ON s.id = del."saleId"
+  WHERE del.status = 'PENDING'
+  ORDER BY del."delivererId", del."createdAt" DESC
+) sub
+WHERE d.id = sub."delivererId"
+  AND d.status <> 'OFFLINE'
+  AND d."availableStoreId" IS NULL;

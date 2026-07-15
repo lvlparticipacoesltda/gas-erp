@@ -69,6 +69,8 @@ export const delivererPositionSchema = z.object({
   name: z.string(),
   /** Status persistido no cadastro (AVAILABLE | ON_DELIVERY | OFFLINE). */
   status: z.enum(DELIVERER_STATUSES),
+  /** Unidade em que está disponível no mapa (escopo por loja). */
+  availableStoreId: z.string().nullable().optional(),
   delivererStatus: z.string(),
   latitude: z.number().nullable(),
   longitude: z.number().nullable(),

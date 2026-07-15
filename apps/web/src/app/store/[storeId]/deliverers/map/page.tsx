@@ -58,22 +58,13 @@ export default function DelivererMapPage() {
     });
   }, []);
 
-  const load = useCallback(async () => {
-    const data = await api<DelivererPosition[]>(
-      `/deliverers/positions?storeId=${storeId}`,
-      {},
-      getToken(),
-    );
-    setPositions(data);
-    setLastUpdated(new Date());
-  }, [storeId]);
-
-  const loadOffline = useCallback(async () => {
+  const loadOffline = useCallback(async (onPanelIds: Set<string>) => {
     const all = await api<DelivererListItem[]>(`/deliverers?storeId=${storeId}`, {}, getToken());
     setOfflineDeliverers(
       all.filter(
         (d) =>
           d.user.active
+          && !onPanelIds.has(d.id)
           && d.status !== 'ON_DELIVERY'
           && d.availableStoreId !== storeId,
       ),
@@ -81,11 +72,18 @@ export default function DelivererMapPage() {
   }, [storeId]);
 
   const loadAll = useCallback(async () => {
-    await load();
+    const data = await api<DelivererPosition[]>(
+      `/deliverers/positions?storeId=${storeId}`,
+      {},
+      getToken(),
+    );
+    setPositions(data);
+    setLastUpdated(new Date());
     if (canToggleAvailability) {
-      await loadOffline().catch(() => setOfflineDeliverers([]));
+      const onPanelIds = new Set(data.map((p) => p.delivererId));
+      await loadOffline(onPanelIds).catch(() => setOfflineDeliverers([]));
     }
-  }, [load, loadOffline, canToggleAvailability]);
+  }, [storeId, loadOffline, canToggleAvailability]);
 
   useEffect(() => {
     loadAll()

@@ -212,13 +212,33 @@ export class DeliverersService {
             availableStoreId: storeId,
             stores: { some: { storeId, store: { organizationId: user.organizationId } } },
           },
+          // Rotas desta unidade: só entra se disponível aqui, ainda sem unidade,
+          // ou com rota IN_PROGRESS nesta loja (mesmo disponível em outra).
           {
-            deliveries: {
-              some: {
-                status: { in: ['PENDING', 'IN_PROGRESS'] },
-                sale: { storeId, store: { organizationId: user.organizationId } },
+            AND: [
+              {
+                deliveries: {
+                  some: {
+                    status: { in: ['PENDING', 'IN_PROGRESS'] },
+                    sale: { storeId, store: { organizationId: user.organizationId } },
+                  },
+                },
               },
-            },
+              {
+                OR: [
+                  { availableStoreId: storeId },
+                  { availableStoreId: null },
+                  {
+                    deliveries: {
+                      some: {
+                        status: 'IN_PROGRESS',
+                        sale: { storeId, store: { organizationId: user.organizationId } },
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
           },
         ],
       },
@@ -315,6 +335,8 @@ export class DeliverersService {
         name: s.store.name,
       }));
 
+      const availableStoreId = deliverer.availableStoreId;
+
       const deliveryFields = {
         deliveryId,
         deliveryStatus,
@@ -345,6 +367,7 @@ export class DeliverersService {
           delivererId: deliverer.id,
           name: deliverer.user.name,
           status: deliverer.status,
+          availableStoreId,
           delivererStatus,
           latitude: null,
           longitude: null,
@@ -368,6 +391,7 @@ export class DeliverersService {
         delivererId: deliverer.id,
         name: deliverer.user.name,
         status: deliverer.status,
+        availableStoreId,
         delivererStatus,
         latitude,
         longitude,

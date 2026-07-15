@@ -526,6 +526,10 @@ export class SalesService {
               completedAt: now,
             },
           });
+          await tx.deliverer.update({
+            where: { id: saleInput.delivererId },
+            data: { availableStoreId: sale.storeId, status: 'AVAILABLE' },
+          });
         }
       }
 
@@ -700,7 +704,7 @@ export class SalesService {
     }
 
     if (!isPickup && data.delivererId) {
-      return tx.delivery.create({
+      const delivery = await tx.delivery.create({
         data: {
           saleId,
           delivererId: data.delivererId,
@@ -708,6 +712,12 @@ export class SalesService {
         },
         select: { id: true, delivererId: true },
       });
+      // Garante unidade ativa = loja da rota (mapa por unidade).
+      await tx.deliverer.update({
+        where: { id: data.delivererId },
+        data: { availableStoreId: data.storeId },
+      });
+      return delivery;
     }
 
     return null;
@@ -1189,6 +1199,11 @@ export class SalesService {
         if (data.delivererId !== sale.delivererId || !sale.delivery) {
           pushNewDelivery = { delivererId: delivery.delivererId, deliveryId: delivery.id };
         }
+
+        await tx.deliverer.update({
+          where: { id: data.delivererId },
+          data: { availableStoreId: sale.storeId },
+        });
       }
 
       if (data.status === 'CANCELLED' && sale.delivery) {
