@@ -50,7 +50,23 @@ type DashboardPayload = {
     totalCost?: number;
     grossProfit?: number;
   }[];
-  stockMovements: number;
+  stockGlp: {
+    products: {
+      productId: string;
+      name: string;
+      sku: string;
+      opening: number;
+      out: number;
+      closing: number;
+    }[];
+    totals: { opening: number; out: number; closing: number };
+  };
+  glpQuantitySold: number;
+  gasDoPovo: {
+    quantity: number;
+    revenue: number;
+    salesCount: number;
+  };
   salesCount: number;
   deliveries: {
     pending: number;
@@ -84,6 +100,8 @@ type DashboardPayload = {
       completedCount: number;
       cancelledCount: number;
       glpQuantity: number;
+      gdpQuantity: number;
+      gdpRevenue: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
       avgTotalDeliveryTimeSeconds: number | null;
@@ -238,7 +256,9 @@ export class DashboardService {
       revenue: 0,
       paymentsByMethod: [] as DashboardPayload['paymentsByMethod'],
       productsSold: [],
-      stockMovements: 0,
+      stockGlp: { products: [], totals: { opening: 0, out: 0, closing: 0 } },
+      glpQuantitySold: 0,
+      gasDoPovo: { quantity: 0, revenue: 0, salesCount: 0 },
       salesCount: 0,
       deliveries: { pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
       deliveryMetrics: {
@@ -283,8 +303,18 @@ export class DashboardService {
 
     const showFinancial = canViewFinancialMargins(user.role);
 
-    const [saleAgg, paymentRows, itemGroups, movements, deliveries, saleItemsDetail, salesForPaymentAlloc, glpSaleItems] =
-      await Promise.all([
+    const [
+      saleAgg,
+      paymentRows,
+      itemGroups,
+      deliveries,
+      saleItemsDetail,
+      salesForPaymentAlloc,
+      salesForGdpGlp,
+      gdpMethods,
+      glpBalances,
+      glpMovements,
+    ] = await Promise.all([
       this.prisma.sale.aggregate({
         where: saleWhere,
         _sum: { total: true },
@@ -303,9 +333,6 @@ export class DashboardService {
         by: ['productId'],
         where: { sale: saleWhere },
         _sum: { quantity: true, total: true },
-      }),
-      this.prisma.stockMovement.count({
-        where: { ...storeFilter, createdAt: { gte: start, lt: end } },
       }),
       this.prisma.delivery.findMany({
         where: {
@@ -355,20 +382,112 @@ export class DashboardService {
             },
           })
         : Promise.resolve([]),
-      this.prisma.saleItem.findMany({
+      this.prisma.sale.findMany({
+        where: saleWhere,
+        select: {
+          delivererId: true,
+          gasDoPovoBenefit: true,
+          items: {
+            select: {
+              quantity: true,
+              storePaymentMethodId: true,
+              product: { select: { productType: true } },
+            },
+          },
+          payments: {
+            select: {
+              amount: true,
+              method: true,
+              storePaymentMethodId: true,
+            },
+          },
+        },
+      }),
+      this.prisma.storePaymentMethod.findMany({
+        where: { storeId: { in: storeIds }, systemCode: 'GDP' },
+        select: { id: true },
+      }),
+      this.prisma.stockBalance.findMany({
         where: {
-          sale: { ...saleWhere, delivererId: { not: null } },
+          ...storeFilter,
           product: { productType: { equals: 'GLP', mode: 'insensitive' } },
         },
         select: {
-          quantity: true,
-          sale: { select: { delivererId: true } },
+          available: true,
+          product: { select: { id: true, name: true, sku: true } },
         },
+      }),
+      this.prisma.stockMovement.findMany({
+        where: {
+          ...storeFilter,
+          createdAt: { gte: start },
+          product: { productType: { equals: 'GLP', mode: 'insensitive' } },
+        },
+        select: { productId: true, type: true, quantity: true, createdAt: true },
       }),
     ]);
 
     const revenue = toNumber(saleAgg._sum.total);
     const salesCount = saleAgg._count._all;
+
+    const gdpMethodIds = new Set(gdpMethods.map((m) => m.id));
+    const isGlp = (productType: string | null | undefined) =>
+      (productType ?? '').toUpperCase() === 'GLP';
+
+    let glpQuantitySold = 0;
+    let gdpQuantity = 0;
+    let gdpRevenue = 0;
+    let gdpSalesCount = 0;
+    const glpQuantityByDelivererId = new Map<string, number>();
+    const gdpQuantityByDelivererId = new Map<string, number>();
+    const gdpRevenueByDelivererId = new Map<string, number>();
+
+    for (const sale of salesForGdpGlp) {
+      const saleGlpQty = sale.items.reduce(
+        (sum, item) => (isGlp(item.product.productType) ? sum + item.quantity : sum),
+        0,
+      );
+      glpQuantitySold += saleGlpQty;
+
+      const saleGdpRevenue = sale.payments.reduce((sum, payment) => {
+        const isGdpPayment =
+          payment.method === 'GDP' ||
+          (payment.storePaymentMethodId != null &&
+            gdpMethodIds.has(payment.storePaymentMethodId));
+        return isGdpPayment ? sum + toNumber(payment.amount) : sum;
+      }, 0);
+
+      const itemGdpQty = sale.items.reduce((sum, item) => {
+        const isGdpItem =
+          item.storePaymentMethodId != null &&
+          gdpMethodIds.has(item.storePaymentMethodId);
+        return isGdpItem && isGlp(item.product.productType) ? sum + item.quantity : sum;
+      }, 0);
+
+      const saleIsGdp =
+        sale.gasDoPovoBenefit || saleGdpRevenue > 0 || itemGdpQty > 0;
+      const saleGdpQty = itemGdpQty > 0 ? itemGdpQty : saleIsGdp ? saleGlpQty : 0;
+
+      gdpQuantity += saleGdpQty;
+      gdpRevenue += saleGdpRevenue;
+      if (saleIsGdp) gdpSalesCount += 1;
+
+      if (sale.delivererId) {
+        const id = sale.delivererId;
+        glpQuantityByDelivererId.set(
+          id,
+          (glpQuantityByDelivererId.get(id) ?? 0) + saleGlpQty,
+        );
+        gdpQuantityByDelivererId.set(
+          id,
+          (gdpQuantityByDelivererId.get(id) ?? 0) + saleGdpQty,
+        );
+        gdpRevenueByDelivererId.set(
+          id,
+          (gdpRevenueByDelivererId.get(id) ?? 0) + saleGdpRevenue,
+        );
+      }
+    }
 
     type PaymentMethodStats = {
       revenue: number;
@@ -486,20 +605,80 @@ export class DashboardService {
       })),
     );
 
-    const glpQuantityByDelivererId = new Map<string, number>();
-    for (const item of glpSaleItems) {
-      const delivererId = item.sale.delivererId;
-      if (!delivererId) continue;
-      glpQuantityByDelivererId.set(
-        delivererId,
-        (glpQuantityByDelivererId.get(delivererId) ?? 0) + item.quantity,
-      );
-    }
-
     const byDeliverer = routeStats.byDeliverer.map((row) => ({
       ...row,
       glpQuantity: glpQuantityByDelivererId.get(row.delivererId) ?? 0,
+      gdpQuantity: gdpQuantityByDelivererId.get(row.delivererId) ?? 0,
+      gdpRevenue: gdpRevenueByDelivererId.get(row.delivererId) ?? 0,
     }));
+
+    const stockGlp = (() => {
+      type Acc = {
+        name: string;
+        sku: string;
+        current: number;
+        sinceStartIn: number;
+        sinceStartOut: number;
+        periodIn: number;
+        periodOut: number;
+      };
+      const byProduct = new Map<string, Acc>();
+
+      for (const balance of glpBalances) {
+        const acc = byProduct.get(balance.product.id) ?? {
+          name: balance.product.name,
+          sku: balance.product.sku,
+          current: 0,
+          sinceStartIn: 0,
+          sinceStartOut: 0,
+          periodIn: 0,
+          periodOut: 0,
+        };
+        acc.current += balance.available;
+        byProduct.set(balance.product.id, acc);
+      }
+
+      for (const movement of glpMovements) {
+        const acc = byProduct.get(movement.productId) ?? {
+          name: 'GLP',
+          sku: '',
+          current: 0,
+          sinceStartIn: 0,
+          sinceStartOut: 0,
+          periodIn: 0,
+          periodOut: 0,
+        };
+        const inPeriod = movement.createdAt >= start && movement.createdAt < end;
+        if (movement.type === 'IN') {
+          acc.sinceStartIn += movement.quantity;
+          if (inPeriod) acc.periodIn += movement.quantity;
+        } else {
+          acc.sinceStartOut += movement.quantity;
+          if (inPeriod) acc.periodOut += movement.quantity;
+        }
+        byProduct.set(movement.productId, acc);
+      }
+
+      const products = Array.from(byProduct.entries())
+        .map(([productId, acc]) => {
+          const opening = acc.current - acc.sinceStartIn + acc.sinceStartOut;
+          const out = acc.periodOut;
+          const closing = opening + acc.periodIn - acc.periodOut;
+          return { productId, name: acc.name, sku: acc.sku, opening, out, closing };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+      const totals = products.reduce(
+        (sum, p) => ({
+          opening: sum.opening + p.opening,
+          out: sum.out + p.out,
+          closing: sum.closing + p.closing,
+        }),
+        { opening: 0, out: 0, closing: 0 },
+      );
+
+      return { products, totals };
+    })();
 
     const financialSummary = showFinancial
       ? (() => {
@@ -531,7 +710,13 @@ export class DashboardService {
       ...financialSummary,
       paymentsByMethod,
       productsSold,
-      stockMovements: movements,
+      stockGlp,
+      glpQuantitySold,
+      gasDoPovo: {
+        quantity: gdpQuantity,
+        revenue: gdpRevenue,
+        salesCount: gdpSalesCount,
+      },
       salesCount,
       deliveries: {
         pending: routeStats.counts.pending,

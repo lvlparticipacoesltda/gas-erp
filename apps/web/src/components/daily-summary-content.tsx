@@ -34,6 +34,23 @@ export interface DailySummaryData {
     totalCost?: number;
     grossProfit?: number;
   }[];
+  stockGlp: {
+    products: {
+      productId: string;
+      name: string;
+      sku: string;
+      opening: number;
+      out: number;
+      closing: number;
+    }[];
+    totals: { opening: number; out: number; closing: number };
+  };
+  glpQuantitySold: number;
+  gasDoPovo: {
+    quantity: number;
+    revenue: number;
+    salesCount: number;
+  };
   deliveries: { pending: number; inProgress: number; completed: number; cancelled: number };
   deliveryMetrics?: {
     avgWaitTimeSeconds: number | null;
@@ -57,6 +74,8 @@ export interface DailySummaryData {
       completedCount: number;
       cancelledCount: number;
       glpQuantity: number;
+      gdpQuantity: number;
+      gdpRevenue: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
       avgTotalDeliveryTimeSeconds: number | null;
@@ -80,10 +99,70 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
   const showFinancial = data.totalCost != null && data.grossProfit != null;
   const showNetFinancial = showFinancial && data.netRevenue != null && data.netProfit != null;
 
+  const stock = data.stockGlp;
+  const gdp = data.gasDoPovo;
+
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <h2 className="mb-3 font-semibold">Estoque de gás (GLP)</h2>
+      {stock.products.length === 0 ? (
+        <p className="text-sm text-slate-500">Nenhum produto de gás cadastrado.</p>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <Table>
+            <thead className="bg-slate-50 text-left">
+              <tr>
+                <th className="p-3">Produto</th>
+                <th className="p-3 text-right">Estoque inicial</th>
+                <th className="p-3 text-right">Saídas</th>
+                <th className="p-3 text-right">Estoque final</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stock.products.map((p) => (
+                <tr key={p.productId} className="border-t border-slate-100">
+                  <td className="p-3">
+                    {p.name}
+                    {p.sku ? <span className="ml-1 text-xs text-slate-400">({p.sku})</span> : null}
+                  </td>
+                  <td className="p-3 text-right tabular-nums">{p.opening}</td>
+                  <td className="p-3 text-right font-semibold tabular-nums text-rose-600">{p.out}</td>
+                  <td className="p-3 text-right font-semibold tabular-nums">{p.closing}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
+                <td className="p-3">Total</td>
+                <td className="p-3 text-right tabular-nums">{stock.totals.opening}</td>
+                <td className="p-3 text-right tabular-nums text-rose-600">{stock.totals.out}</td>
+                <td className="p-3 text-right tabular-nums">{stock.totals.closing}</td>
+              </tr>
+            </tfoot>
+          </Table>
+        </div>
+      )}
+
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-brand/40 bg-brand/5">
+          <div className="text-sm text-slate-500">Botijas GLP vendidas {periodLabel}</div>
+          <div className="text-3xl font-extrabold text-brand-dark">{data.glpQuantitySold}</div>
+        </Card>
+        <Card className="border-emerald-300 bg-emerald-50">
+          <div className="text-sm text-slate-500">Gás do Povo {periodLabel}</div>
+          <div className="flex items-baseline gap-3">
+            <div>
+              <div className="text-3xl font-extrabold text-emerald-700">{gdp.quantity}</div>
+              <div className="text-xs text-slate-500">botijas</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-emerald-700">{formatCurrency(gdp.revenue)}</div>
+              <div className="text-xs text-slate-500">{gdp.salesCount} vendas</div>
+            </div>
+          </div>
+        </Card>
         <Card><div className="text-sm text-slate-500">Faturamento {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.revenue)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Pedidos {periodLabel}</div><div className="text-2xl font-bold">{data.salesCount}</div></Card>
         {showFinancial && (
           <>
             <Card><div className="text-sm text-slate-500">CMV {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.totalCost!)}</div></Card>
@@ -99,52 +178,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             <Card><div className="text-sm text-slate-500">Margem líquida {periodLabel}</div><div className="text-2xl font-bold">{data.netMarginPercent != null ? `${data.netMarginPercent}%` : '—'}</div></Card>
           </>
         )}
-        <Card><div className="text-sm text-slate-500">Vendas</div><div className="text-2xl font-bold">{data.salesCount}</div></Card>
-        <Card><div className="text-sm text-slate-500">Entregas pendentes</div><div className="text-2xl font-bold">{data.deliveries.pending}</div></Card>
-        <Card><div className="text-sm text-slate-500">Entregas em rota</div><div className="text-2xl font-bold">{data.deliveries.inProgress}</div></Card>
-        <Card><div className="text-sm text-slate-500">Entregas concluídas</div><div className="text-2xl font-bold">{data.deliveries.completed}</div></Card>
-        <Card><div className="text-sm text-slate-500">Rotas canceladas</div><div className="text-2xl font-bold">{data.deliveries.cancelled}</div></Card>
-        <Card><div className="text-sm text-slate-500">Tempo médio até aceitar</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Maior tempo até aceitar</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Tempo médio em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgRouteDurationSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Maior tempo em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxRouteDurationSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Tempo médio total da entrega</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgTotalDeliveryTimeSeconds)}</div></Card>
-        <Card><div className="text-sm text-slate-500">Maior tempo total da entrega</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxTotalDeliveryTimeSeconds)}</div></Card>
       </div>
-
-      {metrics?.slowDeliveries && metrics.slowDeliveries.length > 0 && (
-        <>
-          <h2 className="mb-3 mt-8 font-semibold">Entregas com tempo elevado</h2>
-          <PaginatedList items={metrics.slowDeliveries}>
-            {(rows) => (
-              <Table>
-                <thead className="bg-slate-50 text-left">
-                  <tr>
-                    {showStoreColumn && <th className="p-3">Unidade</th>}
-                    <th className="p-3">Cliente</th>
-                    <th className="p-3">Entregador</th>
-                    <th className="p-3">Tempo até aceitar</th>
-                    <th className="p-3">Tempo em rota</th>
-                    <th className="p-3">Tempo total da entrega</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((d) => (
-                    <tr key={d.saleId} className="border-t border-slate-100">
-                      {showStoreColumn && <td className="p-3">{d.storeName ?? '—'}</td>}
-                      <td className="p-3">{d.customerName}</td>
-                      <td className="p-3">{d.delivererName}</td>
-                      <td className="p-3">{formatWaitTime(d.waitTimeSeconds)}</td>
-                      <td className="p-3">{formatWaitTime(d.routeDurationSeconds)}</td>
-                      <td className="p-3">{formatWaitTime(d.totalDeliveryTimeSeconds)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            )}
-          </PaginatedList>
-        </>
-      )}
 
       {metrics?.byDeliverer && metrics.byDeliverer.length > 0 && (
         <>
@@ -155,24 +189,22 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 <thead className="bg-slate-50 text-left">
                   <tr>
                     <th className="p-3">Entregador</th>
-                    <th className="p-3">GLP entregue</th>
-                    <th className="p-3">Rotas realizadas</th>
-                    <th className="p-3">Rotas canceladas</th>
-                    <th className="p-3">Tempo médio até aceitar</th>
-                    <th className="p-3">Tempo médio em rota</th>
-                    <th className="p-3">Tempo médio total da entrega</th>
+                    <th className="p-3 text-right">GLP entregue</th>
+                    <th className="p-3 text-right">Gás do Povo</th>
+                    <th className="p-3 text-right">Valor Gás do Povo</th>
+                    <th className="p-3 text-right">Rotas realizadas</th>
+                    <th className="p-3 text-right">Rotas canceladas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((d) => (
                     <tr key={d.delivererId} className="border-t border-slate-100">
                       <td className="p-3">{d.delivererName}</td>
-                      <td className="p-3 font-semibold text-brand-dark">{d.glpQuantity}</td>
-                      <td className="p-3">{d.completedCount}</td>
-                      <td className="p-3">{d.cancelledCount}</td>
-                      <td className="p-3">{formatWaitTime(d.avgWaitTimeSeconds)}</td>
-                      <td className="p-3">{formatWaitTime(d.avgRouteDurationSeconds)}</td>
-                      <td className="p-3">{formatWaitTime(d.avgTotalDeliveryTimeSeconds)}</td>
+                      <td className="p-3 text-right font-semibold tabular-nums text-brand-dark">{d.glpQuantity}</td>
+                      <td className="p-3 text-right font-semibold tabular-nums text-emerald-700">{d.gdpQuantity}</td>
+                      <td className="p-3 text-right tabular-nums text-emerald-700">{formatCurrency(d.gdpRevenue)}</td>
+                      <td className="p-3 text-right tabular-nums">{d.completedCount}</td>
+                      <td className="p-3 text-right tabular-nums">{d.cancelledCount}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,6 +294,58 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             </Table>
           )}
         </PaginatedList>
+      )}
+
+      <h2 className="mb-3 mt-8 font-semibold">Entregas</h2>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card><div className="text-sm text-slate-500">Pendentes</div><div className="text-2xl font-bold">{data.deliveries.pending}</div></Card>
+        <Card><div className="text-sm text-slate-500">Em rota</div><div className="text-2xl font-bold">{data.deliveries.inProgress}</div></Card>
+        <Card><div className="text-sm text-slate-500">Concluídas</div><div className="text-2xl font-bold">{data.deliveries.completed}</div></Card>
+        <Card><div className="text-sm text-slate-500">Rotas canceladas</div><div className="text-2xl font-bold">{data.deliveries.cancelled}</div></Card>
+      </div>
+
+      <h2 className="mb-3 mt-8 font-semibold">Desempenho</h2>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Card><div className="text-sm text-slate-500">Tempo médio até aceitar</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior tempo até aceitar</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxWaitTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Tempo médio em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgRouteDurationSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior tempo em rota</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxRouteDurationSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Tempo médio total da entrega</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.avgTotalDeliveryTimeSeconds)}</div></Card>
+        <Card><div className="text-sm text-slate-500">Maior tempo total da entrega</div><div className="text-2xl font-bold">{formatWaitTime(metrics?.maxTotalDeliveryTimeSeconds)}</div></Card>
+      </div>
+
+      {metrics?.slowDeliveries && metrics.slowDeliveries.length > 0 && (
+        <>
+          <h2 className="mb-3 mt-8 font-semibold">Entregas com tempo elevado</h2>
+          <PaginatedList items={metrics.slowDeliveries}>
+            {(rows) => (
+              <Table>
+                <thead className="bg-slate-50 text-left">
+                  <tr>
+                    {showStoreColumn && <th className="p-3">Unidade</th>}
+                    <th className="p-3">Cliente</th>
+                    <th className="p-3">Entregador</th>
+                    <th className="p-3">Tempo até aceitar</th>
+                    <th className="p-3">Tempo em rota</th>
+                    <th className="p-3">Tempo total da entrega</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((d) => (
+                    <tr key={d.saleId} className="border-t border-slate-100">
+                      {showStoreColumn && <td className="p-3">{d.storeName ?? '—'}</td>}
+                      <td className="p-3">{d.customerName}</td>
+                      <td className="p-3">{d.delivererName}</td>
+                      <td className="p-3">{formatWaitTime(d.waitTimeSeconds)}</td>
+                      <td className="p-3">{formatWaitTime(d.routeDurationSeconds)}</td>
+                      <td className="p-3">{formatWaitTime(d.totalDeliveryTimeSeconds)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </PaginatedList>
+        </>
       )}
     </>
   );
