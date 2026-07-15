@@ -52,6 +52,28 @@ function buildDeliveryAddress(sale: {
   return parts.length ? parts.join(', ') : null;
 }
 
+/** Endereço limpo para Directions/geocode — sem complemento/ponto de referência. */
+function buildRoutingAddress(sale: {
+  deliveryStreet: string | null;
+  deliveryNumber: string | null;
+  deliveryNeighborhood: string | null;
+  deliveryCity: string | null;
+  deliveryState: string | null;
+}): string | null {
+  const street = sale.deliveryStreet?.trim();
+  const city = sale.deliveryCity?.trim();
+  const state = sale.deliveryState?.trim();
+  if (!street || !city) return null;
+
+  const parts: string[] = [];
+  const number = sale.deliveryNumber?.trim();
+  parts.push(number ? `${street}, ${number}` : street);
+  if (sale.deliveryNeighborhood?.trim()) parts.push(sale.deliveryNeighborhood.trim());
+  parts.push(state ? `${city} - ${state}` : city);
+  parts.push('Brasil');
+  return parts.join(', ');
+}
+
 function withDeliveryMetrics<T extends DeliveryWithSale>(delivery: T, now: Date) {
   const metrics = getDeliveryPhaseMetrics({
     saleCreatedAt: delivery.sale.createdAt,
@@ -202,7 +224,7 @@ export class DeliveriesService {
     }
 
     const destination = await resolveDestination(this.geocoding, delivery.sale);
-    const destAddress = buildDeliveryAddress(delivery.sale);
+    const destAddress = buildRoutingAddress(delivery.sale);
 
     this.logger.log(
       `GET route delivery=${deliveryId} origin=(${originLat},${originLng}) ` +

@@ -38,11 +38,13 @@ export class RoutingService {
     const origin = `${originLat},${originLng}`;
     const attempts: { label: string; destination: string }[] = [];
 
-    if (destLat != null && destLng != null) {
-      attempts.push({ label: 'coordenadas', destination: `${destLat},${destLng}` });
-    }
+    // Endereço textual primeiro: Google Directions resolve bem o número da casa.
+    // Coords do Nominatim às vezes caem no meio/fim da rua (ex.: pediu 20, pinou 1320).
     if (destAddress?.trim()) {
       attempts.push({ label: 'endereço', destination: destAddress.trim() });
+    }
+    if (destLat != null && destLng != null) {
+      attempts.push({ label: 'coordenadas', destination: `${destLat},${destLng}` });
     }
 
     if (attempts.length === 0) {
