@@ -1431,10 +1431,14 @@ export class SalesService {
       throw new BadRequestException('Entregador não atende esta unidade.');
     }
 
-    const { assignable, reason } = isDelivererAssignableForSale({
-      status: deliverer.status,
-      user: deliverer.user,
-    });
+    const { assignable, reason } = isDelivererAssignableForSale(
+      {
+        status: deliverer.status,
+        user: deliverer.user,
+        availableStoreId: deliverer.availableStoreId,
+      },
+      storeId,
+    );
     if (!assignable) {
       throw new BadRequestException(
         reason ? `Entregador indisponível: ${reason}.` : 'Entregador indisponível.',

@@ -17,6 +17,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 interface DelivererListItem {
   id: string;
   status: string;
+  availableStoreId?: string | null;
   user: { name: string; active: boolean };
 }
 
@@ -70,7 +71,12 @@ export default function DelivererMapPage() {
   const loadOffline = useCallback(async () => {
     const all = await api<DelivererListItem[]>(`/deliverers?storeId=${storeId}`, {}, getToken());
     setOfflineDeliverers(
-      all.filter((d) => d.user.active && d.status === 'OFFLINE'),
+      all.filter(
+        (d) =>
+          d.user.active
+          && d.status !== 'ON_DELIVERY'
+          && d.availableStoreId !== storeId,
+      ),
     );
   }, [storeId]);
 
@@ -117,7 +123,10 @@ export default function DelivererMapPage() {
         `/deliverers/${delivererId}`,
         {
           method: 'PATCH',
-          body: JSON.stringify({ status: available ? 'AVAILABLE' : 'OFFLINE' }),
+          body: JSON.stringify({
+            status: available ? 'AVAILABLE' : 'OFFLINE',
+            availableStoreId: available ? storeId : null,
+          }),
         },
         getToken(),
       );

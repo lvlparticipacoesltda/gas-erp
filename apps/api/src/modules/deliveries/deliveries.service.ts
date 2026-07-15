@@ -344,7 +344,7 @@ export class DeliveriesService {
         });
         await tx.deliverer.update({
           where: { id: delivery.delivererId },
-          data: { status: 'AVAILABLE' },
+          data: { status: 'AVAILABLE', availableStoreId: delivery.sale.storeId },
         });
       } else if (status === 'IN_PROGRESS') {
         await tx.sale.update({
@@ -361,7 +361,7 @@ export class DeliveriesService {
         });
         await tx.deliverer.update({
           where: { id: delivery.delivererId },
-          data: { status: 'ON_DELIVERY' },
+          data: { status: 'ON_DELIVERY', availableStoreId: delivery.sale.storeId },
         });
       }
 

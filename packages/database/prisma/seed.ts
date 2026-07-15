@@ -119,10 +119,13 @@ async function main() {
 
   const deliverer = await prisma.deliverer.upsert({
     where: { userId: delivererUser.id },
-    update: {},
+    update: {
+      availableStoreId: stores[0].id,
+    },
     create: {
       userId: delivererUser.id,
       status: DelivererStatus.AVAILABLE,
+      availableStoreId: stores[0].id,
     },
   });
 

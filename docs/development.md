@@ -136,6 +136,7 @@ pnpm db:studio      # Prisma Studio
 | `20260627160000_customer_product_prices` | Preço negociado por cliente/produto/loja |
 | `20260627180000_customer_per_store` | Clientes vinculados a loja específica |
 | `20260701120000_deliverer_gps_stale_reminder` | Lembrete quando GPS do entregador para de atualizar |
+| `20260715120000_deliverer_available_store` | Disponibilidade no mapa por unidade (`availableStoreId`) |
 
 ### Neon / Railway
 

@@ -138,11 +138,13 @@ N:N via `DelivererStore`).
 - `GET /deliverers?storeId=...` — entregadores que atendem a unidade
 - `GET /deliverers/suggest?storeId=...` — sugestão por proximidade (lat/lng ou endereço de entrega)
 - `POST /deliverers` — `{ userId, storeIds: string[], status? }` (≥ 1 unidade)
-- `PATCH /deliverers/:id` — `{ storeIds?: string[], status? }`
+- `PATCH /deliverers/:id` — `{ storeIds?: string[], status?, availableStoreId? }`
+  (`availableStoreId` define a unidade do mapa ao marcar AVAILABLE)
 - `DELETE /deliverers/:id` — **exclusão permanente** (remove entregador e usuário; bloqueado se houver rota `PENDING`/`IN_PROGRESS`)
 - `GET /deliverers/me` — perfil do entregador logado
 - `POST /deliverers/me/position` — `{ latitude, longitude, accuracy?, batteryLevel?, batteryCharging? }` (presença no mapa)
-- `GET /deliverers/positions?storeId=...` — posições atuais dos entregadores da loja
+- `GET /deliverers/positions?storeId=...` — posições dos entregadores **disponíveis nesta unidade**
+  (`availableStoreId = storeId`, ou com rota PENDING/IN_PROGRESS da loja)
 - `PUT /deliverers/me/push-token` — `{ token: "ExponentPushToken[...]" }`
 - `DELETE /deliverers/me/push-token` — remove token (logout do app)
 

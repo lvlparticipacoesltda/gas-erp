@@ -13,16 +13,30 @@ export function getDelivererAvailabilityLock(position: {
 }
 
 /** Entregador pode receber nova rota na tela de vendas. */
-export function isDelivererAssignableForSale(deliverer: {
-  status: string;
-  user?: { active?: boolean };
-  pendingDeliveryCount?: number;
-}): { assignable: boolean; reason: string | null } {
+export function isDelivererAssignableForSale(
+  deliverer: {
+    status: string;
+    user?: { active?: boolean };
+    pendingDeliveryCount?: number;
+    /** Unidade em que está disponível no mapa; null se offline ou ainda não definido. */
+    availableStoreId?: string | null;
+  },
+  /** Quando informado, exige disponibilidade nessa unidade. */
+  storeId?: string,
+): { assignable: boolean; reason: string | null } {
   if (deliverer.user?.active === false) {
     return { assignable: false, reason: 'Inativo' };
   }
   if (deliverer.status === 'OFFLINE') {
     return { assignable: false, reason: 'Indisponível' };
+  }
+  if (storeId) {
+    if (!deliverer.availableStoreId) {
+      return { assignable: false, reason: 'Indisponível nesta unidade' };
+    }
+    if (deliverer.availableStoreId !== storeId) {
+      return { assignable: false, reason: 'Disponível em outra unidade' };
+    }
   }
   return { assignable: true, reason: null };
 }

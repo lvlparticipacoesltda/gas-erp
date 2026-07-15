@@ -30,7 +30,7 @@ Monorepo Gas ERP — gestão multi-loja para distribuidoras de GLP.
 - **SaleBackdateLog** — auditoria de solicitação/aprovação/rejeição de data anterior
 - **SaleMobileApprovalLog** — auditoria de aprovação de venda mobile
 - **Delivery** + **DeliveryTrackingPoint** para GPS (app entregador); `pendingReminderSentAt` para lembrete push
-- **Deliverer** + **DelivererStore** = entregador N:N com unidades; `lastLatitude`/`lastSeenAt`/bateria para mapa de presença
+- **Deliverer** + **DelivererStore** = entregador N:N com unidades; `availableStoreId` = unidade atual no mapa; `lastLatitude`/`lastSeenAt`/bateria para presença
 - **PasswordResetToken** para recuperação de senha
 
 ## Autenticação

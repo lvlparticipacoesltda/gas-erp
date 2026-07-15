@@ -131,11 +131,15 @@ export class DeliverersService {
 
     const suggestions = deliverers
       .map((d) => {
-        const { assignable, reason } = isDelivererAssignableForSale({
-          status: d.status,
-          user: d.user,
-          pendingDeliveryCount: d.pendingDeliveryCount,
-        });
+        const { assignable, reason } = isDelivererAssignableForSale(
+          {
+            status: d.status,
+            user: d.user,
+            pendingDeliveryCount: d.pendingDeliveryCount,
+            availableStoreId: d.availableStoreId,
+          },
+          params.storeId,
+        );
 
         let distanceMeters: number | null = null;
         let stale = true;
@@ -202,9 +206,12 @@ export class DeliverersService {
     const deliverers = await this.prisma.deliverer.findMany({
       where: {
         user: { active: true },
-        status: { not: 'OFFLINE' },
         OR: [
-          { stores: { some: { storeId, store: { organizationId: user.organizationId } } } },
+          {
+            status: { not: 'OFFLINE' },
+            availableStoreId: storeId,
+            stores: { some: { storeId, store: { organizationId: user.organizationId } } },
+          },
           {
             deliveries: {
               some: {
@@ -578,6 +585,12 @@ export class DeliverersService {
       data: {
         userId,
         status: data.status ?? 'AVAILABLE',
+        availableStoreId:
+          (data.status ?? 'AVAILABLE') === 'OFFLINE'
+            ? null
+            : data.storeIds.length === 1
+              ? data.storeIds[0]
+              : null,
         stores: { create: data.storeIds.map((storeId) => ({ storeId })) },
       },
       include: this.include,
@@ -725,6 +738,40 @@ export class DeliverersService {
       }
     }
 
+    const linkedStoreIds = data.storeIds ?? deliverer.stores.map((s) => s.storeId);
+    let nextAvailableStoreId: string | null | undefined;
+
+    if (nextStatus === 'OFFLINE') {
+      nextAvailableStoreId = null;
+    } else if (nextStatus === 'AVAILABLE' || nextStatus === 'ON_DELIVERY') {
+      const candidate =
+        (data.availableStoreId !== undefined ? data.availableStoreId : null)
+        ?? (deliverer.availableStoreId && linkedStoreIds.includes(deliverer.availableStoreId)
+          ? deliverer.availableStoreId
+          : null)
+        ?? (linkedStoreIds.length === 1 ? linkedStoreIds[0] : null);
+
+      if (!candidate) {
+        throw new BadRequestException(
+          'Informe a unidade em que o entregador ficará disponível (availableStoreId).',
+        );
+      }
+      if (!linkedStoreIds.includes(candidate)) {
+        throw new BadRequestException('O entregador não está vinculado a essa unidade.');
+      }
+      if (!canManage) {
+        assertStoreAccess(user, candidate);
+      }
+      nextAvailableStoreId = candidate;
+    } else if (data.availableStoreId !== undefined) {
+      if (data.availableStoreId && !linkedStoreIds.includes(data.availableStoreId)) {
+        throw new BadRequestException('O entregador não está vinculado a essa unidade.');
+      }
+      nextAvailableStoreId = data.availableStoreId;
+    } else if (data.storeIds && deliverer.availableStoreId && !linkedStoreIds.includes(deliverer.availableStoreId)) {
+      nextAvailableStoreId = null;
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       if (hasUserUpdate) {
         await tx.user.update({
@@ -743,6 +790,9 @@ export class DeliverersService {
         where: { id },
         data: {
           ...(nextStatus ? { status: nextStatus } : {}),
+          ...(nextAvailableStoreId !== undefined
+            ? { availableStoreId: nextAvailableStoreId }
+            : {}),
           ...(nextStatus === 'OFFLINE'
             ? {
                 lastLatitude: null,
@@ -774,6 +824,7 @@ export class DeliverersService {
     await this.audit.log(user, 'UPDATE', 'Deliverer', id, {
       active: data.active,
       status: nextStatus,
+      availableStoreId: nextAvailableStoreId,
       name: data.name,
       email: normalizedEmail,
       phone: data.phone,

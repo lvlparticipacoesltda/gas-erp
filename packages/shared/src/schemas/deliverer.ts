@@ -31,6 +31,11 @@ export const updateDelivererSchema = z.object({
   password: z.string().min(6).optional(),
   storeIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos uma unidade').optional(),
   status: z.enum(DELIVERER_STATUSES).optional(),
+  /**
+   * Unidade em que o entregador fica disponível no mapa.
+   * Obrigatório ao marcar AVAILABLE se o entregador atende mais de uma unidade.
+   */
+  availableStoreId: z.string().min(1).nullable().optional(),
   /** Desativa o login no app (User.active) e marca entregador como offline. */
   active: z.boolean().optional(),
 });

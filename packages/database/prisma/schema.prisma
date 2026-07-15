@@ -162,6 +162,7 @@ model Store {
   transfersTo         StockTransfer[]       @relation("TransferTo")
   sales               Sale[]
   delivererStores     DelivererStore[]
+  availableDeliverers Deliverer[]       @relation("DelivererAvailableStore")
   purchaseInvoices    PurchaseInvoice[]
   paymentMethods      StorePaymentMethod[]
   customerProductPrices CustomerProductPrice[]
@@ -461,6 +462,8 @@ model Deliverer {
   id                 String          @id @default(cuid())
   userId             String          @unique
   status             DelivererStatus @default(AVAILABLE)
+  /** Unidade em que o entregador está disponível no mapa (null se OFFLINE). */
+  availableStoreId       String?
   expoPushToken      String?
   pushTokenUpdatedAt DateTime?
   lastLatitude           Float?
@@ -473,11 +476,14 @@ model Deliverer {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availableStore   Store?           @relation("DelivererAvailableStore", fields: [availableStoreId], references: [id], onDelete: SetNull)
   stores           DelivererStore[]
   sales            Sale[]           @relation("SaleDeliverer")
   salesCreated     Sale[]           @relation("SaleCreatedByDeliverer")
   deliveries       Delivery[]
+
+  @@index([availableStoreId])
 }
 
 model DelivererStore {

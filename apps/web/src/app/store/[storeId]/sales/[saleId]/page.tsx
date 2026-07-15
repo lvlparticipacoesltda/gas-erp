@@ -93,6 +93,7 @@ interface SaleDetail {
 interface Deliverer {
   id: string;
   status: string;
+  availableStoreId?: string | null;
   pendingDeliveryCount?: number;
   user: { name: string; active?: boolean };
 }
@@ -340,7 +341,7 @@ export default function SaleDetailPage() {
     sale.status !== 'CANCELLED'
     && (isManager || isFinance || (hasSalesScreen && !isTerminal));
   const assignableDeliverers = deliverers.filter(
-    (d) => isDelivererAssignableForSale(d).assignable || d.id === sale.deliverer?.id,
+    (d) => isDelivererAssignableForSale(d, storeId).assignable || d.id === sale.deliverer?.id,
   );
   const saleTotal = parsePrice(sale.total);
 

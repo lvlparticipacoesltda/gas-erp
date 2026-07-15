@@ -41,6 +41,7 @@ interface Product {
 interface Deliverer {
   id: string;
   status: string;
+  availableStoreId?: string | null;
   pendingDeliveryCount?: number;
   user: { name: string; active?: boolean };
 }
@@ -383,7 +384,7 @@ export default function NewSalePage() {
   }, [total, draft.gasDoPovoBenefit, regularPaymentMethods.length]);
 
   const assignableDeliverers = deliverers.filter(
-    (d) => isDelivererAssignableForSale(d).assignable,
+    (d) => isDelivererAssignableForSale(d, storeId).assignable,
   );
 
   function goNext() {

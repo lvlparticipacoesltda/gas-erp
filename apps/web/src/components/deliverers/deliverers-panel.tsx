@@ -14,6 +14,7 @@ export interface DelivererStoreLink {
 export interface DelivererRow {
   id: string;
   status: string;
+  availableStoreId?: string | null;
   user: { id: string; name: string; email: string; phone?: string; active: boolean };
   stores: DelivererStoreLink[];
 }
@@ -351,6 +352,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
         <EditDelivererModal
           deliverer={editing}
           stores={stores}
+          preferredStoreId={listStoreId}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -365,11 +367,13 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
 function EditDelivererModal({
   deliverer,
   stores,
+  preferredStoreId,
   onClose,
   onSaved,
 }: {
   deliverer: DelivererRow;
   stores: StoreOption[];
+  preferredStoreId?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -416,6 +420,24 @@ function EditDelivererModal({
       );
       if (!ok) return;
     }
+
+    let availableStoreId: string | null | undefined;
+    if (status === 'OFFLINE' || !active) {
+      availableStoreId = null;
+    } else if (status === 'AVAILABLE' || status === 'ON_DELIVERY') {
+      const selectedIds = [...selected];
+      availableStoreId =
+        (deliverer.availableStoreId && selected.has(deliverer.availableStoreId)
+          ? deliverer.availableStoreId
+          : null)
+        ?? (preferredStoreId && selected.has(preferredStoreId) ? preferredStoreId : null)
+        ?? (selectedIds.length === 1 ? selectedIds[0] : null);
+      if (!availableStoreId) {
+        setError('Selecione uma única unidade ou marque disponibilidade pelo mapa da unidade.');
+        return;
+      }
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -431,6 +453,7 @@ function EditDelivererModal({
             storeIds: [...selected],
             status,
             active,
+            ...(availableStoreId !== undefined ? { availableStoreId } : {}),
           }),
         },
         getToken(),
