@@ -500,10 +500,36 @@ export class SalesService {
 
     const now = new Date();
 
-    const { pushDelivery } = await this.prisma.$transaction(async (tx) => {
-      const newDelivery = await this.finalizeSaleFulfillment(tx, sale.id, saleInput, user.id, pickup);
+    await this.prisma.$transaction(async (tx) => {
+      // Portaria: baixa estoque na aprovação (venda já finalizada).
+      // Entrega pelo app: o entregador já cumpriu no campo → DELIVERED + baixa.
+      if (pickup) {
+        await this.finalizeSaleFulfillment(tx, sale.id, saleInput, user.id, true);
+      } else {
+        await this.stockService.deductSaleItems(
+          tx,
+          sale.storeId,
+          saleInput.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+          user.id,
+          sale.id,
+        );
 
-      const nextStatus = pickup ? SaleStatus.PORTARIA : SaleStatus.CONFIRMED;
+        if (saleInput.delivererId) {
+          await tx.delivery.create({
+            data: {
+              saleId: sale.id,
+              delivererId: saleInput.delivererId,
+              status: DeliveryStatus.DELIVERED,
+              completedAt: now,
+            },
+          });
+        }
+      }
+
+      const nextStatus = pickup ? SaleStatus.PORTARIA : SaleStatus.DELIVERED;
       await tx.sale.update({
         where: { id: sale.id },
         data: {
@@ -512,7 +538,7 @@ export class SalesService {
           mobileApprovedById: user.id,
           attendantId: user.id,
           confirmedAt: now,
-          deliveredAt: pickup ? now : undefined,
+          deliveredAt: now,
           status: nextStatus,
         },
       });
@@ -535,18 +561,16 @@ export class SalesService {
             notes: 'Aprovada — retirada na portaria',
           },
         });
-      } else if (!pickup && sale.status !== SaleStatus.CONFIRMED) {
+      } else if (!pickup && sale.status !== SaleStatus.DELIVERED) {
         await tx.saleStatusLog.create({
           data: {
             saleId: sale.id,
-            status: SaleStatus.CONFIRMED,
+            status: SaleStatus.DELIVERED,
             userId: user.id,
-            notes: 'Venda do app aprovada',
+            notes: 'Venda do app aprovada — já entregue',
           },
         });
       }
-
-      return { pushDelivery: newDelivery };
     });
 
     try {
@@ -556,12 +580,6 @@ export class SalesService {
       });
     } catch {
       // Auditoria não deve bloquear o fluxo.
-    }
-
-    if (pushDelivery) {
-      void this.push
-        .notifyNewDelivery(pushDelivery.delivererId, pushDelivery.id)
-        .catch(() => undefined);
     }
 
     this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');

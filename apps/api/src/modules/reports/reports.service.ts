@@ -137,11 +137,11 @@ function mapSaleToReportRow(sale: SaleForReport, showFinancial: boolean): SalesR
       ? {
           totalCost,
           grossProfit,
-          grossMarginPercent: computeGrossMarginPercent(total, grossProfit),
+          grossMarginPercent: computeGrossMarginPercent(totalCost, grossProfit),
           totalProcessingFees,
           netRevenue,
           netProfit,
-          netMarginPercent: computeNetMarginPercent(netRevenue, netProfit),
+          netMarginPercent: computeNetMarginPercent(totalCost, netProfit),
         }
       : {}),
     deliveryStatus: delivery?.status ?? null,
@@ -350,11 +350,11 @@ export class ReportsService {
           return {
             totalCost,
             grossProfit,
-            grossMarginPercent: computeGrossMarginPercent(totalRevenue, grossProfit),
+            grossMarginPercent: computeGrossMarginPercent(totalCost, grossProfit),
             totalProcessingFees,
             netRevenue,
             netProfit,
-            netMarginPercent: computeNetMarginPercent(netRevenue, netProfit),
+            netMarginPercent: computeNetMarginPercent(totalCost, netProfit),
           };
         })()
       : {};

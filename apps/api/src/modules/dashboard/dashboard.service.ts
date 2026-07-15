@@ -514,11 +514,11 @@ export class DashboardService {
           return {
             totalCost,
             grossProfit,
-            grossMarginPercent: computeGrossMarginPercent(revenue, grossProfit),
+            grossMarginPercent: computeGrossMarginPercent(totalCost, grossProfit),
             totalProcessingFees,
             netRevenue,
             netProfit,
-            netMarginPercent: computeNetMarginPercent(netRevenue, netProfit),
+            netMarginPercent: computeNetMarginPercent(totalCost, netProfit),
           };
         })()
       : {};
