@@ -30,7 +30,7 @@ export interface SaleItem {
   total?: number | string | null;
   storePaymentMethodId?: string | null;
   storePaymentMethod?: { id: string; label: string; systemCode: string | null } | null;
-  product: { id: string; name: string };
+  product: { id: string; name: string; productType?: string | null };
 }
 
 export interface SaleCustomer {

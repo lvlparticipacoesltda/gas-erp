@@ -13,6 +13,9 @@
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "import:sv-customers": "dotenv -e ../../.env -- tsx scripts/import-sao-vicente-customers.ts",
     "import:grj-customers": "dotenv -e ../../.env -- tsx scripts/import-guaruja-customers.ts",
+    "import:sts-customers": "dotenv -e ../../.env -- tsx scripts/import-santos-customers.ts",
+    "import:pgsmb-customers": "dotenv -e ../../.env -- tsx scripts/import-pg-samambaia-customers.ts",
+    "import:pgpr-customers": "dotenv -e ../../.env -- tsx scripts/import-pg-princesa-customers.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "build": "tsc"
   },

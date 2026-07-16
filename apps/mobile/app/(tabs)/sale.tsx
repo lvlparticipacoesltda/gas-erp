@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -13,9 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   MOBILE_APPROVAL_LABELS,
-  PAYMENT_METHOD_LABELS,
   getPaymentLinesSumErrorMessage,
   buildPaymentAllocationsFromItems,
+  allItemsHavePaymentMethod,
   type PaginatedResponse,
   getSaleDisplayStatus,
 } from '@gas-erp/shared';
@@ -37,6 +37,7 @@ import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
 import { getCurrentDeliveryAddress } from '@/lib/location';
 import { fetchAddressByCep, formatCep, normalizeCepDigits } from '@/lib/viacep';
+import { formatMoneyDraft, parseMoneyInput, sanitizeMoneyInput } from '@/lib/money-input';
 import { colors, radius, spacing } from '@/theme';
 
 interface Store {
@@ -79,6 +80,13 @@ interface MobileSaleRow {
 }
 
 type Fulfillment = 'DELIVERY' | 'PICKUP';
+
+type SaleLineItem = {
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  storePaymentMethodId?: string;
+};
 
 const emptyNewCustomer = {
   name: '',
@@ -127,16 +135,14 @@ export default function NewSaleScreen() {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState(emptyNewCustomer);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
-  const [productId, setProductId] = useState('');
-  const [quantity, setQuantity] = useState('1');
+  const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
+  const [unitPriceDrafts, setUnitPriceDrafts] = useState<Record<string, string>>({});
   const [paymentMethods, setPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
   const [allPaymentMethods, setAllPaymentMethods] = useState<StorePaymentMethodOption[]>([]);
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [gasDoPovoBenefit, setGasDoPovoBenefit] = useState(false);
   const [paymentByProduct, setPaymentByProduct] = useState(false);
-  const [productPaymentMethodId, setProductPaymentMethodId] = useState('');
   const [deliveryFeeMethodId, setDeliveryFeeMethodId] = useState('');
-  const [unitPriceInput, setUnitPriceInput] = useState('');
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
   const [paymentMethodsError, setPaymentMethodsError] = useState('');
   const [fulfillment, setFulfillment] = useState<Fulfillment>('DELIVERY');
@@ -153,17 +159,15 @@ export default function NewSaleScreen() {
   const [cepError, setCepError] = useState('');
   const lastFetchedCep = useRef('');
 
-  const selectedProduct = useMemo(
-    () => products.find((p) => p.id === productId),
-    [products, productId],
-  );
-  const catalogUnitPrice = selectedProduct ? productPrice(selectedProduct) : 0;
-  const unitPrice = Math.max(0, Number(unitPriceInput.replace(',', '.')) || 0);
-  const qty = Math.max(1, parseInt(quantity, 10) || 1);
-  const lineTotal = unitPrice * qty;
+  const itemsSubtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const deliveryFee =
-    fulfillment === 'DELIVERY' && selectedProduct ? productDeliveryFee(selectedProduct) : 0;
-  const saleTotal = lineTotal + deliveryFee;
+    fulfillment === 'DELIVERY'
+      ? [...new Set(lineItems.map((item) => item.productId))].reduce((sum, productId) => {
+          const product = products.find((p) => p.id === productId);
+          return sum + productDeliveryFee(product);
+        }, 0)
+      : 0;
+  const saleTotal = itemsSubtotal + deliveryFee;
 
   const loadData = useCallback(async () => {
     const [storeList, salesList] = await Promise.all([
@@ -184,7 +188,6 @@ export default function NewSaleScreen() {
         `/products?storeId=${nextStoreId}&pageSize=100`,
       );
       setProducts(productRes.data);
-      setProductId((current) => current || productRes.data[0]?.id || '');
     }
   }, [storeId, user?.storeIds]);
 
@@ -200,13 +203,31 @@ export default function NewSaleScreen() {
     api<PaginatedResponse<Product>>(`/products?storeId=${storeId}&pageSize=100`)
       .then((res) => {
         setProducts(res.data);
-        setProductId(res.data[0]?.id ?? '');
+        setLineItems([]);
+        setUnitPriceDrafts({});
       })
       .catch(() => undefined);
   }, [storeId]);
 
   const gdpPaymentMethod = allPaymentMethods.find((m) => m.systemCode === 'GDP');
   const regularPaymentMethods = paymentMethods;
+  const defaultSalePaymentMethodId =
+    (
+      paymentMethodsForSale(allPaymentMethods).find((m) => m.systemCode === 'CASH')
+      ?? paymentMethodsForSale(allPaymentMethods)[0]
+    )?.id ?? null;
+
+  useEffect(() => {
+    if (!paymentByProduct || !defaultSalePaymentMethodId) return;
+    setLineItems((items) => {
+      if (!items.some((item) => !item.storePaymentMethodId)) return items;
+      return items.map((item) => ({
+        ...item,
+        storePaymentMethodId: item.storePaymentMethodId || defaultSalePaymentMethodId,
+      }));
+    });
+    setDeliveryFeeMethodId((current) => current || defaultSalePaymentMethodId);
+  }, [paymentByProduct, defaultSalePaymentMethodId]);
 
   useEffect(() => {
     if (!storeId) {
@@ -226,7 +247,6 @@ export default function NewSaleScreen() {
         const available = paymentMethodsForSale(rows);
         const fallback = available.find((m) => m.systemCode === 'CASH') ?? available[0];
         if (fallback) {
-          setProductPaymentMethodId((current) => current || fallback.id);
           setDeliveryFeeMethodId((current) => current || fallback.id);
         }
         if (!gasDoPovoBenefit) {
@@ -273,13 +293,53 @@ export default function NewSaleScreen() {
     });
   }, [saleTotal, regularPaymentMethods, gasDoPovoBenefit]);
 
-  useEffect(() => {
-    if (!selectedProduct) {
-      setUnitPriceInput('');
-      return;
+  function addOrIncrementProduct(product: Product) {
+    const price = productPrice(product);
+    const fallbackId = defaultSalePaymentMethodId;
+    setLineItems((items) => {
+      const existing = items.find((item) => item.productId === product.id);
+      if (existing) {
+        return items.map((item) =>
+          item.productId === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        );
+      }
+      return [
+        ...items,
+        {
+          productId: product.id,
+          quantity: 1,
+          unitPrice: price,
+          storePaymentMethodId: paymentByProduct ? fallbackId ?? undefined : undefined,
+        },
+      ];
+    });
+    if (!unitPriceDrafts[product.id]) {
+      setUnitPriceDrafts((current) => ({
+        ...current,
+        [product.id]: formatMoneyDraft(price),
+      }));
     }
-    setUnitPriceInput(catalogUnitPrice > 0 ? String(catalogUnitPrice) : '');
-  }, [productId, catalogUnitPrice, selectedProduct]);
+  }
+
+  function updateLineItem(
+    productId: string,
+    patch: Partial<Pick<SaleLineItem, 'quantity' | 'unitPrice' | 'storePaymentMethodId'>>,
+  ) {
+    setLineItems((items) =>
+      items.map((item) => (item.productId === productId ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function removeLineItem(productId: string) {
+    setLineItems((items) => items.filter((item) => item.productId !== productId));
+    setUnitPriceDrafts((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
+  }
 
   const searchCustomers = useCallback(async (query: string) => {
     const term = query.trim();
@@ -489,12 +549,12 @@ export default function NewSaleScreen() {
       setError('Selecione a loja.');
       return;
     }
-    if (!productId) {
-      setError('Selecione um produto.');
+    if (lineItems.length === 0) {
+      setError('Adicione pelo menos um produto.');
       return;
     }
-    if (unitPrice <= 0) {
-      setError('Informe um preço unitário válido.');
+    if (lineItems.some((item) => item.unitPrice <= 0)) {
+      setError('Informe um preço unitário válido para todos os produtos.');
       return;
     }
     if (fulfillment === 'DELIVERY' && !deliveryStreet.trim() && !deliveryCity.trim()) {
@@ -502,8 +562,8 @@ export default function NewSaleScreen() {
       return;
     }
     if (paymentByProduct) {
-      if (!productPaymentMethodId) {
-        setError('Selecione a forma de pagamento do produto.');
+      if (!allItemsHavePaymentMethod(lineItems)) {
+        setError('Defina a forma de pagamento em todos os produtos.');
         return;
       }
       if (deliveryFee > 0 && !deliveryFeeMethodId) {
@@ -519,17 +579,13 @@ export default function NewSaleScreen() {
     }
     setSubmitting(true);
     try {
-      const itemPaymentsPayload = paymentByProduct
-        ? [{
-            productId,
-            quantity: qty,
-            unitPrice,
-            storePaymentMethodId: productPaymentMethodId,
-          }]
-        : [{ productId, quantity: qty, unitPrice }];
       const paymentsPayload = paymentByProduct
         ? buildPaymentAllocationsFromItems(
-            [{ storePaymentMethodId: productPaymentMethodId, quantity: qty, unitPrice }],
+            lineItems.map((item) => ({
+              storePaymentMethodId: item.storePaymentMethodId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+            })),
             deliveryFee,
             deliveryFeeMethodId || null,
           )
@@ -549,7 +605,14 @@ export default function NewSaleScreen() {
           deliveryFeeStorePaymentMethodId: paymentByProduct
             ? (deliveryFeeMethodId || undefined)
             : undefined,
-          items: itemPaymentsPayload,
+          items: lineItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            storePaymentMethodId: paymentByProduct
+              ? item.storePaymentMethodId
+              : undefined,
+          })),
           payments: paymentsPayload,
           deliveryStreet: fulfillment === 'DELIVERY' ? deliveryStreet : undefined,
           deliveryNumber: fulfillment === 'DELIVERY' ? deliveryNumber : undefined,
@@ -562,8 +625,9 @@ export default function NewSaleScreen() {
       setSuccess('Venda enviada — aguardando aprovação da loja.');
       setNotes('');
       setGasDoPovoBenefit(false);
-      setUnitPriceInput(catalogUnitPrice > 0 ? String(catalogUnitPrice) : '');
-      setPaymentLines(createDefaultPaymentLines(paymentMethods, saleTotal));
+      setLineItems([]);
+      setUnitPriceDrafts({});
+      setPaymentLines(createDefaultPaymentLines(paymentMethods, 0));
       clearCustomerSelection();
       await loadData();
     } catch (err) {
@@ -719,59 +783,105 @@ export default function NewSaleScreen() {
       </Card>
 
       <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Produto</Text>
+        <Text style={styles.sectionTitle}>Produtos</Text>
+        <Text style={styles.hint}>Toque para adicionar. Itens selecionados aparecem abaixo.</Text>
         <View style={styles.productList}>
           {products.map((p) => {
             const price = productPrice(p);
-            const selected = productId === p.id;
+            const inCart = lineItems.some((item) => item.productId === p.id);
+            const qtyInCart = lineItems.find((item) => item.productId === p.id)?.quantity ?? 0;
             return (
               <Pressable
                 key={p.id}
-                onPress={() => setProductId(p.id)}
-                style={[styles.productCard, selected && styles.productCardActive]}
+                onPress={() => addOrIncrementProduct(p)}
+                style={[styles.productCard, inCart && styles.productCardActive]}
               >
-                <Text style={[styles.productName, selected && styles.productNameActive]}>
-                  {p.name}
-                </Text>
-                <Text style={[styles.productPrice, selected && styles.productPriceActive]}>
-                  {price > 0 ? formatCurrency(price) : 'Sem preço'}
-                </Text>
+                <View style={styles.productCardText}>
+                  <Text style={[styles.productName, inCart && styles.productNameActive]}>
+                    {p.name}
+                    {qtyInCart > 0 ? ` · ${qtyInCart}` : ''}
+                  </Text>
+                  <Text style={[styles.productPrice, inCart && styles.productPriceActive]}>
+                    {price > 0 ? formatCurrency(price) : 'Sem preço'}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}
         </View>
-        <Text style={styles.label}>Quantidade</Text>
-        <TextInput
-          style={styles.input}
-          value={quantity}
-          onChangeText={setQuantity}
-          keyboardType="number-pad"
-          placeholder="1"
-          placeholderTextColor={colors.textFaint}
-        />
-        <Text style={styles.label}>
-          {gasDoPovoBenefit ? 'Preço unitário (GDP)' : 'Preço unitário'}
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={unitPriceInput}
-          onChangeText={setUnitPriceInput}
-          keyboardType="decimal-pad"
-          placeholder="0,00"
-          placeholderTextColor={colors.textFaint}
-        />
-        {catalogUnitPrice > 0 && !gasDoPovoBenefit ? (
-          <Text style={styles.hint}>Catálogo: {formatCurrency(catalogUnitPrice)}</Text>
-        ) : null}
-        {unitPrice > 0 ? (
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLine}>
-              Produto: {qty}x {formatCurrency(unitPrice)} = {formatCurrency(lineTotal)}
-            </Text>
-            {deliveryFee > 0 ? (
-              <Text style={styles.priceLine}>Taxa entrega: {formatCurrency(deliveryFee)}</Text>
-            ) : null}
-            <Text style={styles.priceTotal}>Total: {formatCurrency(saleTotal)}</Text>
+
+        {lineItems.length > 0 ? (
+          <View style={styles.lineItems}>
+            <Text style={styles.label}>Itens da venda</Text>
+            {lineItems.map((item) => {
+              const product = products.find((p) => p.id === item.productId);
+              return (
+                <View key={item.productId} style={styles.lineItemCard}>
+                  <View style={styles.lineItemHeader}>
+                    <Text style={styles.lineItemName}>{product?.name ?? 'Produto'}</Text>
+                    <Pressable onPress={() => removeLineItem(item.productId)} hitSlop={8}>
+                      <Text style={styles.removeLink}>Remover</Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.qtyRow}>
+                    <Pressable
+                      style={styles.qtyBtn}
+                      onPress={() =>
+                        updateLineItem(item.productId, {
+                          quantity: Math.max(1, item.quantity - 1),
+                        })
+                      }
+                    >
+                      <Text style={styles.qtyBtnText}>−</Text>
+                    </Pressable>
+                    <Text style={styles.qtyValue}>{item.quantity}</Text>
+                    <Pressable
+                      style={styles.qtyBtn}
+                      onPress={() =>
+                        updateLineItem(item.productId, { quantity: item.quantity + 1 })
+                      }
+                    >
+                      <Text style={styles.qtyBtnText}>+</Text>
+                    </Pressable>
+                    <Text style={styles.lineItemSubtotal}>
+                      {formatCurrency(item.quantity * item.unitPrice)}
+                    </Text>
+                  </View>
+                  <Text style={styles.label}>
+                    {gasDoPovoBenefit ? 'Preço unitário (GDP)' : 'Preço unitário'}
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    value={
+                      unitPriceDrafts[item.productId]
+                      ?? (item.unitPrice > 0 ? formatMoneyDraft(item.unitPrice) : '')
+                    }
+                    onChangeText={(text) => {
+                      const sanitized = sanitizeMoneyInput(text);
+                      setUnitPriceDrafts((current) => ({
+                        ...current,
+                        [item.productId]: sanitized,
+                      }));
+                      updateLineItem(item.productId, {
+                        unitPrice: parseMoneyInput(sanitized),
+                      });
+                    }}
+                    keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
+                    placeholder="0,00"
+                    placeholderTextColor={colors.textFaint}
+                  />
+                </View>
+              );
+            })}
+            <View style={styles.priceBox}>
+              <Text style={styles.priceLine}>
+                Produtos: {formatCurrency(itemsSubtotal)}
+              </Text>
+              {deliveryFee > 0 ? (
+                <Text style={styles.priceLine}>Taxa entrega: {formatCurrency(deliveryFee)}</Text>
+              ) : null}
+              <Text style={styles.priceTotal}>Total: {formatCurrency(saleTotal)}</Text>
+            </View>
           </View>
         ) : null}
       </Card>
@@ -793,11 +903,15 @@ export default function NewSaleScreen() {
             onPress={() => {
               setPaymentByProduct(true);
               setGasDoPovoBenefit(false);
-              const available = paymentMethodsForSale(allPaymentMethods);
-              const fallback = available.find((m) => m.systemCode === 'CASH') ?? available[0];
-              if (fallback) {
-                setProductPaymentMethodId((current) => current || fallback.id);
-                setDeliveryFeeMethodId((current) => current || fallback.id);
+              const fallbackId = defaultSalePaymentMethodId;
+              if (fallbackId) {
+                setLineItems((items) =>
+                  items.map((item) => ({
+                    ...item,
+                    storePaymentMethodId: item.storePaymentMethodId || fallbackId,
+                  })),
+                );
+                setDeliveryFeeMethodId((current) => current || fallbackId);
               }
             }}
             style={[styles.chip, paymentByProduct && styles.chipActive]}
@@ -825,7 +939,7 @@ export default function NewSaleScreen() {
               </Text>
               <Text style={[styles.gdpToggleHint, gasDoPovoBenefit && styles.gdpToggleHintActive]}>
                 {gasDoPovoBenefit
-                  ? 'Ajuste o preço unitário acima; o pagamento fica como GDP'
+                  ? 'Ajuste o preço unitário nos itens; o pagamento fica como GDP'
                   : 'Ou use “Por produto” para misturar GDP com outras formas'}
               </Text>
             </Pressable>
@@ -853,29 +967,25 @@ export default function NewSaleScreen() {
             <Text style={styles.hint}>Carregando formas...</Text>
           ) : paymentMethodsError ? (
             <Text style={styles.error}>{paymentMethodsError}</Text>
-          ) : selectedProduct && unitPrice > 0 ? (
+          ) : lineItems.length > 0 && lineItems.every((item) => item.unitPrice > 0) ? (
             <SaleItemPaymentsEditor
               methods={allPaymentMethods}
-              items={[{
-                key: productId,
-                label: selectedProduct.name,
-                quantity: qty,
-                unitPrice,
-                storePaymentMethodId: productPaymentMethodId
-                  || paymentMethodsForSale(allPaymentMethods)[0]?.id
-                  || '',
-              }]}
-              onChangeItemMethod={(_key, methodId) => setProductPaymentMethodId(methodId)}
-              deliveryFee={deliveryFee}
-              deliveryFeeStorePaymentMethodId={
-                deliveryFeeMethodId
-                || paymentMethodsForSale(allPaymentMethods)[0]?.id
-                || ''
+              items={lineItems.map((item) => ({
+                key: item.productId,
+                label: products.find((p) => p.id === item.productId)?.name ?? 'Produto',
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                storePaymentMethodId: item.storePaymentMethodId || '',
+              }))}
+              onChangeItemMethod={(productId, methodId) =>
+                updateLineItem(productId, { storePaymentMethodId: methodId })
               }
+              deliveryFee={deliveryFee}
+              deliveryFeeStorePaymentMethodId={deliveryFeeMethodId || ''}
               onChangeDeliveryFeeMethod={setDeliveryFeeMethodId}
             />
           ) : (
-            <Text style={styles.hint}>Selecione o produto e o preço para definir as formas.</Text>
+            <Text style={styles.hint}>Adicione produtos e preços para definir as formas.</Text>
           )}
         </Card>
       )}
@@ -1122,15 +1232,54 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
+  },
+  productCardActive: { backgroundColor: colors.navy, borderColor: colors.navy },
+  productCardText: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: spacing.sm,
   },
-  productCardActive: { backgroundColor: colors.navy, borderColor: colors.navy },
   productName: { fontSize: 15, fontWeight: '600', color: colors.text, flex: 1 },
   productNameActive: { color: '#FFFFFF' },
   productPrice: { fontSize: 15, fontWeight: '700', color: colors.primary },
   productPriceActive: { color: '#FFFFFF' },
+  lineItems: { gap: spacing.sm, marginTop: spacing.sm },
+  lineItemCard: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    gap: spacing.xs,
+  },
+  lineItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  lineItemName: { fontSize: 14, fontWeight: '700', color: colors.text, flex: 1 },
+  removeLink: { fontSize: 13, fontWeight: '600', color: colors.dangerText },
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  qtyBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyBtnText: { fontSize: 18, fontWeight: '700', color: colors.text },
+  qtyValue: { fontSize: 16, fontWeight: '700', color: colors.text, minWidth: 24, textAlign: 'center' },
+  lineItemSubtotal: { marginLeft: 'auto', fontSize: 14, fontWeight: '700', color: colors.text },
   rowButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   customerList: { gap: spacing.xs },
   customerRow: {

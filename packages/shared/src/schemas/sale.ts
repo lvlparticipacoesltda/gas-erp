@@ -73,13 +73,23 @@ export const updateSaleItemPaymentSchema = z.object({
   storePaymentMethodId: z.string().min(1),
 });
 
+export const updateSaleItemUnitPriceSchema = z.object({
+  id: z.string().min(1),
+  unitPrice: z.number().nonnegative(),
+});
+
 export const updateSalePaymentsSchema = z.object({
   payments: z.array(salePaymentSchema).optional(),
   /** Atualiza forma de pagamento por item; quando enviado, os pagamentos são recalculados. */
   itemPayments: z.array(updateSaleItemPaymentSchema).optional(),
   deliveryFeeStorePaymentMethodId: z.string().min(1).optional().nullable(),
-  /** Ajuste de preço unitário — permitido apenas com benefício Gás do Povo (validado na API). */
+  /**
+   * Ajuste de preço unitário de um único item (legado).
+   * Preferir `itemUnitPrices` quando a venda tem vários produtos.
+   */
   unitPrice: z.number().nonnegative().optional(),
+  /** Ajuste de preço unitário por item (recalcula totais da venda). */
+  itemUnitPrices: z.array(updateSaleItemUnitPriceSchema).optional(),
 }).superRefine((data, ctx) => {
   if (!data.payments?.length && !data.itemPayments?.length) {
     ctx.addIssue({

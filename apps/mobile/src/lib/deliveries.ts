@@ -21,17 +21,19 @@ export function updateSalePayments(
   payments: { storePaymentMethodId: string; amount: number }[],
   options?: {
     unitPrice?: number;
+    itemUnitPrices?: { id: string; unitPrice: number }[];
     itemPayments?: { id: string; storePaymentMethodId: string }[];
     deliveryFeeStorePaymentMethodId?: string | null;
   },
 ): Promise<unknown> {
-  const { unitPrice, itemPayments, deliveryFeeStorePaymentMethodId } = options ?? {};
+  const { unitPrice, itemUnitPrices, itemPayments, deliveryFeeStorePaymentMethodId } = options ?? {};
   return api(`/sales/${saleId}/payments`, {
     method: 'PATCH',
     body: {
       ...(payments.length ? { payments } : {}),
       ...(itemPayments?.length ? { itemPayments } : {}),
       ...(unitPrice !== undefined ? { unitPrice } : {}),
+      ...(itemUnitPrices?.length ? { itemUnitPrices } : {}),
       ...(deliveryFeeStorePaymentMethodId !== undefined
         ? { deliveryFeeStorePaymentMethodId }
         : {}),
@@ -49,6 +51,28 @@ export function buildAddress(sale: Sale): string {
   const city = [sale.deliveryCity, sale.deliveryState].filter(Boolean).join(' - ');
   if (city) parts.push(city);
   if (sale.deliveryLandmark) parts.push(`Ref.: ${sale.deliveryLandmark}`);
+  return parts.join(', ');
+}
+
+/**
+ * Endereço para abrir Maps/Waze — prioriza campos estruturados da venda
+ * (evita texto genérico/errôneo e faz o Google resolver o número correto).
+ */
+export function buildNavigationAddress(sale: Sale): string | null {
+  const street = sale.deliveryStreet?.trim();
+  const number = sale.deliveryNumber?.trim();
+  const city = sale.deliveryCity?.trim();
+  const state = sale.deliveryState?.trim();
+  if (!street || !city) {
+    const fallback = buildAddress(sale).trim();
+    return fallback || null;
+  }
+
+  const parts: string[] = [];
+  parts.push(number ? `${street}, ${number}` : street);
+  if (sale.deliveryNeighborhood?.trim()) parts.push(sale.deliveryNeighborhood.trim());
+  parts.push(state ? `${city} - ${state}` : city);
+  parts.push('Brasil');
   return parts.join(', ');
 }
 

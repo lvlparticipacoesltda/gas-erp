@@ -1276,29 +1276,47 @@ export class SalesService {
     }
 
     const submittedUnitPrice = parsed.unitPrice;
+    const submittedItemUnitPrices = parsed.itemUnitPrices;
 
-    if (submittedUnitPrice !== undefined && sale.items.length !== 1) {
+    if (submittedUnitPrice !== undefined && submittedItemUnitPrices?.length) {
       throw new BadRequestException(
-        'Ajuste de preço unitário só é suportado para vendas com um produto.',
+        'Envie unitPrice ou itemUnitPrices, não ambos.',
       );
     }
 
-    let saleTotal = toNumber(sale.total);
+    if (submittedUnitPrice !== undefined && sale.items.length !== 1) {
+      throw new BadRequestException(
+        'Ajuste de preço unitário único só é suportado para vendas com um produto. Use itemUnitPrices.',
+      );
+    }
+
+    if (submittedItemUnitPrices?.length) {
+      for (const row of submittedItemUnitPrices) {
+        if (!sale.items.some((item) => item.id === row.id)) {
+          throw new BadRequestException('Item de venda inválido para atualizar preço.');
+        }
+      }
+    }
+
+    const unitPriceByItemId = new Map<string, number>();
+    if (submittedItemUnitPrices?.length) {
+      for (const row of submittedItemUnitPrices) {
+        unitPriceByItemId.set(row.id, row.unitPrice);
+      }
+    } else if (submittedUnitPrice !== undefined && sale.items[0]) {
+      unitPriceByItemId.set(sale.items[0].id, submittedUnitPrice);
+    }
+
+    const hasUnitPriceAdjustments = unitPriceByItemId.size > 0;
+
     let itemsForPlan = sale.items.map((item) => ({
+      id: item.id,
       productId: item.productId,
       quantity: item.quantity,
-      unitPrice: toNumber(item.unitPrice),
+      unitPrice: unitPriceByItemId.get(item.id) ?? toNumber(item.unitPrice),
       discount: toNumber(item.discount),
       storePaymentMethodId: item.storePaymentMethodId,
     }));
-
-    if (submittedUnitPrice !== undefined) {
-      const deliveryFee = toNumber(sale.deliveryFee);
-      const item = itemsForPlan[0];
-      const itemTotal = item.quantity * submittedUnitPrice - (item.discount ?? 0);
-      saleTotal = itemTotal + deliveryFee;
-      itemsForPlan = [{ ...item, unitPrice: submittedUnitPrice }];
-    }
 
     if (parsed.itemPayments?.length) {
       const byId = new Map(parsed.itemPayments.map((row) => [row.id, row.storePaymentMethodId]));
@@ -1307,22 +1325,19 @@ export class SalesService {
           throw new BadRequestException('Item de venda inválido para atualizar pagamento.');
         }
       }
-      itemsForPlan = sale.items.map((row) => {
-        const methodId = byId.get(row.id) ?? row.storePaymentMethodId;
-        return {
-          productId: row.productId,
-          quantity: row.quantity,
-          unitPrice:
-            submittedUnitPrice !== undefined && sale.items.length === 1
-              ? submittedUnitPrice
-              : toNumber(row.unitPrice),
-          discount: toNumber(row.discount),
-          storePaymentMethodId: methodId,
-        };
-      });
+      itemsForPlan = itemsForPlan.map((row) => ({
+        ...row,
+        storePaymentMethodId: byId.get(row.id) ?? row.storePaymentMethodId,
+      }));
     }
 
     const deliveryFee = toNumber(sale.deliveryFee);
+    const saleTotal = hasUnitPriceAdjustments
+      ? itemsForPlan.reduce(
+          (sum, item) => sum + item.quantity * item.unitPrice - (item.discount ?? 0),
+          0,
+        ) + deliveryFee
+      : toNumber(sale.total);
     const {
       resolvedPayments,
       gasDoPovoBenefit,
@@ -1357,7 +1372,7 @@ export class SalesService {
       user.role === 'DELIVERER'
       && sale.delivery?.deliverer.userId === user.id;
 
-    if (submittedUnitPrice !== undefined && !isDelivererOwner) {
+    if (hasUnitPriceAdjustments && !isDelivererOwner) {
       const isFinance = user.role === 'FINANCE';
       const isManager = canManageSales(user.role);
       const hasSalesScreen = hasScreenPermission(user.role, user.permissions, 'store.sales');
@@ -1401,17 +1416,18 @@ export class SalesService {
     }));
 
     await this.prisma.$transaction(async (tx) => {
-      if (submittedUnitPrice !== undefined) {
-        const item = sale.items[0];
-        const discount = toNumber(item.discount);
-        const itemTotal = item.quantity * submittedUnitPrice - discount;
-        await tx.saleItem.update({
-          where: { id: item.id },
-          data: {
-            unitPrice: submittedUnitPrice,
-            total: itemTotal,
-          },
-        });
+      if (hasUnitPriceAdjustments) {
+        for (const item of itemsForPlan) {
+          if (!unitPriceByItemId.has(item.id)) continue;
+          const itemTotal = item.quantity * item.unitPrice - (item.discount ?? 0);
+          await tx.saleItem.update({
+            where: { id: item.id },
+            data: {
+              unitPrice: item.unitPrice,
+              total: itemTotal,
+            },
+          });
+        }
       }
 
       if (parsed.itemPayments?.length) {

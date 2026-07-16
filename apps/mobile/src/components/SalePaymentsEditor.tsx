@@ -1,11 +1,12 @@
-import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   PAYMENT_METHOD_LABELS,
   formatPaymentSumHint,
   paymentsLinesMatchTotal,
 } from '@gas-erp/shared';
 import { Button } from '@/components/ui';
+import { formatMoneyDraft, parseMoneyInput, sanitizeMoneyInput } from '@/lib/money-input';
 import { colors, radius, spacing } from '@/theme';
 
 export interface StorePaymentMethodOption {
@@ -112,6 +113,8 @@ export function SalePaymentsEditor({
     [methods, gdpLocked, showGdpOption],
   );
 
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
+
   const paidTotal = useMemo(
     () => lines.reduce((sum, line) => sum + (line.amount || 0), 0),
     [lines],
@@ -124,22 +127,36 @@ export function SalePaymentsEditor({
     onChange(lines.map((line) => (line.key === key ? { ...line, ...patch } : line)));
   }
 
+  function setAmountFromText(key: string, text: string) {
+    const sanitized = sanitizeMoneyInput(text);
+    setAmountDrafts((current) => ({ ...current, [key]: sanitized }));
+    updateLine(key, { amount: parseMoneyInput(sanitized) });
+  }
+
   function addLine() {
     const method = availableMethods[0];
     if (!method) return;
     const remaining = saleTotal - paidTotal;
+    const amount = Math.max(0, Number(remaining.toFixed(2)));
+    const key = newPaymentLineKey();
+    setAmountDrafts((current) => ({ ...current, [key]: formatMoneyDraft(amount) }));
     onChange([
       ...lines,
       {
-        key: newPaymentLineKey(),
+        key,
         storePaymentMethodId: method.id,
-        amount: Math.max(0, Number(remaining.toFixed(2))),
+        amount,
       },
     ]);
   }
 
   function removeLine(key: string) {
     if (lines.length <= 1) return;
+    setAmountDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     onChange(lines.filter((line) => line.key !== key));
   }
 
@@ -216,15 +233,14 @@ export function SalePaymentsEditor({
           </Text>
           <TextInput
             style={[styles.amountInput, comfortable && styles.amountInputComfortable]}
-            keyboardType="decimal-pad"
+            keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
             editable={!disabled}
-            value={line.amount > 0 ? String(line.amount) : ''}
+            value={
+              amountDrafts[line.key]
+              ?? (line.amount > 0 ? formatMoneyDraft(line.amount) : '')
+            }
             onFocus={onAmountFocus}
-            onChangeText={(text) => {
-              const normalized = text.replace(',', '.');
-              const amount = normalized === '' ? 0 : Number(normalized);
-              updateLine(line.key, { amount: Number.isFinite(amount) ? amount : 0 });
-            }}
+            onChangeText={(text) => setAmountFromText(line.key, text)}
             placeholder="0,00"
             placeholderTextColor={colors.textFaint}
           />

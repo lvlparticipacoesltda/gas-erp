@@ -18,7 +18,7 @@ import { useRouteNavigation } from '../../hooks/useRouteNavigation';
 import { useRoutePreview } from '../../hooks/useRoutePreview';
 import { useStoreHomeNavigation } from '../../hooks/useStoreHomeNavigation';
 import { useAuth } from '../../lib/auth';
-import { deliveryAddress, updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
+import { deliveryAddress, buildNavigationAddress, updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
 import { useDeliveriesContext } from '../../lib/deliveries-context';
 import { useDelivererAvailability } from '../../lib/deliverer-availability-context';
 import {
@@ -62,7 +62,6 @@ export function DeliveryMapHome() {
   const [homePickerOpen, setHomePickerOpen] = useState(false);
   const [homeStore, setHomeStore] = useState<DelivererMeStore | null>(null);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
-  const [paymentsMinimized, setPaymentsMinimized] = useState(false);
   const mapRef = useRef<DriverMapRef>(null);
   const navigationSyncedRef = useRef(false);
 
@@ -277,7 +276,7 @@ export function DeliveryMapHome() {
   const handleFinishRoute = useCallback(
     async (payload: {
       payments: { storePaymentMethodId: string; amount: number }[];
-      unitPrice?: number;
+      itemUnitPrices?: { id: string; unitPrice: number }[];
       itemPayments?: { id: string; storePaymentMethodId: string }[];
       deliveryFeeStorePaymentMethodId?: string | null;
     }) => {
@@ -285,7 +284,7 @@ export function DeliveryMapHome() {
       setBusy(true);
       try {
         await updateSalePayments(navigationDelivery.sale.id, payload.payments, {
-          unitPrice: payload.unitPrice,
+          itemUnitPrices: payload.itemUnitPrices,
           itemPayments: payload.itemPayments,
           deliveryFeeStorePaymentMethodId: payload.deliveryFeeStorePaymentMethodId,
         });
@@ -310,7 +309,7 @@ export function DeliveryMapHome() {
     !homeMode
     && navigationDelivery?.status === 'IN_PROGRESS'
     && !selected
-    && !(paymentsOpen && !paymentsMinimized);
+    && !paymentsOpen;
   const showSelectedPanel = Boolean(!homeMode && selected);
   const fabCount = actionableDeliveries.length;
   /** Posição fixa dos FABs — não muda ao ativar Home / painéis. */
@@ -319,15 +318,20 @@ export function DeliveryMapHome() {
   const openDeliveryExternalNav = useCallback(
     (app: 'maps' | 'waze') => {
       if (!navigationDelivery) return;
+      const address =
+        buildNavigationAddress(navigationDelivery.sale)
+        || deliveryAddress(navigationDelivery);
+      // Sempre preferir o texto do endereço cadastrado. Coordenadas do Nominatim
+      // frequentemente erram o número da casa (ex.: 20 → pin no 1320).
       const dest = {
-        latitude: navigationDelivery.destination?.latitude ?? routeDestination?.latitude ?? null,
-        longitude: navigationDelivery.destination?.longitude ?? routeDestination?.longitude ?? null,
-        address: deliveryAddress(navigationDelivery),
+        address,
+        latitude: null as number | null,
+        longitude: null as number | null,
       };
       if (app === 'maps') void openGoogleMaps(dest);
       else void openWaze(dest);
     },
-    [navigationDelivery, routeDestination],
+    [navigationDelivery],
   );
 
   const openHomeExternalNav = useCallback(
@@ -576,13 +580,6 @@ export function DeliveryMapHome() {
           saleTotal={Number(navigationDelivery.sale.total ?? 0)}
           deliveryFee={Number(navigationDelivery.sale.deliveryFee ?? 0)}
           gasDoPovoBenefit={navigationDelivery.sale.gasDoPovoBenefit}
-          itemQuantity={navigationDelivery.sale.items[0]?.quantity ?? 1}
-          itemCount={navigationDelivery.sale.items.length}
-          initialUnitPrice={
-            navigationDelivery.sale.items[0]?.unitPrice != null
-              ? Number(navigationDelivery.sale.items[0].unitPrice)
-              : undefined
-          }
           initialPayments={navigationDelivery.sale.payments}
           items={navigationDelivery.sale.items.map((item) => ({
             id: item.id,
@@ -590,15 +587,14 @@ export function DeliveryMapHome() {
             quantity: item.quantity,
             unitPrice: Number(item.unitPrice ?? 0),
             storePaymentMethodId: item.storePaymentMethodId,
+            productType: item.product.productType,
           }))}
           deliveryFeeStorePaymentMethodId={
             navigationDelivery.sale.deliveryFeeStorePaymentMethodId
           }
           onClose={() => {
             setPaymentsOpen(false);
-            setPaymentsMinimized(false);
           }}
-          onMinimizedChange={setPaymentsMinimized}
           onConfirm={handleFinishRoute}
         />
       ) : null}

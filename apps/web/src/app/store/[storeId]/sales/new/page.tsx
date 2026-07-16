@@ -203,6 +203,25 @@ export default function NewSalePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recalc when customer prices or catalog load
   }, [customerPriceByProduct, products]);
 
+  const defaultSalePaymentMethodId =
+    (
+      paymentMethodsForSale(paymentMethods).find((m) => m.systemCode === 'CASH')
+      ?? paymentMethodsForSale(paymentMethods)[0]
+    )?.id ?? null;
+
+  // Garante forma real no estado (o select não pode só "parecer" selecionado).
+  useEffect(() => {
+    if (!paymentByProduct || !defaultSalePaymentMethodId) return;
+    setLineItems((items) => {
+      if (!items.some((item) => !item.storePaymentMethodId)) return items;
+      return items.map((item) => ({
+        ...item,
+        storePaymentMethodId: item.storePaymentMethodId || defaultSalePaymentMethodId,
+      }));
+    });
+    setDeliveryFeeMethodId((current) => current || defaultSalePaymentMethodId);
+  }, [paymentByProduct, defaultSalePaymentMethodId]);
+
   const gdpPaymentMethod = paymentMethods.find((m) => m.systemCode === 'GDP')
     ?? null;
   const regularPaymentMethods = paymentMethods.filter((m) => m.systemCode !== 'GDP');
@@ -344,18 +363,42 @@ export default function NewSalePage() {
 
   function addProduct(id: string) {
     const product = products.find((p) => p.id === id);
-    if ((product?.productType ?? '').toUpperCase() === 'TAXA') {
+    const isTaxa = (product?.productType ?? '').toUpperCase() === 'TAXA';
+    if (isTaxa) {
       setPaymentByProduct(true);
     }
+    const assignMethods = isTaxa || paymentByProduct;
+    const fallbackId = defaultSalePaymentMethodId;
+
     setLineItems((items) => {
+      let next = items;
       const existing = items.find((item) => item.productId === id);
       if (existing) {
-        return items.map((item) =>
+        next = items.map((item) =>
           item.productId === id ? { ...item, quantity: item.quantity + 1 } : item,
         );
+      } else {
+        next = [
+          ...items,
+          {
+            productId: id,
+            quantity: 1,
+            unitPrice: resolveProductUnitPrice(id),
+            storePaymentMethodId: assignMethods ? fallbackId : undefined,
+          },
+        ];
       }
-      return [...items, { productId: id, quantity: 1, unitPrice: resolveProductUnitPrice(id) }];
+      if (assignMethods && fallbackId) {
+        next = next.map((item) => ({
+          ...item,
+          storePaymentMethodId: item.storePaymentMethodId || fallbackId,
+        }));
+      }
+      return next;
     });
+    if (assignMethods && fallbackId) {
+      setDeliveryFeeMethodId((current) => current || fallbackId);
+    }
   }
 
   function updateLineItem(productId: string, patch: Partial<Pick<SaleLineItem, 'quantity' | 'unitPrice'>>) {
@@ -749,16 +792,15 @@ export default function NewSalePage() {
                     onClick={() => {
                       setPaymentByProduct(true);
                       setDraft((d) => ({ ...d, gasDoPovoBenefit: false }));
-                      const defaults = paymentMethodsForSale(paymentMethods);
-                      const fallback = defaults.find((m) => m.systemCode === 'CASH') ?? defaults[0];
-                      if (fallback) {
+                      const fallbackId = defaultSalePaymentMethodId;
+                      if (fallbackId) {
                         setLineItems((items) =>
                           items.map((item) => ({
                             ...item,
-                            storePaymentMethodId: item.storePaymentMethodId || fallback.id,
+                            storePaymentMethodId: item.storePaymentMethodId || fallbackId,
                           })),
                         );
-                        setDeliveryFeeMethodId((current) => current || fallback.id);
+                        setDeliveryFeeMethodId((current) => current || fallbackId);
                       }
                     }}
                     className={cn(
@@ -831,9 +873,7 @@ export default function NewSalePage() {
                       label: products.find((p) => p.id === item.productId)?.name ?? 'Produto',
                       quantity: item.quantity,
                       unitPrice: item.unitPrice,
-                      storePaymentMethodId: item.storePaymentMethodId
-                        || paymentMethodsForSale(paymentMethods)[0]?.id
-                        || '',
+                      storePaymentMethodId: item.storePaymentMethodId || '',
                     }))}
                     onChangeItemMethod={(productId, storePaymentMethodId) => {
                       setLineItems((items) =>
@@ -845,11 +885,7 @@ export default function NewSalePage() {
                       );
                     }}
                     deliveryFee={deliveryFee}
-                    deliveryFeeStorePaymentMethodId={
-                      deliveryFeeMethodId
-                      || paymentMethodsForSale(paymentMethods)[0]?.id
-                      || ''
-                    }
+                    deliveryFeeStorePaymentMethodId={deliveryFeeMethodId || ''}
                     onChangeDeliveryFeeMethod={setDeliveryFeeMethodId}
                   />
                 </div>

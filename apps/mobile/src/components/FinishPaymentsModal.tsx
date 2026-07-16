@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -20,6 +21,7 @@ import {
 } from '@gas-erp/shared';
 import { Button } from '@/components/ui';
 import { api } from '@/lib/api';
+import { parseMoneyInput, sanitizeMoneyInput, formatMoneyDraft } from '@/lib/money-input';
 import { colors, radius, spacing } from '@/theme';
 import {
   SalePaymentsEditor,
@@ -41,6 +43,7 @@ export interface FinishSaleItem {
   quantity: number;
   unitPrice: number;
   storePaymentMethodId?: string | null;
+  productType?: string | null;
 }
 
 interface FinishPaymentsModalProps {
@@ -50,17 +53,13 @@ interface FinishPaymentsModalProps {
   saleTotal: number;
   deliveryFee?: number;
   gasDoPovoBenefit?: boolean;
-  itemQuantity?: number;
-  itemCount?: number;
-  initialUnitPrice?: number;
   initialPayments?: { method: string; amount: number | string; storePaymentMethodId?: string | null }[];
   items?: FinishSaleItem[];
   deliveryFeeStorePaymentMethodId?: string | null;
   onClose: () => void;
-  onMinimizedChange?: (minimized: boolean) => void;
   onConfirm: (payload: {
     payments: { storePaymentMethodId: string; amount: number }[];
-    unitPrice?: number;
+    itemUnitPrices?: { id: string; unitPrice: number }[];
     itemPayments?: { id: string; storePaymentMethodId: string }[];
     deliveryFeeStorePaymentMethodId?: string | null;
   }) => Promise<void>;
@@ -120,74 +119,62 @@ export function FinishPaymentsModal({
   saleTotal: initialSaleTotal,
   deliveryFee = 0,
   gasDoPovoBenefit = false,
-  itemQuantity = 1,
-  itemCount = 1,
-  initialUnitPrice,
   initialPayments,
   items = [],
   deliveryFeeStorePaymentMethodId: initialFeeMethodId,
   onClose,
-  onMinimizedChange,
   onConfirm,
 }: FinishPaymentsModalProps) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
-  const [minimized, setMinimized] = useState(false);
   const [methods, setMethods] = useState<StorePaymentMethodOption[]>([]);
   const [lines, setLines] = useState<PaymentLine[]>([]);
   const [paymentByProduct, setPaymentByProduct] = useState(false);
   const [itemMethods, setItemMethods] = useState<Record<string, string>>({});
+  const [itemUnitPrices, setItemUnitPrices] = useState<Record<string, string>>({});
   const [feeMethodId, setFeeMethodId] = useState('');
   const [loadingMethods, setLoadingMethods] = useState(false);
   const [loading, setLoading] = useState(false);
   const [methodsError, setMethodsError] = useState('');
   const [error, setError] = useState('');
-  const [gdpUnitPrice, setGdpUnitPrice] = useState('');
   const openSessionRef = useRef<string | null>(null);
 
-  const canEditGdpUnitPrice = gasDoPovoBenefit && itemCount === 1 && initialUnitPrice != null;
-  const parsedUnitPrice = Math.max(0, Number(gdpUnitPrice.replace(',', '.')) || 0);
-  const deliveryFeeAmount = canEditGdpUnitPrice
-    ? Math.max(0, initialSaleTotal - initialUnitPrice * itemQuantity)
-    : deliveryFee;
-  const saleTotal = canEditGdpUnitPrice && parsedUnitPrice > 0
-    ? parsedUnitPrice * itemQuantity + deliveryFeeAmount
+  const deliveryFeeAmount = Math.max(0, deliveryFee);
+  const editableItems = useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        unitPrice: parseMoneyInput(itemUnitPrices[item.id] ?? formatMoneyDraft(item.unitPrice)),
+      })),
+    [items, itemUnitPrices],
+  );
+  const itemsSubtotal = editableItems.reduce(
+    (sum, item) => sum + item.quantity * item.unitPrice,
+    0,
+  );
+  const saleTotal = items.length > 0
+    ? itemsSubtotal + deliveryFeeAmount
     : initialSaleTotal;
 
-  const gdpMethodId = methods.find((m) => m.systemCode === 'GDP')?.id;
-
-  function setMinimizedState(next: boolean) {
-    setMinimized(next);
-    onMinimizedChange?.(next);
-  }
-
-  useEffect(() => {
-    if (!visible) {
-      openSessionRef.current = null;
-      setMinimized(false);
-      onMinimizedChange?.(false);
-      return;
-    }
-    setMinimizedState(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-
   useEffect(() => {
     if (!visible) {
       openSessionRef.current = null;
       return;
     }
 
-    const sessionKey = `${saleId}:${saleTotal}:${gasDoPovoBenefit}`;
+    const sessionKey = `${saleId}:${initialSaleTotal}:${gasDoPovoBenefit}`;
     if (openSessionRef.current === sessionKey) return;
     openSessionRef.current = sessionKey;
 
     setError('');
     setMethodsError('');
     setLoadingMethods(true);
-    if (gasDoPovoBenefit && initialUnitPrice != null) {
-      setGdpUnitPrice(String(initialUnitPrice));
+
+    const nextPrices: Record<string, string> = {};
+    for (const item of items) {
+      nextPrices[item.id] = formatMoneyDraft(item.unitPrice);
     }
+    setItemUnitPrices(nextPrices);
 
     let cancelled = false;
 
@@ -197,20 +184,29 @@ export function FinishPaymentsModal({
       .then((rows) => {
         if (cancelled) return;
         setMethods(rows);
-        setLines(buildInitialLines(rows, saleTotal, gasDoPovoBenefit, initialPayments));
+        setLines(buildInitialLines(rows, initialSaleTotal, gasDoPovoBenefit, initialPayments));
 
         const available = paymentMethodsForSale(rows);
         const fallback = available.find((m) => m.systemCode === 'CASH') ?? available[0];
         const nextItemMethods: Record<string, string> = {};
         let hasItemMethods = false;
         for (const item of items) {
-          const methodId = item.storePaymentMethodId || fallback?.id || '';
-          nextItemMethods[item.id] = methodId;
-          if (item.storePaymentMethodId) hasItemMethods = true;
+          if (item.storePaymentMethodId) {
+            nextItemMethods[item.id] = item.storePaymentMethodId;
+            hasItemMethods = true;
+          } else if (fallback) {
+            nextItemMethods[item.id] = fallback.id;
+          }
         }
         setItemMethods(nextItemMethods);
         setFeeMethodId(initialFeeMethodId || fallback?.id || '');
-        setPaymentByProduct(hasItemMethods || items.length > 1);
+        const hasTaxaItem = items.some(
+          (item) => (item.productType ?? '').toUpperCase() === 'TAXA',
+        );
+        // Igual ao painel: TAXA ou vários itens → pagamento por produto.
+        setPaymentByProduct(
+          hasItemMethods || hasTaxaItem || (items.length > 1 && Boolean(fallback)),
+        );
       })
       .catch((err) => {
         if (cancelled) return;
@@ -226,112 +222,119 @@ export function FinishPaymentsModal({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, storeId, saleId, initialSaleTotal, gasDoPovoBenefit, initialUnitPrice]);
+  }, [visible, storeId, saleId, initialSaleTotal, gasDoPovoBenefit]);
 
   useEffect(() => {
-    if (!visible || minimized) return;
+    if (!visible || paymentByProduct) return;
+    setLines((current) => {
+      if (current.length === 0) return current;
+      if (current.length === 1) {
+        return [{ ...current[0], amount: saleTotal }];
+      }
+      return current;
+    });
+  }, [saleTotal, visible, paymentByProduct]);
+
+  useEffect(() => {
+    if (!visible) return;
     const event = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const sub = Keyboard.addListener(event, () => {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
     return () => sub.remove();
-  }, [visible, minimized]);
+  }, [visible]);
 
-  async function handleConfirm() {
-    if (canEditGdpUnitPrice && parsedUnitPrice <= 0) {
-      setError('Informe um preço válido para o benefício Gás do Povo.');
-      return;
+  function buildConfirmPayload() {
+    if (editableItems.some((item) => item.unitPrice <= 0)) {
+      return { error: 'Informe um preço unitário válido para todos os produtos.' as const };
     }
 
+    const itemUnitPricesPayload = editableItems.map((item) => ({
+      id: item.id,
+      unitPrice: item.unitPrice,
+    }));
+
     if (paymentByProduct) {
-      const itemRows = items.map((item) => ({
+      const itemRows = editableItems.map((item) => ({
         storePaymentMethodId: itemMethods[item.id] || null,
         quantity: item.quantity,
-        unitPrice:
-          canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : item.unitPrice,
+        unitPrice: item.unitPrice,
       }));
       if (!allItemsHavePaymentMethod(itemRows)) {
-        setError('Defina a forma de pagamento em todos os produtos.');
-        return;
+        return { error: 'Defina a forma de pagamento em todos os produtos.' as const };
       }
 
-      const payments = buildPaymentAllocationsFromItems(
-        itemRows,
-        deliveryFeeAmount,
-        feeMethodId || null,
-      );
-
-      setLoading(true);
-      setError('');
-      try {
-        await onConfirm({
-          payments,
-          unitPrice: canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : undefined,
-          itemPayments: items.map((item) => ({
+      return {
+        payload: {
+          payments: buildPaymentAllocationsFromItems(
+            itemRows,
+            deliveryFeeAmount,
+            feeMethodId || null,
+          ),
+          itemUnitPrices: itemUnitPricesPayload,
+          itemPayments: editableItems.map((item) => ({
             id: item.id,
             storePaymentMethodId: itemMethods[item.id],
           })),
           deliveryFeeStorePaymentMethodId: feeMethodId || null,
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Não foi possível salvar os pagamentos.');
-      } finally {
-        setLoading(false);
-      }
-      return;
+        },
+      };
     }
 
     if (!paymentsMatchTotal(lines, saleTotal)) {
-      setError(getPaymentLinesSumErrorMessage(lines, saleTotal));
-      return;
+      return { error: getPaymentLinesSumErrorMessage(lines, saleTotal) };
     }
 
-    setLoading(true);
-    setError('');
-    try {
-      await onConfirm({
+    return {
+      payload: {
         payments: paymentLinesToPayload(lines),
-        unitPrice: canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : undefined,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível salvar os pagamentos.');
-    } finally {
-      setLoading(false);
+        itemUnitPrices: items.length > 0 ? itemUnitPricesPayload : undefined,
+      },
+    };
+  }
+
+  function handleConfirm() {
+    const result = buildConfirmPayload();
+    if ('error' in result && result.error) {
+      setError(result.error);
+      return;
     }
+    if (!('payload' in result) || !result.payload) return;
+
+    const payload = result.payload;
+    const summaryLines = editableItems
+      .map((item) => `• ${item.quantity}x ${item.label}: ${formatBrl(item.unitPrice)}`)
+      .join('\n');
+
+    Alert.alert(
+      'Confirmar valores?',
+      `Confirme se os valores estão corretos antes de concluir a entrega.\n\n${summaryLines}\n\nTotal: ${formatBrl(saleTotal)}`,
+      [
+        { text: 'Revisar', style: 'cancel' },
+        {
+          text: 'Confirmar e concluir',
+          style: 'default',
+          onPress: () => {
+            void (async () => {
+              setLoading(true);
+              setError('');
+              try {
+                await onConfirm(payload);
+              } catch (err) {
+                setError(
+                  err instanceof Error ? err.message : 'Não foi possível salvar os pagamentos.',
+                );
+              } finally {
+                setLoading(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
   }
 
   if (!visible) return null;
-
-  if (minimized) {
-    return (
-      <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-        <View style={styles.minimizedRoot} pointerEvents="box-none">
-          <View
-            style={[styles.minimizedBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}
-          >
-            <Pressable
-              style={styles.minimizedMain}
-              onPress={() => setMinimizedState(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Expandir formas de pagamento"
-            >
-              <View style={styles.minimizedIcon}>
-                <Ionicons name="card-outline" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.minimizedText}>
-                <Text style={styles.minimizedTitle}>Pagamentos</Text>
-                <Text style={styles.minimizedSubtitle}>{formatBrl(saleTotal)}</Text>
-              </View>
-              <Ionicons name="chevron-up" size={22} color={colors.text} />
-            </Pressable>
-            <Pressable onPress={onClose} hitSlop={8} style={styles.minimizedClose}>
-              <Ionicons name="close" size={20} color={colors.textMuted} />
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-    );
-  }
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -341,17 +344,9 @@ export function FinishPaymentsModal({
       >
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
           <View style={styles.headerText}>
-            <Text style={styles.title}>Formas de pagamento</Text>
+            <Text style={styles.title}>Concluir entrega</Text>
             <Text style={styles.subtitle}>Total: {formatBrl(saleTotal)}</Text>
           </View>
-          <Pressable
-            onPress={() => setMinimizedState(true)}
-            style={styles.headerBtn}
-            hitSlop={8}
-            accessibilityLabel="Minimizar"
-          >
-            <Ionicons name="chevron-down" size={24} color={colors.text} />
-          </Pressable>
           <Pressable
             onPress={onClose}
             style={styles.headerBtn}
@@ -370,20 +365,39 @@ export function FinishPaymentsModal({
           automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator
         >
-          {canEditGdpUnitPrice ? (
+          {editableItems.length > 0 ? (
             <View style={styles.priceSection}>
-              <Text style={styles.priceLabel}>Preço unitário (GDP)</Text>
-              <TextInput
-                style={styles.priceInput}
-                keyboardType="decimal-pad"
-                value={gdpUnitPrice}
-                onChangeText={setGdpUnitPrice}
-                placeholder="0,00"
-                placeholderTextColor={colors.textFaint}
-              />
+              <Text style={styles.priceLabel}>Valores dos produtos</Text>
               <Text style={styles.priceHint}>
-                Total: {formatBrl(saleTotal)}
+                Ajuste o preço unitário se necessário antes de concluir.
               </Text>
+              {editableItems.map((item) => (
+                <View key={item.id} style={styles.itemPriceRow}>
+                  <Text style={styles.itemPriceTitle}>
+                    {item.quantity}x {item.label}
+                  </Text>
+                  <TextInput
+                    style={styles.priceInput}
+                    keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
+                    value={itemUnitPrices[item.id] ?? ''}
+                    onChangeText={(text) => {
+                      const sanitized = sanitizeMoneyInput(text);
+                      setItemUnitPrices((current) => ({ ...current, [item.id]: sanitized }));
+                    }}
+                    placeholder="0,00"
+                    placeholderTextColor={colors.textFaint}
+                  />
+                  <Text style={styles.itemPriceSubtotal}>
+                    Subtotal: {formatBrl(item.quantity * item.unitPrice)}
+                  </Text>
+                </View>
+              ))}
+              {deliveryFeeAmount > 0.009 ? (
+                <Text style={styles.priceHint}>
+                  Taxa de entrega: {formatBrl(deliveryFeeAmount)}
+                </Text>
+              ) : null}
+              <Text style={styles.priceTotal}>Total: {formatBrl(saleTotal)}</Text>
             </View>
           ) : null}
 
@@ -398,7 +412,22 @@ export function FinishPaymentsModal({
                 </Text>
               </Pressable>
               <Pressable
-                onPress={() => setPaymentByProduct(true)}
+                onPress={() => {
+                  setPaymentByProduct(true);
+                  const available = paymentMethodsForSale(methods);
+                  const fallback =
+                    available.find((m) => m.systemCode === 'CASH') ?? available[0];
+                  if (fallback) {
+                    setItemMethods((current) => {
+                      const next = { ...current };
+                      for (const item of editableItems) {
+                        if (!next[item.id]) next[item.id] = fallback.id;
+                      }
+                      return next;
+                    });
+                    setFeeMethodId((current) => current || fallback.id);
+                  }
+                }}
                 style={[styles.modeChip, paymentByProduct && styles.modeChipActive]}
               >
                 <Text style={[styles.modeChipText, paymentByProduct && styles.modeChipTextActive]}>
@@ -408,15 +437,14 @@ export function FinishPaymentsModal({
             </View>
           ) : null}
 
-          {paymentByProduct && items.length > 0 ? (
+          {paymentByProduct && editableItems.length > 0 ? (
             <SaleItemPaymentsEditor
               methods={methods}
-              items={items.map((item) => ({
+              items={editableItems.map((item) => ({
                 key: item.id,
                 label: item.label,
                 quantity: item.quantity,
-                unitPrice:
-                  canEditGdpUnitPrice && parsedUnitPrice > 0 ? parsedUnitPrice : item.unitPrice,
+                unitPrice: item.unitPrice,
                 storePaymentMethodId: itemMethods[item.id] || '',
               }))}
               onChangeItemMethod={(key, storePaymentMethodId) => {
@@ -518,19 +546,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     gap: spacing.sm,
   },
-  priceLabel: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
+  priceLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
   priceInput: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 20,
+    paddingVertical: 12,
+    fontSize: 18,
     fontWeight: '700',
     color: colors.text,
     backgroundColor: colors.bg,
   },
-  priceHint: { fontSize: 14, color: colors.textMuted },
+  priceHint: { fontSize: 13, color: colors.textMuted },
+  priceTotal: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: 4 },
+  itemPriceRow: { gap: 6 },
+  itemPriceTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  itemPriceSubtotal: { fontSize: 12, color: colors.textMuted },
   footer: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
@@ -542,52 +574,4 @@ const styles = StyleSheet.create({
   error: { fontSize: 13, color: colors.dangerText, textAlign: 'center' },
   actions: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
-  minimizedRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  minimizedBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.sm,
-    paddingTop: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -2 },
-    elevation: 8,
-  },
-  minimizedMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  minimizedIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.infoBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  minimizedText: { flex: 1 },
-  minimizedTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
-  minimizedSubtitle: { fontSize: 13, fontWeight: '600', color: colors.primary, marginTop: 2 },
-  minimizedClose: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
 });

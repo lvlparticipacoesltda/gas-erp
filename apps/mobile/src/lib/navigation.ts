@@ -2,7 +2,7 @@ import { Alert, Linking } from 'react-native';
 import { stripPhoneDigits } from '@gas-erp/shared';
 
 export type NavigationDestination = {
-  /** Endereço textual (fallback). */
+  /** Endereço textual — preferido para Apps externos (evita geocode interno errado). */
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -20,45 +20,57 @@ function hasCoords(dest: NavigationDestination): dest is NavigationDestination &
   );
 }
 
-function destinationLabel(dest: NavigationDestination): string | null {
-  if (hasCoords(dest)) return `${dest.latitude},${dest.longitude}`;
+/**
+ * Destino para Maps/Waze: prioriza endereço textual quando houver.
+ * Coordenadas vindas do Nominatim costumam falhar no número da casa
+ * (ex.: "20" resolvido como outro ponto da rua → Google mostra "1320").
+ */
+function resolveExternalDestination(dest: NavigationDestination): {
+  kind: 'address' | 'coords';
+  value: string;
+} | null {
   const address = dest.address?.trim();
-  return address || null;
+  if (address) {
+    return { kind: 'address', value: address };
+  }
+  if (hasCoords(dest)) {
+    return { kind: 'coords', value: `${dest.latitude},${dest.longitude}` };
+  }
+  return null;
 }
 
-/** Abre o Google Maps com rota até o destino (coords ou endereço). */
+/** Abre o Google Maps com rota até o destino (endereço preferencial; coords como fallback). */
 export async function openGoogleMaps(dest: string | NavigationDestination): Promise<void> {
   const target = typeof dest === 'string' ? { address: dest } : dest;
-  const label = destinationLabel(target);
-  if (!label) {
+  const resolved = resolveExternalDestination(target);
+  if (!resolved) {
     Alert.alert('Ops', 'Destino incompleto para abrir a navegação.');
     return;
   }
 
-  const destination = encodeURIComponent(label);
-  const url = hasCoords(target)
-    ? `https://www.google.com/maps/dir/?api=1&destination=${target.latitude},${target.longitude}`
-    : `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
+  const destination = encodeURIComponent(resolved.value);
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
   await openUrl(url, 'Não foi possível abrir o Google Maps.');
 }
 
-/** Abre o Waze com rota até o destino (coords ou endereço; fallback para web). */
+/** Abre o Waze com rota até o destino (endereço preferencial; coords como fallback). */
 export async function openWaze(dest: string | NavigationDestination): Promise<void> {
   const target = typeof dest === 'string' ? { address: dest } : dest;
+  const resolved = resolveExternalDestination(target);
+  if (!resolved) {
+    Alert.alert('Ops', 'Destino incompleto para abrir a navegação.');
+    return;
+  }
 
   let appUrl: string;
   let webUrl: string;
 
-  if (hasCoords(target)) {
-    appUrl = `waze://?ll=${target.latitude},${target.longitude}&navigate=yes`;
-    webUrl = `https://waze.com/ul?ll=${target.latitude},${target.longitude}&navigate=yes`;
+  if (resolved.kind === 'coords') {
+    const [lat, lng] = resolved.value.split(',');
+    appUrl = `waze://?ll=${lat},${lng}&navigate=yes`;
+    webUrl = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
   } else {
-    const address = target.address?.trim();
-    if (!address) {
-      Alert.alert('Ops', 'Destino incompleto para abrir a navegação.');
-      return;
-    }
-    const query = encodeURIComponent(address);
+    const query = encodeURIComponent(resolved.value);
     appUrl = `waze://?q=${query}&navigate=yes`;
     webUrl = `https://waze.com/ul?q=${query}&navigate=yes`;
   }
