@@ -51,6 +51,10 @@ export interface DailySummaryData {
     revenue: number;
     salesCount: number;
   };
+  portaria: {
+    salesCount: number;
+    glpQuantity: number;
+  };
   deliveries: { pending: number; inProgress: number; completed: number; cancelled: number };
   deliveryMetrics?: {
     avgWaitTimeSeconds: number | null;
@@ -101,6 +105,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
 
   const stock = data.stockGlp;
   const gdp = data.gasDoPovo;
+  const portaria = data.portaria;
 
   return (
     <>
@@ -143,7 +148,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
         </div>
       )}
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Card className="border-brand/40 bg-brand/5">
           <div className="text-sm text-slate-500">Botijas GLP vendidas {periodLabel}</div>
           <div className="text-3xl font-extrabold text-brand-dark">{data.glpQuantitySold}</div>
@@ -158,6 +163,19 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             <div>
               <div className="text-2xl font-bold text-emerald-700">{formatCurrency(gdp.revenue)}</div>
               <div className="text-xs text-slate-500">{gdp.salesCount} vendas</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="border-sky-300 bg-sky-50">
+          <div className="text-sm text-slate-500">Portaria {periodLabel}</div>
+          <div className="flex items-baseline gap-3">
+            <div>
+              <div className="text-3xl font-extrabold text-sky-800">{portaria.glpQuantity}</div>
+              <div className="text-xs text-slate-500">botijas</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-sky-800">{portaria.salesCount}</div>
+              <div className="text-xs text-slate-500">pedidos</div>
             </div>
           </div>
         </Card>

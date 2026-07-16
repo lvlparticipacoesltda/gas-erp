@@ -42,6 +42,7 @@ import {
 interface Product {
   id: string;
   name: string;
+  productType?: string;
   storeSettings?: { price: number | string; deliveryFee?: number | string }[];
 }
 interface Deliverer {
@@ -342,6 +343,10 @@ export default function NewSalePage() {
   }
 
   function addProduct(id: string) {
+    const product = products.find((p) => p.id === id);
+    if ((product?.productType ?? '').toUpperCase() === 'TAXA') {
+      setPaymentByProduct(true);
+    }
     setLineItems((items) => {
       const existing = items.find((item) => item.productId === id);
       if (existing) {

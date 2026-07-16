@@ -67,6 +67,10 @@ type DashboardPayload = {
     revenue: number;
     salesCount: number;
   };
+  portaria: {
+    salesCount: number;
+    glpQuantity: number;
+  };
   salesCount: number;
   deliveries: {
     pending: number;
@@ -259,6 +263,7 @@ export class DashboardService {
       stockGlp: { products: [], totals: { opening: 0, out: 0, closing: 0 } },
       glpQuantitySold: 0,
       gasDoPovo: { quantity: 0, revenue: 0, salesCount: 0 },
+      portaria: { salesCount: 0, glpQuantity: 0 },
       salesCount: 0,
       deliveries: { pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
       deliveryMetrics: {
@@ -385,6 +390,7 @@ export class DashboardService {
       this.prisma.sale.findMany({
         where: saleWhere,
         select: {
+          status: true,
           delivererId: true,
           gasDoPovoBenefit: true,
           items: {
@@ -438,6 +444,8 @@ export class DashboardService {
     let gdpQuantity = 0;
     let gdpRevenue = 0;
     let gdpSalesCount = 0;
+    let portariaSalesCount = 0;
+    let portariaGlpQuantity = 0;
     const glpQuantityByDelivererId = new Map<string, number>();
     const gdpQuantityByDelivererId = new Map<string, number>();
     const gdpRevenueByDelivererId = new Map<string, number>();
@@ -448,6 +456,11 @@ export class DashboardService {
         0,
       );
       glpQuantitySold += saleGlpQty;
+
+      if (sale.status === 'PORTARIA') {
+        portariaSalesCount += 1;
+        portariaGlpQuantity += saleGlpQty;
+      }
 
       const saleGdpRevenue = sale.payments.reduce((sum, payment) => {
         const isGdpPayment =
@@ -716,6 +729,10 @@ export class DashboardService {
         quantity: gdpQuantity,
         revenue: gdpRevenue,
         salesCount: gdpSalesCount,
+      },
+      portaria: {
+        salesCount: portariaSalesCount,
+        glpQuantity: portariaGlpQuantity,
       },
       salesCount,
       deliveries: {
