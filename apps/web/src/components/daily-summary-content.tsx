@@ -212,6 +212,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                     <th className="p-3 text-right">Valor Gás do Povo</th>
                     <th className="p-3 text-right">Rotas realizadas</th>
                     <th className="p-3 text-right">Rotas canceladas</th>
+                    <th className="p-3 text-right">Tempo médio aceite</th>
+                    <th className="p-3 text-right">Tempo médio em rota</th>
+                    <th className="p-3 text-right">Tempo médio total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -223,6 +226,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                       <td className="p-3 text-right tabular-nums text-emerald-700">{formatCurrency(d.gdpRevenue)}</td>
                       <td className="p-3 text-right tabular-nums">{d.completedCount}</td>
                       <td className="p-3 text-right tabular-nums">{d.cancelledCount}</td>
+                      <td className="p-3 text-right tabular-nums">{formatWaitTime(d.avgWaitTimeSeconds)}</td>
+                      <td className="p-3 text-right tabular-nums">{formatWaitTime(d.avgRouteDurationSeconds)}</td>
+                      <td className="p-3 text-right font-semibold tabular-nums">{formatWaitTime(d.avgTotalDeliveryTimeSeconds)}</td>
                     </tr>
                   ))}
                 </tbody>
