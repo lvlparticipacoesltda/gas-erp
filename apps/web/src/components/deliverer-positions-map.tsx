@@ -135,11 +135,13 @@ export function DelivererPositionsMap({
   selectedId,
   onSelect,
   fitPaddingRight = 80,
+  showStoreLabels = false,
 }: {
   positions: DelivererPosition[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   fitPaddingRight?: number;
+  showStoreLabels?: boolean;
 }) {
   const withCoords = positionsWithCoords(positions);
 
@@ -169,6 +171,12 @@ export function DelivererPositionsMap({
           isLive: p.isLive,
           stale: p.stale,
         });
+        const storeLabel =
+          showStoreLabels
+            ? (p.stores.find((s) => s.id === p.availableStoreId)?.name
+              ?? p.deliveryStoreName
+              ?? null)
+            : null;
         return (
           <Marker
             key={p.delivererId}
@@ -182,6 +190,9 @@ export function DelivererPositionsMap({
             <Popup>
               <div className="min-w-[180px] text-sm">
                 <p className="font-semibold text-slate-900">{p.name}</p>
+                {storeLabel && (
+                  <p className="mt-0.5 text-xs font-medium text-slate-500">{storeLabel}</p>
+                )}
                 <p className="mt-1 text-slate-600">{badge.label}</p>
                 <p className="text-slate-600">{positionStatusLabel(p)}</p>
                 <BatteryInfo level={p.batteryLevel} charging={p.batteryCharging} />
@@ -192,6 +203,7 @@ export function DelivererPositionsMap({
                   <>
                     <p className="text-slate-600">
                       Entrega: {DELIVERY_STATUS_LABELS[p.deliveryStatus] ?? p.deliveryStatus}
+                      {p.deliveryStoreName ? ` · ${p.deliveryStoreName}` : ''}
                     </p>
                     <RouteElapsed startedAt={p.routeStartedAt} className="text-sm font-semibold text-amber-700" />
                     {p.customerName && (

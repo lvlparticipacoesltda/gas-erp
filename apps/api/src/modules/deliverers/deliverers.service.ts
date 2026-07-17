@@ -194,23 +194,40 @@ export class DeliverersService {
     return { destination, suggestions };
   }
 
-  async getPositions(user: AuthUser, storeId: string) {
-    assertStoreAccess(user, storeId);
+  async getPositions(user: AuthUser, storeId?: string) {
     assertScreenPermission(user, 'store.deliverers.map');
 
-    const store = await this.prisma.store.findFirst({
-      where: { id: storeId, organizationId: user.organizationId },
-    });
-    if (!store) throw new NotFoundException('Loja não encontrada');
+    const orgId = user.organizationId;
+    const saleSelect = {
+      storeId: true,
+      store: { select: { id: true, name: true } },
+      deliveryStreet: true,
+      deliveryNumber: true,
+      deliveryComplement: true,
+      deliveryNeighborhood: true,
+      deliveryCity: true,
+      deliveryState: true,
+      deliveryLandmark: true,
+      customer: { select: { name: true } },
+    } as const;
 
-    const deliverers = await this.prisma.deliverer.findMany({
-      where: {
+    let where: Prisma.DelivererWhereInput;
+    let deliveriesWhere: Prisma.DeliveryWhereInput;
+
+    if (storeId) {
+      assertStoreAccess(user, storeId);
+      const store = await this.prisma.store.findFirst({
+        where: { id: storeId, organizationId: orgId },
+      });
+      if (!store) throw new NotFoundException('Loja não encontrada');
+
+      where = {
         user: { active: true },
         OR: [
           {
             status: { not: 'OFFLINE' },
             availableStoreId: storeId,
-            stores: { some: { storeId, store: { organizationId: user.organizationId } } },
+            stores: { some: { storeId, store: { organizationId: orgId } } },
           },
           // Rotas desta unidade: só entra se disponível aqui, ainda sem unidade,
           // ou com rota IN_PROGRESS nesta loja (mesmo disponível em outra).
@@ -220,7 +237,7 @@ export class DeliverersService {
                 deliveries: {
                   some: {
                     status: { in: ['PENDING', 'IN_PROGRESS'] },
-                    sale: { storeId, store: { organizationId: user.organizationId } },
+                    sale: { storeId, store: { organizationId: orgId } },
                   },
                 },
               },
@@ -232,7 +249,7 @@ export class DeliverersService {
                     deliveries: {
                       some: {
                         status: 'IN_PROGRESS',
-                        sale: { storeId, store: { organizationId: user.organizationId } },
+                        sale: { storeId, store: { organizationId: orgId } },
                       },
                     },
                   },
@@ -241,33 +258,53 @@ export class DeliverersService {
             ],
           },
         ],
-      },
+      };
+      deliveriesWhere = {
+        status: { in: ['PENDING', 'IN_PROGRESS'] },
+        sale: { storeId, store: { organizationId: orgId } },
+      };
+    } else {
+      if (user.role !== 'ORG_MASTER' && user.role !== 'PLATFORM_ADMIN') {
+        throw new ForbiddenException('Informe a loja (storeId) para consultar o mapa');
+      }
+
+      where = {
+        user: { active: true },
+        stores: { some: { store: { organizationId: orgId } } },
+        OR: [
+          {
+            status: { not: 'OFFLINE' },
+            availableStoreId: { not: null },
+          },
+          {
+            deliveries: {
+              some: {
+                status: { in: ['PENDING', 'IN_PROGRESS'] },
+                sale: { store: { organizationId: orgId } },
+              },
+            },
+          },
+        ],
+      };
+      deliveriesWhere = {
+        status: { in: ['PENDING', 'IN_PROGRESS'] },
+        sale: { store: { organizationId: orgId } },
+      };
+    }
+
+    const deliverers = await this.prisma.deliverer.findMany({
+      where,
       include: {
         user: { select: { name: true } },
         stores: { include: { store: { select: { id: true, name: true } } } },
         deliveries: {
-          where: {
-            status: { in: ['PENDING', 'IN_PROGRESS'] },
-            sale: { storeId, store: { organizationId: user.organizationId } },
-          },
+          where: deliveriesWhere,
           select: {
             id: true,
             status: true,
             startedAt: true,
             createdAt: true,
-            sale: {
-              select: {
-                storeId: true,
-                deliveryStreet: true,
-                deliveryNumber: true,
-                deliveryComplement: true,
-                deliveryNeighborhood: true,
-                deliveryCity: true,
-                deliveryState: true,
-                deliveryLandmark: true,
-                customer: { select: { name: true } },
-              },
-            },
+            sale: { select: saleSelect },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -307,10 +344,10 @@ export class DeliverersService {
 
     return deliverers.map((deliverer) => {
       const trackingFallback = pointByDeliverer.get(deliverer.id);
-      const storeDeliveries = deliverer.deliveries;
-      const activeAtStore = storeDeliveries.find((d) => d.status === 'IN_PROGRESS');
-      const pendingAtStore = storeDeliveries.filter((d) => d.status === 'PENDING');
-      const hasActiveDelivery = !!activeAtStore;
+      const scopedDeliveries = deliverer.deliveries;
+      const activeDelivery = scopedDeliveries.find((d) => d.status === 'IN_PROGRESS');
+      const pendingDeliveriesRaw = scopedDeliveries.filter((d) => d.status === 'PENDING');
+      const hasActiveDelivery = !!activeDelivery;
 
       const delivererStatus = hasActiveDelivery
         ? 'ON_DELIVERY'
@@ -318,16 +355,20 @@ export class DeliverersService {
           ? 'AVAILABLE'
           : deliverer.status;
 
-      const deliveryId = activeAtStore?.id ?? null;
-      const deliveryStatus = activeAtStore?.status ?? null;
-      const customerName = activeAtStore?.sale.customer?.name ?? null;
-      const deliveryAddress = activeAtStore ? buildDeliveryAddress(activeAtStore.sale) : null;
+      const deliveryId = activeDelivery?.id ?? null;
+      const deliveryStatus = activeDelivery?.status ?? null;
+      const customerName = activeDelivery?.sale.customer?.name ?? null;
+      const deliveryAddress = activeDelivery ? buildDeliveryAddress(activeDelivery.sale) : null;
+      const deliveryStoreId = activeDelivery?.sale.storeId ?? null;
+      const deliveryStoreName = activeDelivery?.sale.store.name ?? null;
 
-      const pendingDeliveries = pendingAtStore.map((delivery) => ({
+      const pendingDeliveries = pendingDeliveriesRaw.map((delivery) => ({
         id: delivery.id,
         assignedAt: delivery.createdAt.toISOString(),
         customerName: delivery.sale.customer?.name ?? null,
         deliveryAddress: buildDeliveryAddress(delivery.sale),
+        storeId: delivery.sale.storeId,
+        storeName: delivery.sale.store.name,
       }));
 
       const stores = deliverer.stores.map((s) => ({
@@ -340,7 +381,9 @@ export class DeliverersService {
       const deliveryFields = {
         deliveryId,
         deliveryStatus,
-        routeStartedAt: activeAtStore?.startedAt?.toISOString() ?? null,
+        deliveryStoreId,
+        deliveryStoreName,
+        routeStartedAt: activeDelivery?.startedAt?.toISOString() ?? null,
         customerName,
         deliveryAddress,
         pendingDeliveries,

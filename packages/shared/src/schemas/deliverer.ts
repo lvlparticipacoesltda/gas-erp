@@ -54,6 +54,9 @@ export const delivererPendingDeliverySchema = z.object({
   assignedAt: z.string(),
   customerName: z.string().nullable(),
   deliveryAddress: z.string().nullable(),
+  /** Unidade da venda (útil no mapa consolidado do master). */
+  storeId: z.string().optional(),
+  storeName: z.string().optional(),
 });
 
 export const updateDelivererPositionSchema = z.object({
@@ -82,6 +85,9 @@ export const delivererPositionSchema = z.object({
   batteryCharging: z.boolean().nullable().optional(),
   deliveryId: z.string().nullable().optional(),
   deliveryStatus: z.string().nullable().optional(),
+  /** Unidade da rota ativa (mapa consolidado). */
+  deliveryStoreId: z.string().nullable().optional(),
+  deliveryStoreName: z.string().nullable().optional(),
   /** Início da rota ativa (ISO), para exibir tempo em rota no mapa. */
   routeStartedAt: z.string().nullable().optional(),
   customerName: z.string().nullable().optional(),

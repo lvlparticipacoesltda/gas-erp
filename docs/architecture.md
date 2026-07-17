@@ -74,6 +74,7 @@ Header `X-Store-Id` ou query `storeId` para operações por loja na API.
   /master/settings                            Minha conta (master)
   /master/go-to-store                         escolher loja
   /master/users, /master/stores, /master/deliverers  CRUD
+  /master/deliverers/map                      mapa consolidado (todas as unidades)
 /store/[storeId]/*                            usuários com acesso à loja
   /daily-summary                              tela inicial (dashboard antigo redireciona aqui)
   /suppliers, /purchases, /reports            novos módulos
@@ -86,6 +87,7 @@ Header `X-Store-Id` ou query `storeId` para operações por loja na API.
 - `AppShell` filtra menu da loja com `hasScreenPermission`
 - Master não tem seletor de loja na sidebar; entra na loja via dashboard ou "Ir para loja"
 - Dashboard master e resumo diário usam `useLiveQuery` com polling a cada 15s
+- Mapa consolidado do master: `GET /deliverers/positions` sem `storeId` + filtro por unidade na UI
 
 Componentes relevantes:
 
@@ -100,6 +102,7 @@ Componentes relevantes:
 | `customer-picker.tsx` | Combobox de cliente na nova venda |
 | `payment-methods-content.tsx` | CRUD de formas de pagamento por loja |
 | `deliverers-panel.tsx` | CRUD de entregadores (master e loja) |
+| `deliverers-map-view.tsx` | Mapa de entregadores (unidade e consolidado master) |
 | `settings-content.tsx` | Perfil e troca de senha |
 
 ## App do entregador (Expo — `apps/mobile`)

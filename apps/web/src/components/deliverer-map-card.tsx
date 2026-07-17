@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Battery,
   BatteryCharging,
@@ -145,6 +146,7 @@ export function DelivererMapCard({
   canToggleAvailability,
   saving,
   onToggleAvailability,
+  showStoreLabel = false,
 }: {
   position: DelivererPosition;
   isSelected: boolean;
@@ -154,6 +156,8 @@ export function DelivererMapCard({
   canToggleAvailability: boolean;
   saving: boolean;
   onToggleAvailability: (next: boolean) => void;
+  /** Exibe unidade atual (mapa consolidado do master). */
+  showStoreLabel?: boolean;
 }) {
   const badge = getDelivererPositionBadge(p);
   const gps = gpsStatusShort(p);
@@ -161,6 +165,10 @@ export function DelivererMapCard({
   const pendingCount = p.pendingDeliveries?.length ?? 0;
   const { locked: availabilityLocked, reason: lockReason } = getDelivererAvailabilityLock(p);
   const statusLabel = DELIVERER_STATUS_LABELS[p.delivererStatus] ?? p.delivererStatus;
+  const availableStoreName =
+    p.stores.find((s) => s.id === p.availableStoreId)?.name
+    ?? p.deliveryStoreName
+    ?? null;
 
   return (
     <div
@@ -196,6 +204,12 @@ export function DelivererMapCard({
               </span>
               <span className="text-slate-300">·</span>
               <span className="font-medium text-slate-600">{statusLabel}</span>
+              {showStoreLabel && availableStoreName && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className="truncate font-medium text-slate-600">{availableStoreName}</span>
+                </>
+              )}
               <BatteryInline level={p.batteryLevel} charging={p.batteryCharging} />
             </div>
 
@@ -270,9 +284,14 @@ export function DelivererMapCard({
             </div>
           )}
 
-          {p.stores.length > 1 && (
+          {(showStoreLabel || p.stores.length > 1) && (
             <p className="mt-2 text-[11px] text-slate-400">
-              Unidades: {p.stores.map((s) => s.name).join(', ')}
+              {showStoreLabel && availableStoreName
+                ? `Disponível em: ${availableStoreName}`
+                : `Unidades: ${p.stores.map((s) => s.name).join(', ')}`}
+              {showStoreLabel && p.deliveryStoreName && p.deliveryStatus === 'IN_PROGRESS' && (
+                <> · Em rota ({p.deliveryStoreName})</>
+              )}
             </p>
           )}
 
@@ -294,12 +313,18 @@ export function DelivererMapCard({
 export function DelivererOfflineCard({
   name,
   saving,
+  stores,
   onToggleAvailability,
 }: {
   name: string;
   saving: boolean;
-  onToggleAvailability: (next: boolean) => void;
+  /** Quando há mais de uma unidade, exige seleção antes de disponibilizar. */
+  stores?: Array<{ id: string; name: string }>;
+  onToggleAvailability: (next: boolean, availableStoreId?: string) => void;
 }) {
+  const needsStorePick = (stores?.length ?? 0) > 1;
+  const [pickedStoreId, setPickedStoreId] = useState(stores?.[0]?.id ?? '');
+
   return (
     <div className="flex items-center gap-2.5 px-3 py-2">
       <DelivererAvatar inRoute={false} />
@@ -311,6 +336,20 @@ export function DelivererOfflineCard({
           <span className="h-2 w-2 rounded-full bg-slate-300" aria-hidden />
           <span className="text-[11px] text-slate-500">Indisponível · fora do mapa</span>
         </div>
+        {needsStorePick && (
+          <select
+            className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-700"
+            value={pickedStoreId}
+            onChange={(e) => setPickedStoreId(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {stores!.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <AvailabilityToggle
         available={false}
@@ -318,7 +357,16 @@ export function DelivererOfflineCard({
         lockReason={null}
         saving={saving}
         compact
-        onToggle={onToggleAvailability}
+        onToggle={(next) =>
+          onToggleAvailability(
+            next,
+            next
+              ? needsStorePick
+                ? pickedStoreId
+                : stores?.[0]?.id
+              : undefined,
+          )
+        }
       />
     </div>
   );

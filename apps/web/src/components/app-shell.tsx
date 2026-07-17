@@ -134,6 +134,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     { href: '/master/stores', label: 'Lojas' },
     { href: '/master/users', label: 'Usuários' },
     { href: '/master/deliverers', label: 'Entregadores' },
+    { href: '/master/deliverers/map', label: 'Mapa de entregadores' },
     { href: '/master/settings', label: 'Minha conta' },
   ];
 

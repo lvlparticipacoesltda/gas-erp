@@ -54,7 +54,7 @@ export class DeliverersController {
   }
 
   @Get('positions')
-  getPositions(@CurrentUser() user: AuthUser, @Query('storeId') storeId: string) {
+  getPositions(@CurrentUser() user: AuthUser, @Query('storeId') storeId?: string) {
     return this.service.getPositions(user, storeId);
   }
 

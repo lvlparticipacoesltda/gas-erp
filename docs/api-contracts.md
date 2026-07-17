@@ -144,6 +144,7 @@ N:N via `DelivererStore`).
 - `GET /deliverers/me` — perfil do entregador logado
 - `POST /deliverers/me/position` — `{ latitude, longitude, accuracy?, batteryLevel?, batteryCharging? }` (presença no mapa)
 - `GET /deliverers/positions?storeId=...` — posições dos entregadores **disponíveis nesta unidade**
+- `GET /deliverers/positions` — (ORG_MASTER) posições de **todas as unidades** da organização
   (`availableStoreId = storeId`, ou com rota PENDING/IN_PROGRESS da loja)
 - `PUT /deliverers/me/push-token` — `{ token: "ExponentPushToken[...]" }`
 - `DELETE /deliverers/me/push-token` — remove token (logout do app)
