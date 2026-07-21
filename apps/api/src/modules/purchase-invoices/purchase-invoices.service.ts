@@ -7,6 +7,7 @@ import {
   updatePurchaseInvoiceSchema,
   importPurchaseInvoiceSchema,
   DEFAULT_PURCHASE_PAYMENT_CATEGORY,
+  productTypeRequiresVasilhame,
   type AuthUser,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -346,9 +347,10 @@ export class PurchaseInvoicesService {
   }
 
   /**
-   * Trava de entrada de botijões: a quantidade de um produto GLP (cheio) lançada
-   * na nota não pode exceder o estoque de vasilhames (vazios) correspondentes
-   * disponível na unidade. Cada GLP precisa ter um vasilhame vinculado no cadastro.
+   * Trava de entrada de botijões/garrafões: a quantidade de um produto "cheio"
+   * (GLP ou Água) lançada na nota não pode exceder o estoque de vasilhames
+   * (vazios) correspondentes disponível na unidade. Cada produto cheio precisa
+   * ter um vasilhame vinculado no cadastro.
    */
   private async assertVasilhameStock(
     user: AuthUser,
@@ -367,12 +369,12 @@ export class PurchaseInvoicesService {
 
     const neededByVasilhame = new Map<string, number>();
     for (const product of products) {
-      if (product.productType.toUpperCase() !== 'GLP') continue;
+      if (!productTypeRequiresVasilhame(product.productType)) continue;
       const needed = qtyByProduct.get(product.id) ?? 0;
       if (needed <= 0) continue;
       if (!product.vasilhameProductId) {
         throw new BadRequestException(
-          `Vincule um vasilhame ao produto "${product.name}" (no cadastro de produtos) para lançar a entrada de botijões.`,
+          `Vincule um vasilhame ao produto "${product.name}" (no cadastro de produtos) para lançar a entrada.`,
         );
       }
       neededByVasilhame.set(

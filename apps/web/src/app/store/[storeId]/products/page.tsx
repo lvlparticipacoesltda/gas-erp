@@ -7,7 +7,10 @@ import { PaginatedSection } from '@/components/paginated-section';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import type { PaginatedResponse } from '@gas-erp/shared';
+import {
+  productTypeRequiresVasilhame,
+  type PaginatedResponse,
+} from '@gas-erp/shared';
 
 interface Product {
   id: string;
@@ -29,15 +32,6 @@ const emptyForm = {
   deliveryFee: 0,
 };
 
-const VASILHAME_TYPES = ['VASILHAME', 'CANISTER', 'VESSEL'];
-
-function isVasilhameType(type: string): boolean {
-  const t = type
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase();
-  return VASILHAME_TYPES.some((v) => t.includes(v));
-}
 
 function parsePrice(value: number | string | undefined): number {
   const parsed = Number(value ?? 0);
@@ -83,7 +77,9 @@ export default function ProductsPage() {
 
   useEffect(() => {
     api<PaginatedResponse<Product>>(`/products?pageSize=200`, {}, getToken())
-      .then((res) => setVasilhameOptions(res.data.filter((p) => isVasilhameType(p.productType))))
+      .then((res) =>
+        setVasilhameOptions(res.data.filter((p) => !productTypeRequiresVasilhame(p.productType))),
+      )
       .catch(() => setVasilhameOptions([]));
   }, [storeId]);
 
@@ -146,7 +142,7 @@ export default function ProductsPage() {
       <div><Label>SKU</Label><Input value={value.sku} onChange={(e) => onChange({ ...value, sku: e.target.value })} required /></div>
       <div><Label>Nome</Label><Input value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} required /></div>
       <div><Label>Tipo</Label><Input value={value.productType} onChange={(e) => onChange({ ...value, productType: e.target.value })} /></div>
-      {value.productType.toUpperCase() === 'GLP' && (
+      {productTypeRequiresVasilhame(value.productType) && (
         <div>
           <Label>Vasilhame correspondente</Label>
           <Select

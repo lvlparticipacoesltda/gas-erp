@@ -7,6 +7,7 @@ export * from './schemas/customer';
 export * from './schemas/customer-product-price';
 export { customerAddressSchema } from './schemas/customer';
 export * from './schemas/product';
+export * from './product-type';
 export * from './schemas/supplier';
 export * from './schemas/purchase-invoice';
 export * from './schemas/report';

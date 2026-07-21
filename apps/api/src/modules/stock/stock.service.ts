@@ -6,6 +6,7 @@ import {
   AuthUser,
   canManageStock,
   DashboardDateQuery,
+  productTypeRequiresVasilhame,
   resolveDashboardDateRange,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -121,6 +122,12 @@ export class StockService {
     const data = adjustStockSchema.parse(input);
     assertStoreAccess(user, data.storeId);
 
+    // Entrada (quantidade positiva) de produto cheio (GLP/Água) trava pelo
+    // estoque de vasilhames vazios; retirada (negativa) é sempre permitida.
+    if (data.quantity > 0) {
+      await this.assertVasilhameForFullEntry(user, data.storeId, data.productId, data.quantity);
+    }
+
     const balance = await this.prisma.stockBalance.upsert({
       where: { productId_storeId: { productId: data.productId, storeId: data.storeId } },
       update: {},
@@ -150,6 +157,45 @@ export class StockService {
       where: { id: balance.id },
       include: { product: true },
     });
+  }
+
+  /**
+   * Trava para entrada de produto cheio (GLP/Água) via ajuste manual: exige
+   * vasilhame vinculado e que a quantidade não exceda o estoque de vasilhames
+   * disponível na unidade.
+   */
+  private async assertVasilhameForFullEntry(
+    user: AuthUser,
+    storeId: string,
+    productId: string,
+    quantity: number,
+  ) {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId: user.organizationId },
+      select: { id: true, name: true, productType: true, vasilhameProductId: true },
+    });
+    if (!product || !productTypeRequiresVasilhame(product.productType)) return;
+    if (!product.vasilhameProductId) {
+      throw new BadRequestException(
+        `Vincule um vasilhame ao produto "${product.name}" (no cadastro de produtos) para lançar entrada de estoque.`,
+      );
+    }
+    const [vasProduct, vasBalance] = await Promise.all([
+      this.prisma.product.findUnique({
+        where: { id: product.vasilhameProductId },
+        select: { name: true },
+      }),
+      this.prisma.stockBalance.findUnique({
+        where: { productId_storeId: { productId: product.vasilhameProductId, storeId } },
+        select: { available: true },
+      }),
+    ]);
+    const available = vasBalance?.available ?? 0;
+    if (quantity > available) {
+      throw new BadRequestException(
+        `Estoque de vasilhame insuficiente: "${vasProduct?.name ?? 'vasilhame'}" tem ${available} em estoque nesta unidade, mas você tentou lançar ${quantity}.`,
+      );
+    }
   }
 
   async deductForTransfer(

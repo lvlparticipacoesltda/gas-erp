@@ -81,7 +81,7 @@ Operações escopadas por loja (`X-Store-Id` ou `storeId`).
 - `GET /purchase-invoices?storeId=...` — notas de compra da loja. Sem `storeId`, ORG_MASTER/PLATFORM_ADMIN recebem as notas de toda a organização (para o painel master); a resposta inclui `store { id, name }`.
 - `GET /purchase-invoices/cylinder-entries?storeId=&dateFrom=&dateTo=` — resumo de entrada de botijões (produtos GLP) por unidade a partir de notas confirmadas; sem `storeId` agrega todas as lojas da organização (master)
 - `GET /purchase-invoices/:id` — detalhe com itens
-- `POST /purchase-invoices` — criar nota (entrada de estoque ao confirmar). Trava: para itens do tipo `GLP` (botijão cheio), a quantidade não pode exceder o estoque do vasilhame vinculado (`Product.vasilhameProductId`) na unidade; produto GLP sem vasilhame vinculado bloqueia o lançamento.
+- `POST /purchase-invoices` — criar nota (entrada de estoque ao confirmar). Trava: para itens "cheios" (GLP ou Água), a quantidade não pode exceder o estoque do vasilhame vinculado (`Product.vasilhameProductId`) na unidade; produto cheio sem vasilhame vinculado bloqueia o lançamento. A mesma trava vale para o ajuste manual de entrada em `POST /stock/adjust` (quantidade positiva).
 - `POST /purchase-invoices/import` — importar XML NF-e (quando disponível)
 - `PATCH /purchase-invoices/:id` — atualizar
 - `DELETE /purchase-invoices/:id` — cancelar
