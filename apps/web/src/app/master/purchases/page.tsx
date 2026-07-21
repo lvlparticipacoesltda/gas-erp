@@ -258,17 +258,13 @@ export default function MasterPurchasesPage() {
                     </Badge>
                   </td>
                   <td className="p-3 text-right">
-                    {inv.store ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() =>
-                          router.push(`/store/${inv.store!.id}/purchases/${inv.id}`)
-                        }
-                      >
-                        Ver / editar
-                      </Button>
-                    ) : null}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => router.push(`/master/purchases/${inv.id}`)}
+                    >
+                      Ver / editar
+                    </Button>
                   </td>
                 </tr>
               ))}
