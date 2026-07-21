@@ -26,12 +26,32 @@ export class PurchaseInvoicesService {
     supplier: { select: { id: true, legalName: true, tradeName: true, document: true } },
     items: { include: { product: { select: { id: true, name: true, sku: true, unit: true } } } },
     payments: { orderBy: { installment: 'asc' as const } },
+    store: { select: { id: true, name: true } },
   };
 
-  async findAll(user: AuthUser, storeId: string, page = 1, pageSize = 20) {
-    assertStoreAccess(user, storeId);
+  /**
+   * Monta o filtro de escopo das notas.
+   * - Com storeId: restringe à loja (validando acesso).
+   * - Sem storeId: ORG_MASTER/PLATFORM_ADMIN veem toda a organização;
+   *   demais usuários veem apenas as lojas às quais têm acesso.
+   */
+  private buildScopeWhere(
+    user: AuthUser,
+    storeId?: string,
+  ): Prisma.PurchaseInvoiceWhereInput {
+    if (storeId) {
+      assertStoreAccess(user, storeId);
+      return { storeId };
+    }
+    if (user.role === 'ORG_MASTER' || user.role === 'PLATFORM_ADMIN') {
+      return { store: { organizationId: user.organizationId } };
+    }
+    return { storeId: { in: user.storeIds } };
+  }
+
+  async findAll(user: AuthUser, storeId?: string, page = 1, pageSize = 20) {
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-    const where: Prisma.PurchaseInvoiceWhereInput = { storeId };
+    const where = this.buildScopeWhere(user, storeId);
     const [data, total] = await Promise.all([
       this.prisma.purchaseInvoice.findMany({
         where,
@@ -43,6 +63,96 @@ export class PurchaseInvoicesService {
       this.prisma.purchaseInvoice.count({ where }),
     ]);
     return paginatedResult(data, total, p, ps);
+  }
+
+  /**
+   * Resumo de entrada de botijões (produtos GLP) por unidade, a partir de notas
+   * de compra CONFIRMADAS. Usado no painel master para acompanhar quantos
+   * botijões entraram em cada loja.
+   */
+  async cylinderEntries(
+    user: AuthUser,
+    storeId?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
+    const scope = this.buildScopeWhere(user, storeId);
+
+    const issueDate: Prisma.DateTimeFilter = {};
+    if (dateFrom) issueDate.gte = new Date(`${dateFrom}T00:00:00`);
+    if (dateTo) {
+      const end = new Date(`${dateTo}T00:00:00`);
+      end.setDate(end.getDate() + 1);
+      issueDate.lt = end;
+    }
+
+    const items = await this.prisma.purchaseInvoiceItem.findMany({
+      where: {
+        product: { productType: 'GLP' },
+        invoice: {
+          status: PurchaseInvoiceStatus.CONFIRMED,
+          ...scope,
+          ...(dateFrom || dateTo ? { issueDate } : {}),
+        },
+      },
+      select: {
+        quantity: true,
+        product: { select: { id: true, name: true, sku: true } },
+        invoice: { select: { storeId: true, store: { select: { name: true } } } },
+      },
+    });
+
+    const storeMap = new Map<
+      string,
+      {
+        storeId: string;
+        storeName: string;
+        totalQty: number;
+        products: Map<string, { productId: string; name: string; sku: string; qty: number }>;
+      }
+    >();
+
+    for (const item of items) {
+      const sId = item.invoice.storeId;
+      let store = storeMap.get(sId);
+      if (!store) {
+        store = {
+          storeId: sId,
+          storeName: item.invoice.store?.name ?? 'Unidade',
+          totalQty: 0,
+          products: new Map(),
+        };
+        storeMap.set(sId, store);
+      }
+      store.totalQty += item.quantity;
+
+      const pId = item.product.id;
+      const prod = store.products.get(pId);
+      if (prod) {
+        prod.qty += item.quantity;
+      } else {
+        store.products.set(pId, {
+          productId: pId,
+          name: item.product.name,
+          sku: item.product.sku,
+          qty: item.quantity,
+        });
+      }
+    }
+
+    const stores = [...storeMap.values()]
+      .map((store) => ({
+        storeId: store.storeId,
+        storeName: store.storeName,
+        totalQty: store.totalQty,
+        products: [...store.products.values()].sort((a, b) => b.qty - a.qty),
+      }))
+      .sort((a, b) => b.totalQty - a.totalQty);
+
+    return {
+      stores,
+      totalQty: stores.reduce((sum, s) => sum + s.totalQty, 0),
+    };
   }
 
   async findOne(user: AuthUser, id: string) {

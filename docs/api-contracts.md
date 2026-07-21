@@ -77,7 +77,8 @@ Operações escopadas por loja (`X-Store-Id` ou `storeId`).
 
 ### Purchase invoices
 
-- `GET /purchase-invoices?storeId=...` — notas de compra da loja
+- `GET /purchase-invoices?storeId=...` — notas de compra da loja. Sem `storeId`, ORG_MASTER/PLATFORM_ADMIN recebem as notas de toda a organização (para o painel master); a resposta inclui `store { id, name }`.
+- `GET /purchase-invoices/cylinder-entries?storeId=&dateFrom=&dateTo=` — resumo de entrada de botijões (produtos GLP) por unidade a partir de notas confirmadas; sem `storeId` agrega todas as lojas da organização (master)
 - `GET /purchase-invoices/:id` — detalhe com itens
 - `POST /purchase-invoices` — criar nota (entrada de estoque ao confirmar)
 - `POST /purchase-invoices/import` — importar XML NF-e (quando disponível)

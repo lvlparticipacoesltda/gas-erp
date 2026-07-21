@@ -34,7 +34,7 @@ Estou continuando o Gas ERP — monorepo em /Users/zeroummobilidade/gas-erp (pnp
 - Mapa de entregadores: presença GPS, disponibilidade, geocoding, sugestão por proximidade
 - Resumo diário: filtro De/Até, auto-refresh 15s, métricas por entregador (até aceitar / em rota / total)
 - Painéis e relatórios contabilizam vendas efetivadas (DELIVERED/PORTARIA)
-- Master: dashboard consolidado, aba Entregadores (/master/deliverers), mapa consolidado (/master/deliverers/map)
+- Master: dashboard consolidado, aba Entregadores (/master/deliverers), mapa consolidado (/master/deliverers/map), Compras consolidadas (/master/purchases) com entrada de botijões por unidade
 - Inativar vs excluir: usuários, lojas, clientes, entregadores
 - Paginação server-side (20/pág) nas listas principais
 - RBAC com telas: daily-summary, sales, customers, products, suppliers, purchases, stock, deliverers, deliverers.map, reports

@@ -75,6 +75,7 @@ Header `X-Store-Id` ou query `storeId` para operações por loja na API.
   /master/go-to-store                         escolher loja
   /master/users, /master/stores, /master/deliverers  CRUD
   /master/deliverers/map                      mapa consolidado (todas as unidades)
+  /master/purchases, /master/purchases/new    compras consolidadas + entrada de botijões por unidade
 /store/[storeId]/*                            usuários com acesso à loja
   /daily-summary                              tela inicial (dashboard antigo redireciona aqui)
   /suppliers, /purchases, /reports            novos módulos

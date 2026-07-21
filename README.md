@@ -132,6 +132,7 @@ Documentação: [docs/development.md](docs/development.md) · [docs/deployment.m
 | `/master` | ORG_MASTER |
 | `/master/users`, `/master/stores`, `/master/deliverers` | ORG_MASTER |
 | `/master/deliverers/map` | ORG_MASTER — mapa consolidado |
+| `/master/purchases`, `/master/purchases/new` | ORG_MASTER — compras consolidadas + entrada de botijões por unidade |
 | `/master/settings` | ORG_MASTER — Minha conta |
 | `/master/go-to-store` | ORG_MASTER — escolher loja |
 | `/store/[storeId]/daily-summary` | Resumo diário (tela inicial da loja) |

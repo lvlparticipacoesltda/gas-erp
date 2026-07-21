@@ -12,7 +12,7 @@ export class PurchaseInvoicesController {
   @Get()
   findAll(
     @CurrentUser() user: AuthUser,
-    @Query('storeId') storeId: string,
+    @Query('storeId') storeId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
@@ -22,6 +22,16 @@ export class PurchaseInvoicesController {
       Number(page) || 1,
       Number(pageSize) || 20,
     );
+  }
+
+  @Get('cylinder-entries')
+  cylinderEntries(
+    @CurrentUser() user: AuthUser,
+    @Query('storeId') storeId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.purchaseInvoicesService.cylinderEntries(user, storeId, dateFrom, dateTo);
   }
 
   @Post('import')
