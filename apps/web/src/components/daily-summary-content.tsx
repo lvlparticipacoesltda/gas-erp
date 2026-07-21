@@ -45,6 +45,22 @@ export interface DailySummaryData {
     }[];
     totals: { opening: number; out: number; closing: number };
   };
+  stockAll?: {
+    groups: {
+      type: string;
+      products: {
+        productId: string;
+        name: string;
+        sku: string;
+        opening: number;
+        out: number;
+        closing: number;
+        soldQty: number;
+        soldRevenue: number;
+      }[];
+      subtotal: { opening: number; out: number; closing: number; soldRevenue: number };
+    }[];
+  };
   glpQuantitySold: number;
   gasDoPovo: {
     quantity: number;
@@ -54,6 +70,12 @@ export interface DailySummaryData {
   portaria: {
     salesCount: number;
     glpQuantity: number;
+  };
+  portariaDetail?: {
+    salesCount: number;
+    totalRevenue: number;
+    byProduct: { name: string; sku: string; qty: number; revenue: number }[];
+    byPaymentMethod: { label: string; revenue: number }[];
   };
   deliveries: { pending: number; inProgress: number; completed: number; cancelled: number };
   deliveryMetrics?: {

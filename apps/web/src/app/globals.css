@@ -131,3 +131,27 @@ body {
 .ui-dropdown-enter {
   animation: ui-dropdown-enter 0.18s ease-out both;
 }
+
+@media print {
+  aside,
+  .print-hide {
+    display: none !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .print-area {
+    box-shadow: none !important;
+  }
+
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+}

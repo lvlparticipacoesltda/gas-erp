@@ -61,6 +61,22 @@ type DashboardPayload = {
     }[];
     totals: { opening: number; out: number; closing: number };
   };
+  stockAll: {
+    groups: {
+      type: string;
+      products: {
+        productId: string;
+        name: string;
+        sku: string;
+        opening: number;
+        out: number;
+        closing: number;
+        soldQty: number;
+        soldRevenue: number;
+      }[];
+      subtotal: { opening: number; out: number; closing: number; soldRevenue: number };
+    }[];
+  };
   glpQuantitySold: number;
   gasDoPovo: {
     quantity: number;
@@ -70,6 +86,12 @@ type DashboardPayload = {
   portaria: {
     salesCount: number;
     glpQuantity: number;
+  };
+  portariaDetail: {
+    salesCount: number;
+    totalRevenue: number;
+    byProduct: { name: string; sku: string; qty: number; revenue: number }[];
+    byPaymentMethod: { label: string; revenue: number }[];
   };
   salesCount: number;
   deliveries: {
@@ -150,7 +172,12 @@ export class DashboardService {
           ? this.prisma.delivery.findMany({
               where: {
                 status: { in: ['PENDING', 'IN_PROGRESS'] },
-                sale: { storeId: { in: storeIds } },
+                sale: {
+                  storeId: { in: storeIds },
+                  saleDate: { gte: start, lt: end },
+                  backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+                  mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
+                },
               },
               select: { sale: { select: { storeId: true } } },
             })
@@ -261,9 +288,11 @@ export class DashboardService {
       paymentsByMethod: [] as DashboardPayload['paymentsByMethod'],
       productsSold: [],
       stockGlp: { products: [], totals: { opening: 0, out: 0, closing: 0 } },
+      stockAll: { groups: [] },
       glpQuantitySold: 0,
       gasDoPovo: { quantity: 0, revenue: 0, salesCount: 0 },
       portaria: { salesCount: 0, glpQuantity: 0 },
+      portariaDetail: { salesCount: 0, totalRevenue: 0, byProduct: [], byPaymentMethod: [] },
       salesCount: 0,
       deliveries: { pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
       deliveryMetrics: {
@@ -317,8 +346,8 @@ export class DashboardService {
       salesForPaymentAlloc,
       salesForGdpGlp,
       gdpMethods,
-      glpBalances,
-      glpMovements,
+      stockBalances,
+      stockMovements,
     ] = await Promise.all([
       this.prisma.sale.aggregate({
         where: saleWhere,
@@ -393,11 +422,13 @@ export class DashboardService {
           status: true,
           delivererId: true,
           gasDoPovoBenefit: true,
+          total: true,
           items: {
             select: {
               quantity: true,
+              total: true,
               storePaymentMethodId: true,
-              product: { select: { productType: true } },
+              product: { select: { id: true, name: true, sku: true, productType: true } },
             },
           },
           payments: {
@@ -405,6 +436,7 @@ export class DashboardService {
               amount: true,
               method: true,
               storePaymentMethodId: true,
+              storePaymentMethod: { select: { label: true } },
             },
           },
         },
@@ -414,22 +446,24 @@ export class DashboardService {
         select: { id: true },
       }),
       this.prisma.stockBalance.findMany({
-        where: {
-          ...storeFilter,
-          product: { productType: { equals: 'GLP', mode: 'insensitive' } },
-        },
+        where: { ...storeFilter },
         select: {
           available: true,
-          product: { select: { id: true, name: true, sku: true } },
+          product: { select: { id: true, name: true, sku: true, productType: true } },
         },
       }),
       this.prisma.stockMovement.findMany({
         where: {
           ...storeFilter,
           createdAt: { gte: start },
-          product: { productType: { equals: 'GLP', mode: 'insensitive' } },
         },
-        select: { productId: true, type: true, quantity: true, createdAt: true },
+        select: {
+          productId: true,
+          type: true,
+          quantity: true,
+          createdAt: true,
+          product: { select: { id: true, name: true, sku: true, productType: true } },
+        },
       }),
     ]);
 
@@ -446,6 +480,12 @@ export class DashboardService {
     let gdpSalesCount = 0;
     let portariaSalesCount = 0;
     let portariaGlpQuantity = 0;
+    let portariaRevenue = 0;
+    const portariaByProduct = new Map<
+      string,
+      { name: string; sku: string; qty: number; revenue: number }
+    >();
+    const portariaByPayment = new Map<string, number>();
     const glpQuantityByDelivererId = new Map<string, number>();
     const gdpQuantityByDelivererId = new Map<string, number>();
     const gdpRevenueByDelivererId = new Map<string, number>();
@@ -460,6 +500,28 @@ export class DashboardService {
       if (sale.status === 'PORTARIA') {
         portariaSalesCount += 1;
         portariaGlpQuantity += saleGlpQty;
+        portariaRevenue += toNumber(sale.total);
+        for (const item of sale.items) {
+          const acc = portariaByProduct.get(item.product.id) ?? {
+            name: item.product.name,
+            sku: item.product.sku,
+            qty: 0,
+            revenue: 0,
+          };
+          acc.qty += item.quantity;
+          acc.revenue += toNumber(item.total);
+          portariaByProduct.set(item.product.id, acc);
+        }
+        for (const payment of sale.payments) {
+          const label =
+            payment.storePaymentMethod?.label ??
+            PAYMENT_METHOD_LABELS[payment.method] ??
+            payment.method;
+          portariaByPayment.set(
+            label,
+            (portariaByPayment.get(label) ?? 0) + toNumber(payment.amount),
+          );
+        }
       }
 
       const saleGdpRevenue = sale.payments.reduce((sum, payment) => {
@@ -625,10 +687,19 @@ export class DashboardService {
       gdpRevenue: gdpRevenueByDelivererId.get(row.delivererId) ?? 0,
     }));
 
-    const stockGlp = (() => {
+    const soldByProductId = new Map<string, { qty: number; revenue: number }>();
+    for (const group of itemGroups) {
+      soldByProductId.set(group.productId, {
+        qty: group._sum.quantity ?? 0,
+        revenue: toNumber(group._sum.total),
+      });
+    }
+
+    const stockRows = (() => {
       type Acc = {
         name: string;
         sku: string;
+        productType: string;
         current: number;
         sinceStartIn: number;
         sinceStartOut: number;
@@ -636,31 +707,42 @@ export class DashboardService {
         periodOut: number;
       };
       const byProduct = new Map<string, Acc>();
+      const ensure = (
+        id: string,
+        meta: { name: string; sku: string; productType: string },
+      ) => {
+        let acc = byProduct.get(id);
+        if (!acc) {
+          acc = {
+            name: meta.name,
+            sku: meta.sku,
+            productType: meta.productType,
+            current: 0,
+            sinceStartIn: 0,
+            sinceStartOut: 0,
+            periodIn: 0,
+            periodOut: 0,
+          };
+          byProduct.set(id, acc);
+        }
+        return acc;
+      };
 
-      for (const balance of glpBalances) {
-        const acc = byProduct.get(balance.product.id) ?? {
+      for (const balance of stockBalances) {
+        const acc = ensure(balance.product.id, {
           name: balance.product.name,
           sku: balance.product.sku,
-          current: 0,
-          sinceStartIn: 0,
-          sinceStartOut: 0,
-          periodIn: 0,
-          periodOut: 0,
-        };
+          productType: balance.product.productType ?? '',
+        });
         acc.current += balance.available;
-        byProduct.set(balance.product.id, acc);
       }
 
-      for (const movement of glpMovements) {
-        const acc = byProduct.get(movement.productId) ?? {
-          name: 'GLP',
-          sku: '',
-          current: 0,
-          sinceStartIn: 0,
-          sinceStartOut: 0,
-          periodIn: 0,
-          periodOut: 0,
-        };
+      for (const movement of stockMovements) {
+        const acc = ensure(movement.productId, {
+          name: movement.product?.name ?? 'Produto',
+          sku: movement.product?.sku ?? '',
+          productType: movement.product?.productType ?? '',
+        });
         const inPeriod = movement.createdAt >= start && movement.createdAt < end;
         if (movement.type === 'IN') {
           acc.sinceStartIn += movement.quantity;
@@ -669,17 +751,39 @@ export class DashboardService {
           acc.sinceStartOut += movement.quantity;
           if (inPeriod) acc.periodOut += movement.quantity;
         }
-        byProduct.set(movement.productId, acc);
       }
 
-      const products = Array.from(byProduct.entries())
-        .map(([productId, acc]) => {
-          const opening = acc.current - acc.sinceStartIn + acc.sinceStartOut;
-          const out = acc.periodOut;
-          const closing = opening + acc.periodIn - acc.periodOut;
-          return { productId, name: acc.name, sku: acc.sku, opening, out, closing };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      return Array.from(byProduct.entries()).map(([productId, acc]) => {
+        const opening = acc.current - acc.sinceStartIn + acc.sinceStartOut;
+        const out = acc.periodOut;
+        const closing = opening + acc.periodIn - acc.periodOut;
+        const sold = soldByProductId.get(productId);
+        return {
+          productId,
+          name: acc.name,
+          sku: acc.sku,
+          productType: acc.productType,
+          opening,
+          out,
+          closing,
+          soldQty: sold?.qty ?? 0,
+          soldRevenue: sold?.revenue ?? 0,
+        };
+      });
+    })();
+
+    const stockGlp = (() => {
+      const products = stockRows
+        .filter((row) => (row.productType ?? '').toUpperCase() === 'GLP')
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+        .map((row) => ({
+          productId: row.productId,
+          name: row.name,
+          sku: row.sku,
+          opening: row.opening,
+          out: row.out,
+          closing: row.closing,
+        }));
 
       const totals = products.reduce(
         (sum, p) => ({
@@ -691,6 +795,40 @@ export class DashboardService {
       );
 
       return { products, totals };
+    })();
+
+    const stockAll = (() => {
+      const byType = new Map<string, typeof stockRows>();
+      for (const row of stockRows) {
+        const type = row.productType || 'OUTROS';
+        const list = byType.get(type) ?? [];
+        list.push(row);
+        byType.set(type, list);
+      }
+
+      const groups = Array.from(byType.entries())
+        .map(([type, list]) => {
+          const products = list
+            .slice()
+            .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          const subtotal = products.reduce(
+            (sum, p) => ({
+              opening: sum.opening + p.opening,
+              out: sum.out + p.out,
+              closing: sum.closing + p.closing,
+              soldRevenue: sum.soldRevenue + p.soldRevenue,
+            }),
+            { opening: 0, out: 0, closing: 0, soldRevenue: 0 },
+          );
+          return { type, products, subtotal };
+        })
+        .sort((a, b) => {
+          if (a.type.toUpperCase() === 'GLP') return -1;
+          if (b.type.toUpperCase() === 'GLP') return 1;
+          return a.type.localeCompare(b.type, 'pt-BR');
+        });
+
+      return { groups };
     })();
 
     const financialSummary = showFinancial
@@ -724,6 +862,7 @@ export class DashboardService {
       paymentsByMethod,
       productsSold,
       stockGlp,
+      stockAll,
       glpQuantitySold,
       gasDoPovo: {
         quantity: gdpQuantity,
@@ -733,6 +872,16 @@ export class DashboardService {
       portaria: {
         salesCount: portariaSalesCount,
         glpQuantity: portariaGlpQuantity,
+      },
+      portariaDetail: {
+        salesCount: portariaSalesCount,
+        totalRevenue: portariaRevenue,
+        byProduct: Array.from(portariaByProduct.values()).sort(
+          (a, b) => b.revenue - a.revenue,
+        ),
+        byPaymentMethod: Array.from(portariaByPayment.entries())
+          .map(([label, revenue]) => ({ label, revenue }))
+          .sort((a, b) => b.revenue - a.revenue),
       },
       salesCount,
       deliveries: {

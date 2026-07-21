@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Calculator } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { PageLoader } from '@/components/brand-loader';
 import { DailySummaryContent, type DailySummaryData } from '@/components/daily-summary-content';
@@ -64,6 +66,15 @@ export default function MasterDashboardPage() {
           data?.date
             ? `Visão consolidada · ${data.date} · atualização em tempo real`
             : 'Visão consolidada de todas as unidades · atualização em tempo real'
+        }
+        action={
+          <Link
+            href={`/master/dashboard/fechamento?from=${dateFrom}&to=${dateTo}`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+          >
+            <Calculator className="h-4 w-4" />
+            Fechamento de Caixa
+          </Link>
         }
       />
 
