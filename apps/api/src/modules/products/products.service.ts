@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createProductSchema, updateProductSchema, updateProductPriceSchema, canViewFinancialMargins } from '@gas-erp/shared';
@@ -52,6 +52,9 @@ export class ProductsService {
 
   async create(user: AuthUser, input: unknown, storeId?: string) {
     const data = createProductSchema.parse(input);
+    if (data.vasilhameProductId) {
+      await this.assertVasilhameProduct(user, data.vasilhameProductId);
+    }
     const product = await this.prisma.product.create({
       data: {
         organizationId: user.organizationId,
@@ -60,6 +63,7 @@ export class ProductsService {
         description: data.description,
         unit: data.unit,
         productType: data.productType,
+        vasilhameProductId: data.vasilhameProductId ?? null,
         active: data.active ?? true,
       },
     });
@@ -94,7 +98,22 @@ export class ProductsService {
   async update(user: AuthUser, id: string, input: unknown) {
     await this.findOne(user, id);
     const data = updateProductSchema.parse(input);
+    if (data.vasilhameProductId) {
+      if (data.vasilhameProductId === id) {
+        throw new BadRequestException('Um produto não pode ser o próprio vasilhame.');
+      }
+      await this.assertVasilhameProduct(user, data.vasilhameProductId);
+    }
     return this.prisma.product.update({ where: { id }, data });
+  }
+
+  /** Garante que o vasilhame informado existe e pertence à organização. */
+  private async assertVasilhameProduct(user: AuthUser, vasilhameProductId: string) {
+    const vasilhame = await this.prisma.product.findFirst({
+      where: { id: vasilhameProductId, organizationId: user.organizationId },
+      select: { id: true },
+    });
+    if (!vasilhame) throw new BadRequestException('Vasilhame informado não encontrado.');
   }
 
   async updatePrice(user: AuthUser, productId: string, input: unknown) {

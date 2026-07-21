@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
-import { Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
+import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import type { PaginatedResponse } from '@gas-erp/shared';
@@ -14,11 +14,30 @@ interface Product {
   sku: string;
   name: string;
   productType: string;
+  vasilhameProductId?: string | null;
   storeSettings?: { price: number | string; supplierCost?: number | string; deliveryFee?: number | string }[];
   stockBalances?: { available: number; inTransit: number; lent: number }[];
 }
 
-const emptyForm = { sku: '', name: '', productType: 'GLP', price: 0, supplierCost: 0, deliveryFee: 0 };
+const emptyForm = {
+  sku: '',
+  name: '',
+  productType: 'GLP',
+  vasilhameProductId: '',
+  price: 0,
+  supplierCost: 0,
+  deliveryFee: 0,
+};
+
+const VASILHAME_TYPES = ['VASILHAME', 'CANISTER', 'VESSEL'];
+
+function isVasilhameType(type: string): boolean {
+  const t = type
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  return VASILHAME_TYPES.some((v) => t.includes(v));
+}
 
 function parsePrice(value: number | string | undefined): number {
   const parsed = Number(value ?? 0);
@@ -28,6 +47,7 @@ function parsePrice(value: number | string | undefined): number {
 export default function ProductsPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [products, setProducts] = useState<Product[]>([]);
+  const [vasilhameOptions, setVasilhameOptions] = useState<Product[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -61,6 +81,12 @@ export default function ProductsPage() {
     load().finally(() => setReady(true));
   }, [storeId, page]);
 
+  useEffect(() => {
+    api<PaginatedResponse<Product>>(`/products?pageSize=200`, {}, getToken())
+      .then((res) => setVasilhameOptions(res.data.filter((p) => isVasilhameType(p.productType))))
+      .catch(() => setVasilhameOptions([]));
+  }, [storeId]);
+
   function startEdit(product: Product) {
     setFormError('');
     setEditing(product);
@@ -68,6 +94,7 @@ export default function ProductsPage() {
       sku: product.sku,
       name: product.name,
       productType: product.productType,
+      vasilhameProductId: product.vasilhameProductId ?? '',
       price: parsePrice(product.storeSettings?.[0]?.price),
       supplierCost: parsePrice(product.storeSettings?.[0]?.supplierCost),
       deliveryFee: parsePrice(product.storeSettings?.[0]?.deliveryFee),
@@ -80,7 +107,7 @@ export default function ProductsPage() {
     try {
       await api(`/products?storeId=${storeId}`, {
         method: 'POST',
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, vasilhameProductId: form.vasilhameProductId || null }),
       }, getToken());
       setForm(emptyForm);
       load();
@@ -100,6 +127,7 @@ export default function ProductsPage() {
           sku: editForm.sku,
           name: editForm.name,
           productType: editForm.productType,
+          vasilhameProductId: editForm.vasilhameProductId || null,
         }),
       }, getToken());
       await api(`/products/${editing.id}/price`, {
@@ -118,6 +146,25 @@ export default function ProductsPage() {
       <div><Label>SKU</Label><Input value={value.sku} onChange={(e) => onChange({ ...value, sku: e.target.value })} required /></div>
       <div><Label>Nome</Label><Input value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} required /></div>
       <div><Label>Tipo</Label><Input value={value.productType} onChange={(e) => onChange({ ...value, productType: e.target.value })} /></div>
+      {value.productType.toUpperCase() === 'GLP' && (
+        <div>
+          <Label>Vasilhame correspondente</Label>
+          <Select
+            value={value.vasilhameProductId}
+            onChange={(e) => onChange({ ...value, vasilhameProductId: e.target.value })}
+          >
+            <option value="">Selecione o vasilhame</option>
+            {vasilhameOptions.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-xs text-slate-400">
+            Necessário para lançar entradas de botijões (trava pelo estoque de vasilhames).
+          </p>
+        </div>
+      )}
       <div><Label>Preço nesta loja</Label><Input type="number" step="0.01" value={value.price} onChange={(e) => onChange({ ...value, price: Number(e.target.value) })} /></div>
       <div><Label>Custo fornecedor</Label><Input type="number" step="0.01" min="0" value={value.supplierCost} onChange={(e) => onChange({ ...value, supplierCost: Number(e.target.value) })} /></div>
       <div><Label>Taxa entrega / Gás do Povo</Label><Input type="number" step="0.01" min="0" value={value.deliveryFee} onChange={(e) => onChange({ ...value, deliveryFee: Number(e.target.value) })} /></div>

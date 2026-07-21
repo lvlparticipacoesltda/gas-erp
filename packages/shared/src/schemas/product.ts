@@ -6,6 +6,7 @@ export const createProductSchema = z.object({
   description: z.string().optional(),
   unit: z.string().optional(),
   productType: z.string().optional(),
+  vasilhameProductId: z.string().nullable().optional(),
   price: z.number().nonnegative().optional(),
   supplierCost: z.number().nonnegative().optional(),
   deliveryFee: z.number().nonnegative().optional(),

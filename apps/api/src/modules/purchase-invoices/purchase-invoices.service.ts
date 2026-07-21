@@ -172,6 +172,7 @@ export class PurchaseInvoicesService {
     assertStoreAccess(user, data.storeId);
 
     await this.validateReferences(user, data.storeId, data.supplierId, data.items);
+    await this.assertVasilhameStock(user, data.storeId, data.items);
 
     const items = data.items.map((item) => {
       const discount = item.discount ?? 0;
@@ -342,6 +343,69 @@ export class PurchaseInvoicesService {
         items: [] as unknown[],
       },
     };
+  }
+
+  /**
+   * Trava de entrada de botijões: a quantidade de um produto GLP (cheio) lançada
+   * na nota não pode exceder o estoque de vasilhames (vazios) correspondentes
+   * disponível na unidade. Cada GLP precisa ter um vasilhame vinculado no cadastro.
+   */
+  private async assertVasilhameStock(
+    user: AuthUser,
+    storeId: string,
+    items: { productId: string; quantity: number }[],
+  ) {
+    const qtyByProduct = new Map<string, number>();
+    for (const item of items) {
+      qtyByProduct.set(item.productId, (qtyByProduct.get(item.productId) ?? 0) + item.quantity);
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: [...qtyByProduct.keys()] }, organizationId: user.organizationId },
+      select: { id: true, name: true, productType: true, vasilhameProductId: true },
+    });
+
+    const neededByVasilhame = new Map<string, number>();
+    for (const product of products) {
+      if (product.productType.toUpperCase() !== 'GLP') continue;
+      const needed = qtyByProduct.get(product.id) ?? 0;
+      if (needed <= 0) continue;
+      if (!product.vasilhameProductId) {
+        throw new BadRequestException(
+          `Vincule um vasilhame ao produto "${product.name}" (no cadastro de produtos) para lançar a entrada de botijões.`,
+        );
+      }
+      neededByVasilhame.set(
+        product.vasilhameProductId,
+        (neededByVasilhame.get(product.vasilhameProductId) ?? 0) + needed,
+      );
+    }
+
+    if (neededByVasilhame.size === 0) return;
+
+    const vasilhameIds = [...neededByVasilhame.keys()];
+    const [vasilhames, balances] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: vasilhameIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.stockBalance.findMany({
+        where: { storeId, productId: { in: vasilhameIds } },
+        select: { productId: true, available: true },
+      }),
+    ]);
+    const nameById = new Map(vasilhames.map((v) => [v.id, v.name]));
+    const availableById = new Map(balances.map((b) => [b.productId, b.available]));
+
+    for (const [vasilhameId, needed] of neededByVasilhame) {
+      const available = availableById.get(vasilhameId) ?? 0;
+      if (needed > available) {
+        const vasName = nameById.get(vasilhameId) ?? 'vasilhame';
+        throw new BadRequestException(
+          `Estoque de vasilhame insuficiente: "${vasName}" tem ${available} em estoque nesta unidade, mas a nota exige ${needed}.`,
+        );
+      }
+    }
   }
 
   private async validateReferences(

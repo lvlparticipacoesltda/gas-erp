@@ -65,6 +65,7 @@ Operações escopadas por loja (`X-Store-Id` ou `storeId`).
 ### Products
 
 - `GET /products?storeId=...` — inclui `storeSettings` com `price`, `deliveryFee`, `supplierCost`
+- `POST/PATCH /products` — aceitam `vasilhameProductId` (vincula um GLP cheio ao seu vasilhame vazio; usado na trava de entrada de botijões)
 - `PATCH /products/:id/price` — atualizar preço e custo fornecedor por loja
 
 ### Suppliers
@@ -80,7 +81,7 @@ Operações escopadas por loja (`X-Store-Id` ou `storeId`).
 - `GET /purchase-invoices?storeId=...` — notas de compra da loja. Sem `storeId`, ORG_MASTER/PLATFORM_ADMIN recebem as notas de toda a organização (para o painel master); a resposta inclui `store { id, name }`.
 - `GET /purchase-invoices/cylinder-entries?storeId=&dateFrom=&dateTo=` — resumo de entrada de botijões (produtos GLP) por unidade a partir de notas confirmadas; sem `storeId` agrega todas as lojas da organização (master)
 - `GET /purchase-invoices/:id` — detalhe com itens
-- `POST /purchase-invoices` — criar nota (entrada de estoque ao confirmar)
+- `POST /purchase-invoices` — criar nota (entrada de estoque ao confirmar). Trava: para itens do tipo `GLP` (botijão cheio), a quantidade não pode exceder o estoque do vasilhame vinculado (`Product.vasilhameProductId`) na unidade; produto GLP sem vasilhame vinculado bloqueia o lançamento.
 - `POST /purchase-invoices/import` — importar XML NF-e (quando disponível)
 - `PATCH /purchase-invoices/:id` — atualizar
 - `DELETE /purchase-invoices/:id` — cancelar

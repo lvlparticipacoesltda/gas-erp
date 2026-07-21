@@ -204,6 +204,16 @@ async function main() {
     }),
   );
 
+  // Vincula o GLP 13KG (cheio) ao vasilhame 13KG (vazio) para a trava de entrada.
+  const glp13 = products.find((p) => p.sku === 'GLP-P13');
+  const vas13 = products.find((p) => p.sku === 'VAS-P13');
+  if (glp13 && vas13) {
+    await prisma.product.update({
+      where: { id: glp13.id },
+      data: { vasilhameProductId: vas13.id },
+    });
+  }
+
   const sale = await prisma.sale.create({
     data: {
       storeId: stores[0].id,

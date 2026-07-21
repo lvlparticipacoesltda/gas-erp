@@ -366,7 +366,13 @@ model Product {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Vínculo de um GLP (cheio) com o vasilhame (vazio) correspondente.
+  // Usado para travar a entrada de botijões cheios ao estoque de vasilhames.
+  vasilhameProductId String?
+
   organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vasilhameProduct Product?              @relation("ProductVasilhame", fields: [vasilhameProductId], references: [id], onDelete: SetNull)
+  glpProducts      Product[]             @relation("ProductVasilhame")
   storeSettings   ProductStoreSetting[]
   stockBalances   StockBalance[]
   stockMovements  StockMovement[]
@@ -377,6 +383,7 @@ model Product {
 
   @@unique([organizationId, sku])
   @@index([organizationId])
+  @@index([vasilhameProductId])
 }
 
 model ProductStoreSetting {
