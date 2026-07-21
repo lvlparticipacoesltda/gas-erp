@@ -1,29 +1,39 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Printer } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { DailySummaryData } from '@/components/daily-summary-content';
 
-const TYPE_LABELS: Record<string, string> = {
+type StockGroup = NonNullable<DailySummaryData['stockAll']>['groups'][number];
+type StockProduct = StockGroup['products'][number];
+
+const CATEGORY_ORDER = ['GLP', 'VASILHAME', 'AGUA', 'OUTROS'] as const;
+type Category = (typeof CATEGORY_ORDER)[number];
+
+const CATEGORY_LABELS: Record<Category, string> = {
   GLP: 'Gás (GLP)',
-  CANISTER: 'Vasilhames',
   VASILHAME: 'Vasilhames',
-  VASILHAMES: 'Vasilhames',
   AGUA: 'Água',
-  'ÁGUA': 'Água',
-  WATER: 'Água',
-  ACESSORIO: 'Acessórios',
-  'ACESSÓRIO': 'Acessórios',
-  ACESSORIOS: 'Acessórios',
-  'ACESSÓRIOS': 'Acessórios',
-  ACCESSORY: 'Acessórios',
-  TAXA: 'Taxas',
-  TAXAS: 'Taxas',
   OUTROS: 'Outros',
 };
 
-function typeLabel(type: string): string {
-  return TYPE_LABELS[type.toUpperCase()] ?? type;
+function normalizeType(type: string): string {
+  return type
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+/** Só Gás (GLP), Vasilhame e Água ficam separados; todo o resto vai para "Outros". */
+function resolveCategory(type: string): Category {
+  const t = normalizeType(type);
+  if (t.includes('GLP') || t.startsWith('GAS')) return 'GLP';
+  if (t.includes('VASILHAME') || t.includes('CANISTER') || t.includes('VESSEL')) {
+    return 'VASILHAME';
+  }
+  if (t.includes('AGUA') || t.includes('WATER')) return 'AGUA';
+  return 'OUTROS';
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -52,7 +62,32 @@ export function CashClosingView({
   title: string;
   subtitle?: string;
 }) {
-  const stockGroups = data.stockAll?.groups ?? [];
+  const stockGroups = useMemo(() => {
+    const buckets = new Map<Category, StockProduct[]>();
+    for (const group of data.stockAll?.groups ?? []) {
+      const category = resolveCategory(group.type);
+      const list = buckets.get(category) ?? [];
+      list.push(...group.products);
+      buckets.set(category, list);
+    }
+
+    return CATEGORY_ORDER.filter((category) => buckets.has(category)).map((category) => {
+      const products = (buckets.get(category) ?? [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      const subtotal = products.reduce(
+        (sum, p) => ({
+          opening: sum.opening + p.opening,
+          out: sum.out + p.out,
+          closing: sum.closing + p.closing,
+          soldRevenue: sum.soldRevenue + p.soldRevenue,
+        }),
+        { opening: 0, out: 0, closing: 0, soldRevenue: 0 },
+      );
+      return { key: category, label: CATEGORY_LABELS[category], products, subtotal };
+    });
+  }, [data.stockAll]);
+
   const portaria = data.portariaDetail;
   const payments = data.paymentsByMethod;
   const deliveries = data.deliveries;
@@ -82,7 +117,7 @@ export function CashClosingView({
           <p className="text-sm text-slate-500">Nenhum produto com movimentação de estoque.</p>
         ) : (
           stockGroups.map((group) => (
-            <Section key={group.type} title={typeLabel(group.type)}>
+            <Section key={group.key} title={group.label}>
               <SheetTable>
                 <thead className="bg-slate-100 text-left">
                   <tr>
