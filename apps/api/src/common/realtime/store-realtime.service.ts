@@ -7,7 +7,8 @@ export type StoreRealtimeReason =
   | 'sale_updated'
   | 'sale_status'
   | 'sale_payments'
-  | 'delivery_updated';
+  | 'delivery_updated'
+  | 'notification_created';
 
 export interface StoreRealtimeEvent {
   storeId: string;

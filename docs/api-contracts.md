@@ -200,6 +200,28 @@ Período: dia único (`date`) ou intervalo inclusivo (`dateFrom` + `dateTo`). Fu
 
 Inclui `deliveryMetrics` (espera, rota, por entregador) e totais financeiros com **receita líquida** (após taxas de pagamento) e **margem bruta** (quando custo fornecedor configurado).
 
+## Notifications (master)
+
+Central de notificações do painel master (papel `ORG_MASTER`/`PLATFORM_ADMIN`). Persistida no banco (`Notification`), com estado de leitura por usuário (`NotificationRead`, único por `notificationId + userId`).
+
+- `GET /notifications?page=&pageSize=` — lista org-wide (mais recentes primeiro), cada item com flag `read` para o usuário logado
+- `GET /notifications/unread-count` — `{ count }` de não lidas do usuário
+- `POST /notifications/:id/read` — marca uma como lida
+- `POST /notifications/read-all` — marca todas as não lidas como lidas
+
+Cada notificação traz `type` (`SALE_PORTARIA` | `SALE_CANCELLED`), `title`, `body`, `saleId`, `storeId` e `metadata` (snapshot: `storeName`, `attendantName`, `total`, `channel`, `canceledReason`, `canceledByName`, `previousStatus`, `at`).
+
+Criação é **interna** (`NotificationsService.create`), disparada por `SalesService` quando:
+- venda entra como `PORTARIA` (`POST /sales`, `POST /sales/:id/mobile/approve`, `POST /sales/:id/backdate/approve` com retirada na portaria);
+- venda vira `CANCELLED` (`PATCH /sales/:id/status`, `POST /sales/:id/mobile/reject`, `POST /sales/:id/backdate/reject`).
+
+### Realtime (SSE)
+
+- `GET /realtime/store?storeId=&token=` — eventos da loja
+- `GET /realtime/org?token=` — eventos da organização (apenas `ORG_MASTER`/`PLATFORM_ADMIN`)
+
+Após criar uma notificação, o backend emite um evento org com `reason: 'notification_created'`; o master refaz a busca da lista/contagem. Payloads são leves; heartbeats (`type: 'heartbeat'`) são ignorados pelo front.
+
 ## Erros
 
 A API retorna mensagens estruturadas; o front normaliza em `apps/web/src/lib/errors.ts`.

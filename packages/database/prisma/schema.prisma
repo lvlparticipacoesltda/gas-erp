@@ -130,6 +130,7 @@ model Organization {
   suppliers           Supplier[]
   auditLogs           AuditLog[]
   storePaymentMethods StorePaymentMethod[]
+  notifications       Notification[]
 }
 
 model Store {
@@ -711,6 +712,38 @@ model AuditLog {
   user         User?        @relation(fields: [userId], references: [id])
 
   @@index([organizationId, createdAt])
+}
+
+/// Notificações do painel master (venda portaria / cancelamento).
+/// Estado de leitura é por usuário (NotificationRead), pois cada master tem o
+/// próprio "lida/não lida".
+model Notification {
+  id             String   @id @default(cuid())
+  organizationId String
+  storeId        String?
+  type           String
+  title          String
+  body           String
+  saleId         String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reads        NotificationRead[]
+
+  @@index([organizationId, createdAt])
+}
+
+model NotificationRead {
+  id             String   @id @default(cuid())
+  notificationId String
+  userId         String
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId])
 }
 
 model PasswordResetToken {

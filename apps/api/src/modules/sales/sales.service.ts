@@ -34,6 +34,20 @@ import {
   StoreRealtimeReason,
   StoreRealtimeService,
 } from '../../common/realtime/store-realtime.service';
+import { NotificationsService } from '../notifications/notifications.service';
+
+/** Venda com os campos necessários para montar uma notificação master. */
+type NotifiableSale = {
+  id: string;
+  storeId: string;
+  total: Prisma.Decimal | number | string;
+  channel: string;
+  status: SaleStatus;
+  canceledReason?: string | null;
+  createdAt: Date;
+  store?: { id: string; name: string } | null;
+  attendant?: { id: string; name: string } | null;
+};
 
 @Injectable()
 export class SalesService {
@@ -44,6 +58,7 @@ export class SalesService {
     private push: PushService,
     private paymentMethods: StorePaymentMethodsService,
     private realtime: StoreRealtimeService,
+    private notifications: NotificationsService,
   ) {}
 
   private notifyStoreRealtime(
@@ -56,6 +71,60 @@ export class SalesService {
     } catch {
       // Eventos em tempo real não devem bloquear o fluxo principal.
     }
+  }
+
+  /** Cria notificação master de venda portaria. Best-effort. */
+  private async notifyPortariaSale(user: AuthUser, sale: NotifiableSale) {
+    const storeName = sale.store?.name ?? 'Unidade';
+    const attendantName = sale.attendant?.name ?? user.name;
+    const total = toNumber(sale.total);
+    await this.notifications.create({
+      organizationId: user.organizationId,
+      storeId: sale.storeId,
+      type: 'SALE_PORTARIA',
+      title: `Venda portaria — ${storeName}`,
+      body: attendantName,
+      saleId: sale.id,
+      metadata: {
+        storeId: sale.storeId,
+        storeName,
+        attendantName,
+        total,
+        channel: sale.channel,
+        at: sale.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      },
+    });
+  }
+
+  /** Cria notificação master de venda cancelada. Best-effort. */
+  private async notifyCancelledSale(
+    user: AuthUser,
+    sale: NotifiableSale,
+    canceledReason: string | null | undefined,
+    previousStatus?: SaleStatus,
+  ) {
+    const storeName = sale.store?.name ?? 'Unidade';
+    const attendantName = sale.attendant?.name ?? '—';
+    const total = toNumber(sale.total);
+    await this.notifications.create({
+      organizationId: user.organizationId,
+      storeId: sale.storeId,
+      type: 'SALE_CANCELLED',
+      title: `Venda cancelada — ${storeName}`,
+      body: canceledReason?.trim() || 'Sem motivo informado',
+      saleId: sale.id,
+      metadata: {
+        storeId: sale.storeId,
+        storeName,
+        attendantName,
+        total,
+        channel: sale.channel,
+        canceledReason: canceledReason?.trim() || null,
+        canceledByName: user.name,
+        previousStatus: previousStatus ?? null,
+        at: new Date().toISOString(),
+      },
+    });
   }
 
   private saleInclude = {
@@ -338,6 +407,10 @@ export class SalesService {
 
     this.notifyStoreRealtime(data.storeId, user.organizationId, 'sale_created');
 
+    if (initialStatus === SaleStatus.PORTARIA) {
+      await this.notifyPortariaSale(user, sale);
+    }
+
     return sale;
   }
 
@@ -581,6 +654,10 @@ export class SalesService {
 
     this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
 
+    if (pickup) {
+      await this.notifyPortariaSale(user, sale);
+    }
+
     return this.findOne(user, id);
   }
 
@@ -638,6 +715,13 @@ export class SalesService {
     }
 
     this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
+
+    await this.notifyCancelledSale(
+      user,
+      sale,
+      `Venda do app rejeitada: ${data.reason.trim()}`,
+      sale.status,
+    );
 
     return this.findOne(user, id);
   }
@@ -788,6 +872,10 @@ export class SalesService {
 
     this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
 
+    if (pickup) {
+      await this.notifyPortariaSale(user, sale);
+    }
+
     return this.findOne(user, id);
   }
 
@@ -846,6 +934,13 @@ export class SalesService {
     }
 
     this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_updated');
+
+    await this.notifyCancelledSale(
+      user,
+      sale,
+      `Venda retroativa rejeitada: ${data.reason.trim()}`,
+      sale.status,
+    );
 
     return this.findOne(user, id);
   }
@@ -1249,6 +1344,10 @@ export class SalesService {
     }
 
     this.notifyStoreRealtime(sale.storeId, user.organizationId, 'sale_status');
+
+    if (nextStatus === SaleStatus.CANCELLED) {
+      await this.notifyCancelledSale(user, sale, data.canceledReason, sale.status);
+    }
 
     return this.findOne(user, id);
   }

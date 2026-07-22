@@ -14,6 +14,7 @@ import { buildStoreHref, defaultStorePath, STORE_NAV_ITEMS } from '@/lib/store-n
 import { NavLink } from '@/components/ui';
 import { Logo } from '@/components/logo';
 import { PageLoader } from '@/components/brand-loader';
+import { NotificationsCenter } from '@/components/notifications/notifications-center';
 import { canManagePaymentMethods, hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
@@ -185,10 +186,11 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
             )}
           </nav>
         </div>
-        <div className="border-t border-slate-200 p-4">
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-4">
           <button onClick={logout} type="button" className="text-sm text-red-600 hover:underline">
             Sair
           </button>
+          {mode === 'master' && <NotificationsCenter />}
         </div>
       </aside>
       <main className="min-h-screen p-6 lg:ml-64">{children}</main>
