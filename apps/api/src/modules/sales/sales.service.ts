@@ -47,6 +47,10 @@ type NotifiableSale = {
   createdAt: Date;
   store?: { id: string; name: string } | null;
   attendant?: { id: string; name: string } | null;
+  items?: Array<{
+    quantity: Prisma.Decimal | number | string;
+    product?: { name?: string | null } | null;
+  }> | null;
 };
 
 @Injectable()
@@ -73,17 +77,32 @@ export class SalesService {
     }
   }
 
+  /** Snapshot dos produtos vendidos para exibir na notificação. */
+  private buildNotificationItems(sale: NotifiableSale) {
+    return (sale.items ?? []).map((item) => ({
+      name: item.product?.name ?? 'Produto',
+      quantity: toNumber(item.quantity),
+    }));
+  }
+
+  /** Resumo curto dos produtos (ex.: "2x P13, 1x Água"). */
+  private summarizeItems(items: Array<{ name: string; quantity: number }>) {
+    return items.map((i) => `${i.quantity}x ${i.name}`).join(', ');
+  }
+
   /** Cria notificação master de venda portaria. Best-effort. */
   private async notifyPortariaSale(user: AuthUser, sale: NotifiableSale) {
     const storeName = sale.store?.name ?? 'Unidade';
     const attendantName = sale.attendant?.name ?? user.name;
     const total = toNumber(sale.total);
+    const items = this.buildNotificationItems(sale);
+    const itemsSummary = this.summarizeItems(items);
     await this.notifications.create({
       organizationId: user.organizationId,
       storeId: sale.storeId,
       type: 'SALE_PORTARIA',
       title: `Venda portaria — ${storeName}`,
-      body: attendantName,
+      body: itemsSummary || attendantName,
       saleId: sale.id,
       metadata: {
         storeId: sale.storeId,
@@ -91,6 +110,7 @@ export class SalesService {
         attendantName,
         total,
         channel: sale.channel,
+        items,
         at: sale.createdAt?.toISOString?.() ?? new Date().toISOString(),
       },
     });
@@ -106,6 +126,7 @@ export class SalesService {
     const storeName = sale.store?.name ?? 'Unidade';
     const attendantName = sale.attendant?.name ?? '—';
     const total = toNumber(sale.total);
+    const items = this.buildNotificationItems(sale);
     await this.notifications.create({
       organizationId: user.organizationId,
       storeId: sale.storeId,
@@ -119,6 +140,7 @@ export class SalesService {
         attendantName,
         total,
         channel: sale.channel,
+        items,
         canceledReason: canceledReason?.trim() || null,
         canceledByName: user.name,
         previousStatus: previousStatus ?? null,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bell, X, ChevronLeft, Store, Clock, User as UserIcon, Ban, PackageCheck } from 'lucide-react';
+import { Bell, X, ChevronLeft, Store, Clock, User as UserIcon, Ban, PackageCheck, ShoppingBag } from 'lucide-react';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { useRealtimeRefetch } from '@/hooks/use-realtime-refetch';
@@ -11,11 +11,17 @@ import { cn } from '@/lib/utils';
 
 const ORG_CHANNEL: RealtimeChannel = { type: 'org' };
 
+interface NotificationItemProduct {
+  name: string;
+  quantity: number;
+}
+
 interface NotificationMetadata {
   storeName?: string;
   attendantName?: string;
   total?: number;
   channel?: string;
+  items?: NotificationItemProduct[];
   canceledReason?: string | null;
   canceledByName?: string;
   previousStatus?: string | null;
@@ -301,6 +307,30 @@ function NotificationDetail({
             label="Data e hora"
             value={formatDateTime(meta.at ?? item.createdAt)}
           />
+          {meta.items && meta.items.length > 0 && (
+            <div className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
+              <span className="mt-0.5 text-slate-400">
+                <ShoppingBag className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Produto(s)
+                </dt>
+                <dd>
+                  <ul className="mt-1 space-y-1 text-sm text-slate-800">
+                    {meta.items.map((product, index) => (
+                      <li key={`${product.name}-${index}`} className="flex justify-between gap-3">
+                        <span className="min-w-0 truncate">{product.name}</span>
+                        <span className="shrink-0 font-medium text-slate-600">
+                          {product.quantity}x
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              </div>
+            </div>
+          )}
           {typeof meta.total === 'number' && (
             <DetailRow
               icon={<PackageCheck className="h-4 w-4" />}
