@@ -252,7 +252,13 @@ export class GeocodingService {
     const wantedNumber = this.normalizeHouseNumber(data.number);
 
     try {
-      // Google primeiro (mesma key do Directions, se Geocoding API estiver ligada).
+      // Nominatim (grátis) primeiro — Google só como fallback (custo por request).
+      const fromNominatim = await this.geocodeWithNominatim(data);
+      if (fromNominatim) {
+        this.cache.set(key, { result: fromNominatim, expiresAt: Date.now() + CACHE_TTL_MS });
+        return fromNominatim;
+      }
+
       const fromGoogle = await this.geocodeWithGoogle(query, wantedNumber);
       if (fromGoogle) {
         this.cache.set(key, { result: fromGoogle, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -260,16 +266,10 @@ export class GeocodingService {
         return fromGoogle;
       }
 
-      const fromNominatim = await this.geocodeWithNominatim(data);
-      if (!fromNominatim) {
-        // Cache negativo: sem ele, endereços não localizáveis eram re-consultados
-        // no Google a cada chamada (ex.: poll de 30s do app do entregador).
-        this.cache.set(key, { result: null, expiresAt: Date.now() + NEGATIVE_CACHE_TTL_MS });
-        return null;
-      }
-
-      this.cache.set(key, { result: fromNominatim, expiresAt: Date.now() + CACHE_TTL_MS });
-      return fromNominatim;
+      // Cache negativo: sem ele, endereços não localizáveis eram re-consultados
+      // no Google a cada chamada (ex.: poll de 30s do app do entregador).
+      this.cache.set(key, { result: null, expiresAt: Date.now() + NEGATIVE_CACHE_TTL_MS });
+      return null;
     } catch (error) {
       this.logger.warn(`Geocoding failed: ${error instanceof Error ? error.message : error}`);
       throw new ServiceUnavailableException(

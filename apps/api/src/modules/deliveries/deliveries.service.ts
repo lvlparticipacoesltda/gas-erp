@@ -19,6 +19,13 @@ import { PushService } from '../../common/push/push.service';
 
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
 
+/**
+ * Histórico do app: só entregas a partir desta data (quando passamos a persistir
+ * coordenadas). Antes disso o histórico gerava re-geocoding em massa.
+ * 2026-07-22 00:00 BRT = 03:00 UTC.
+ */
+const DELIVERER_HISTORY_SINCE = new Date('2026-07-22T03:00:00.000Z');
+
 type DeliveryWithSale = {
   status: DeliveryStatus;
   startedAt: Date | null;
@@ -240,7 +247,21 @@ export class DeliveriesService {
     if (!deliverer) throw new NotFoundException('Perfil de entregador não encontrado');
 
     const deliveries = await this.prisma.delivery.findMany({
-      where: { delivererId: deliverer.id },
+      where: {
+        delivererId: deliverer.id,
+        OR: [
+          // Ativas: sempre.
+          { status: { in: [DeliveryStatus.PENDING, DeliveryStatus.IN_PROGRESS] } },
+          // Histórico: só a partir do corte (sem registros antigos sem coordenadas).
+          {
+            status: { in: [DeliveryStatus.DELIVERED, DeliveryStatus.CANCELLED] },
+            OR: [
+              { completedAt: { gte: DELIVERER_HISTORY_SINCE } },
+              { completedAt: null, createdAt: { gte: DELIVERER_HISTORY_SINCE } },
+            ],
+          },
+        ],
+      },
       include: {
         sale: {
           include: {
@@ -260,21 +281,12 @@ export class DeliveriesService {
     });
 
     const now = new Date();
-    const enriched = await Promise.all(
-      deliveries.map(async (delivery) => {
-        const base = withDeliveryMetrics(delivery, now);
-        // Só entregas ativas disparam geocoding (API paga); o histórico usa apenas
-        // as coordenadas já persistidas na venda (leitura do banco, custo zero).
-        const isActive =
-          delivery.status === DeliveryStatus.PENDING
-          || delivery.status === DeliveryStatus.IN_PROGRESS;
-        const destination = isActive
-          ? await this.resolveDestination(delivery.sale)
-          : persistedDestination(delivery.sale);
-        return { ...base, destination };
-      }),
-    );
-    return enriched;
+    // Nunca geocodifica no poll de 30s — só lat/lng já gravados na Sale.
+    // Geocoding (quando necessário) fica na criação da venda ou no GET /route.
+    return deliveries.map((delivery) => ({
+      ...withDeliveryMetrics(delivery, now),
+      destination: persistedDestination(delivery.sale),
+    }));
   }
 
   async getRouteForDelivery(
