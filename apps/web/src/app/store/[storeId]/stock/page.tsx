@@ -5,11 +5,11 @@ import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { FilterBar, FilterField } from '@/components/filters';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import {
   canManageStock,
-  formatDashboardDateRangeLabel,
   getSaleBusinessDayKey,
   todayDateKey,
   type PaginatedResponse,
@@ -106,14 +106,6 @@ export default function StockPage() {
     }
     return params.toString();
   }, [storeId, movementsPage, effectiveDateFrom, effectiveDateTo]);
-
-  const activeDateLabel =
-    effectiveDateFrom || effectiveDateTo
-      ? formatDashboardDateRangeLabel(
-          effectiveDateFrom || effectiveDateTo,
-          effectiveDateTo || effectiveDateFrom,
-        )
-      : null;
 
   const filterFrom = effectiveDateFrom || effectiveDateTo;
   const filterTo = effectiveDateTo || effectiveDateFrom;
@@ -305,103 +297,85 @@ export default function StockPage() {
 
       <h2 className="mb-3 mt-8 font-semibold">Movimentações recentes</h2>
 
-      <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        {activeDateLabel ? (
-          <div className="inline-flex items-center rounded-full bg-brand-muted px-3 py-1 text-xs font-medium text-brand-dark">
-            Filtrando data: {activeDateLabel}
-          </div>
+      <FilterBar className="mb-4">
+        {useDateRange ? (
+          <>
+            <FilterField label="De">
+              <Input
+                type="date"
+                className="w-40 [color-scheme:light]"
+                value={dateFrom}
+                max={dateTo || todayDateKey()}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDateFrom(value);
+                  if (dateTo && value > dateTo) setDateTo(value);
+                }}
+              />
+            </FilterField>
+            <FilterField label="Até">
+              <Input
+                type="date"
+                className="w-40 [color-scheme:light]"
+                value={dateTo}
+                min={dateFrom || undefined}
+                max={todayDateKey()}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDateTo(value);
+                  if (dateFrom && value < dateFrom) setDateFrom(value);
+                }}
+              />
+            </FilterField>
+          </>
         ) : (
-          <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
-            Mostrando todas as datas — selecione um dia para filtrar
-          </div>
+          <FilterField label="Data da movimentação">
+            <Input
+              type="date"
+              className="w-44 [color-scheme:light]"
+              value={filterDate}
+              max={todayDateKey()}
+              onChange={(e) => setFilterDate(e.target.value)}
+            />
+          </FilterField>
         )}
 
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="w-full max-w-sm">
-            {useDateRange ? (
-              <>
-                <Label>Período</Label>
-                <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div>
-                    <span className="mb-1 block text-xs font-medium text-slate-600">De</span>
-                    <Input
-                      type="date"
-                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
-                      value={dateFrom}
-                      max={dateTo || todayDateKey()}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setDateFrom(value);
-                        if (dateTo && value > dateTo) setDateTo(value);
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <span className="mb-1 block text-xs font-medium text-slate-600">Até</span>
-                    <Input
-                      type="date"
-                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
-                      value={dateTo}
-                      min={dateFrom || undefined}
-                      max={todayDateKey()}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setDateTo(value);
-                        if (dateFrom && value < dateFrom) setDateFrom(value);
-                      }}
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <Label>Data da movimentação</Label>
-                <Input
-                  type="date"
-                  className="mt-1 min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
-                  value={filterDate}
-                  max={todayDateKey()}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                />
-                <p className="mt-1 text-xs text-slate-500">Deixe em branco para listar todas as datas</p>
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setUseDateRange((current) => !current);
-                setDateFrom('');
-                setDateTo('');
-                setFilterDate('');
-              }}
-              className="mt-2 text-xs font-medium text-brand hover:underline"
-            >
-              {useDateRange ? 'Usar apenas um dia' : 'Filtrar por período (de/até)'}
-            </button>
-          </div>
-
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setUseDateRange((current) => !current);
+              setDateFrom('');
+              setDateTo('');
+              setFilterDate('');
+            }}
+            className="text-xs font-medium text-brand hover:underline"
+          >
+            {useDateRange ? 'Filtrar por um dia' : 'Filtrar por período'}
+          </button>
           {(filterDate || dateFrom || dateTo) && (
             <Button
               type="button"
               variant="secondary"
               onClick={() => {
+                setUseDateRange(false);
                 setFilterDate('');
                 setDateFrom('');
                 setDateTo('');
               }}
             >
-              Limpar filtro
+              Todas as datas
             </Button>
           )}
         </div>
+      </FilterBar>
 
-        {mismatchedMovements.length > 0 && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Atenção: {mismatchedMovements.length} movimentação(ões) fora do intervalo selecionado. Atualize a página ou
-            aguarde o deploy da API.
-          </p>
-        )}
-      </div>
+      {mismatchedMovements.length > 0 && (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Atenção: {mismatchedMovements.length} movimentação(ões) fora do intervalo selecionado. Atualize a página ou
+          aguarde o deploy da API.
+        </p>
+      )}
 
       <PaginatedSection
         loading={movementsLoading}

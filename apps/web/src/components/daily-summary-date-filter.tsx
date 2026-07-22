@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, Input, Label } from '@/components/ui';
+import { Button, Input } from '@/components/ui';
+import { FilterBar, FilterField } from '@/components/filters';
 import { shiftDateKey } from '@/lib/dashboard-date';
 import { cn } from '@/lib/utils';
 import { todayDateKey } from '@gas-erp/shared';
@@ -24,59 +25,54 @@ export function DailySummaryDateFilter({ dateFrom, dateTo, onChange, disabled }:
   }
 
   return (
-    <div
-      className={cn(
-        'mb-6 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 transition-opacity',
-        disabled && 'pointer-events-none opacity-60',
-      )}
-    >
-      <div>
-        <Label>De</Label>
+    <FilterBar className={cn('transition-opacity', disabled && 'pointer-events-none opacity-60')}>
+      <FilterField label="De" htmlFor="summary-date-from">
         <Input
           id="summary-date-from"
           type="date"
-          className="mt-1"
+          className="w-40 [color-scheme:light]"
           value={dateFrom}
           max={dateTo}
           disabled={disabled}
           onChange={(e) => handleFromChange(e.target.value)}
         />
-      </div>
-      <div>
-        <Label>Até</Label>
+      </FilterField>
+      <FilterField label="Até" htmlFor="summary-date-to">
         <Input
           id="summary-date-to"
           type="date"
-          className="mt-1"
+          className="w-40 [color-scheme:light]"
           value={dateTo}
           min={dateFrom}
           max={today}
           disabled={disabled}
           onChange={(e) => handleToChange(e.target.value)}
         />
+      </FilterField>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <Button type="button" variant="secondary" disabled={disabled} onClick={() => onChange(today, today)}>
+          Hoje
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={disabled}
+          onClick={() => {
+            const yesterday = shiftDateKey(today, -1);
+            onChange(yesterday, yesterday);
+          }}
+        >
+          Ontem
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={disabled}
+          onClick={() => onChange(shiftDateKey(today, -6), today)}
+        >
+          Últimos 7 dias
+        </Button>
       </div>
-      <Button type="button" variant="secondary" disabled={disabled} onClick={() => onChange(today, today)}>
-        Hoje
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={disabled}
-        onClick={() => {
-          const yesterday = shiftDateKey(today, -1);
-          onChange(yesterday, yesterday);
-        }}
-      >
-        Ontem
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={disabled}
-        onClick={() => onChange(shiftDateKey(today, -6), today)}
-      >
-        Últimos 7 dias
-      </Button>
-    </div>
+    </FilterBar>
   );
 }

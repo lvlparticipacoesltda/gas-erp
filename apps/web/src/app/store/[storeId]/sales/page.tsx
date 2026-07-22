@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedSection } from '@/components/paginated-section';
-import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { Badge, Button, Input, PageHeader, Select, Table } from '@/components/ui';
+import { FilterBar, FilterField } from '@/components/filters';
 import { useRealtimeRefetch } from '@/hooks/use-realtime-refetch';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -14,7 +15,6 @@ import {
   canManageSales,
   canApproveMobileSales,
   formatSaleDateTimeLabel,
-  formatDashboardDateRangeLabel,
   getSaleListBusinessDayKey,
   formatWaitTime,
   getElapsedWaitingSeconds,
@@ -104,14 +104,6 @@ export default function SalesListPage() {
     effectiveDateTo,
     delivererId,
   ]);
-
-  const activeDateLabel =
-    effectiveDateFrom || effectiveDateTo
-      ? formatDashboardDateRangeLabel(
-          effectiveDateFrom || effectiveDateTo,
-          effectiveDateTo || effectiveDateFrom,
-        )
-      : null;
 
   useEffect(() => {
     if (!storeId) return;
@@ -219,110 +211,68 @@ export default function SalesListPage() {
         }
       />
 
-      <div className="mb-6 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        {activeDateLabel ? (
-          <div className="inline-flex items-center rounded-full bg-brand-muted px-3 py-1 text-xs font-medium text-brand-dark">
-            Filtrando data: {activeDateLabel}
-          </div>
+      <FilterBar>
+        {useDateRange ? (
+          <>
+            <FilterField label="De">
+              <Input
+                type="date"
+                className="w-40 [color-scheme:light]"
+                value={dateFrom}
+                max={dateTo || todayDateKey()}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDateFrom(value);
+                  if (dateTo && value > dateTo) setDateTo(value);
+                }}
+              />
+            </FilterField>
+            <FilterField label="Até">
+              <Input
+                type="date"
+                className="w-40 [color-scheme:light]"
+                value={dateTo}
+                min={dateFrom || undefined}
+                max={todayDateKey()}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDateTo(value);
+                  if (dateFrom && value < dateFrom) setDateFrom(value);
+                }}
+              />
+            </FilterField>
+          </>
         ) : (
-          <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
-            Mostrando todas as datas — selecione um dia para filtrar
-          </div>
+          <FilterField label="Data da venda">
+            <Input
+              type="date"
+              className="w-44 [color-scheme:light]"
+              value={filterDate}
+              max={todayDateKey()}
+              onChange={(e) => setFilterDate(e.target.value)}
+            />
+          </FilterField>
         )}
 
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="w-full max-w-sm">
-            {useDateRange ? (
-              <>
-                <Label>Período</Label>
-                <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div>
-                    <span className="mb-1 block text-xs font-medium text-slate-600">De</span>
-                    <Input
-                      type="date"
-                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
-                      value={dateFrom}
-                      max={dateTo || todayDateKey()}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setDateFrom(value);
-                        if (dateTo && value > dateTo) setDateTo(value);
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <span className="mb-1 block text-xs font-medium text-slate-600">Até</span>
-                    <Input
-                      type="date"
-                      className="min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
-                      value={dateTo}
-                      min={dateFrom || undefined}
-                      max={todayDateKey()}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setDateTo(value);
-                        if (dateFrom && value < dateFrom) setDateFrom(value);
-                      }}
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <Label>Data da venda</Label>
-                <Input
-                  type="date"
-                  className="mt-1 min-h-11 border-slate-300 bg-slate-50 [color-scheme:light]"
-                  value={filterDate}
-                  max={todayDateKey()}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                />
-                <p className="mt-1 text-xs text-slate-500">Padrão: hoje. Deixe em branco para listar todas as datas</p>
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setUseDateRange((current) => {
-                  const next = !current;
-                  if (next) {
-                    const today = todayDateKey();
-                    setDateFrom(today);
-                    setDateTo(today);
-                    setFilterDate('');
-                  } else {
-                    setFilterDate(todayDateKey());
-                    setDateFrom('');
-                    setDateTo('');
-                  }
-                  return next;
-                });
-              }}
-              className="mt-2 text-xs font-medium text-brand hover:underline"
-            >
-              {useDateRange ? 'Usar apenas um dia' : 'Filtrar por período (de/até)'}
-            </button>
-          </div>
-          <div className="w-full max-w-xs">
-            <Label>Entregador</Label>
-            <Select
-              className="mt-1 min-h-11 border-slate-300 bg-slate-50"
-              value={delivererId}
-              onChange={(e) => setDelivererId(e.target.value)}
-            >
-              <option value="">Todos os entregadores</option>
-              {deliverers.map((deliverer) => (
-                <option key={deliverer.id} value={deliverer.id}>
-                  {deliverer.user.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="w-full max-w-xs">
-            <Label>Status</Label>
-            <Select
-              className="mt-1 min-h-11 border-slate-300 bg-slate-50"
-              value={
+        <FilterField label="Entregador">
+          <Select
+            className="w-48"
+            value={delivererId}
+            onChange={(e) => setDelivererId(e.target.value)}
+          >
+            <option value="">Todos os entregadores</option>
+            {deliverers.map((deliverer) => (
+              <option key={deliverer.id} value={deliverer.id}>
+                {deliverer.user.name}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+
+        <FilterField label="Status">
+          <Select
+            className="w-56"
+            value={
               mobileFilter
                 ? '__mobile_pending__'
                 : backdateFilter
@@ -357,47 +307,51 @@ export default function SalesListPage() {
               </option>
             ))}
           </Select>
-        </div>
-        {isManager && (
-          <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={backdateFilter}
-              onChange={(e) => setBackdateFilter(e.target.checked)}
-              className="rounded border-slate-300 text-brand focus:ring-brand"
-            />
-            Só aguardando aprovação de data
-          </label>
-        )}
-        {canApproveMobile && (
-          <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={mobileFilter}
-              onChange={(e) => setMobileFilter(e.target.checked)}
-              className="rounded border-slate-300 text-brand focus:ring-brand"
-            />
-            Só aguardando aprovação (app)
-          </label>
-        )}
-        {(filterDate !== todayDateKey() || dateFrom || dateTo || delivererId || useDateRange) && (
-          <Button
+        </FilterField>
+
+        <div className="ml-auto flex items-center gap-3">
+          <button
             type="button"
-            variant="secondary"
-            className="mb-0.5"
             onClick={() => {
-              setUseDateRange(false);
-              setFilterDate(todayDateKey());
-              setDateFrom('');
-              setDateTo('');
-              setDelivererId('');
+              setUseDateRange((current) => {
+                const next = !current;
+                const today = todayDateKey();
+                if (next) {
+                  setDateFrom(today);
+                  setDateTo(today);
+                  setFilterDate('');
+                } else {
+                  setFilterDate(today);
+                  setDateFrom('');
+                  setDateTo('');
+                }
+                return next;
+              });
             }}
+            className="text-xs font-medium text-brand hover:underline"
           >
-            Voltar para hoje
-          </Button>
-        )}
+            {useDateRange ? 'Filtrar por um dia' : 'Filtrar por período'}
+          </button>
+          {(filterDate !== todayDateKey() || dateFrom || dateTo || delivererId || statusFilter || useDateRange) && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setUseDateRange(false);
+                setFilterDate(todayDateKey());
+                setDateFrom('');
+                setDateTo('');
+                setDelivererId('');
+                setStatusFilter('');
+                setBackdateFilter(false);
+                setMobileFilter(false);
+              }}
+            >
+              Voltar para hoje
+            </Button>
+          )}
         </div>
-      </div>
+      </FilterBar>
 
       {mismatchedSales.length > 0 && (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
