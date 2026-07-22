@@ -22,3 +22,17 @@ export function formatDateTime(value: string | Date) {
   }).format(date);
   return `${dateLabel} ${timeLabel}`;
 }
+
+/**
+ * Formata um CNPJ (com ou sem máscara) como 00.000.000/0000-00.
+ * Aplica máscara progressiva, servindo tanto para exibição quanto para inputs.
+ */
+export function formatCnpj(value?: string | null): string {
+  if (!value) return '';
+  const d = value.replace(/\D/g, '').slice(0, 14);
+  if (d.length > 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  if (d.length > 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
+  if (d.length > 5) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
+  if (d.length > 2) return `${d.slice(0, 2)}.${d.slice(2)}`;
+  return d;
+}

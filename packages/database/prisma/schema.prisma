@@ -138,6 +138,8 @@ model Store {
   organizationId String
   name           String
   code           String
+  /** CNPJ da unidade (somente dígitos); usado no cupom/nota da venda. */
+  cnpj           String?
   /** Endereço legado (texto livre); preferir campos estruturados abaixo. */
   address        String?
   street         String?

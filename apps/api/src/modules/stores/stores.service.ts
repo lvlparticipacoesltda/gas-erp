@@ -108,6 +108,7 @@ export class StoresService {
       ...data,
       address: legacy,
       zipCode: data.zipCode?.replace(/\D/g, '') || data.zipCode,
+      cnpj: data.cnpj != null ? data.cnpj.replace(/\D/g, '') || null : data.cnpj,
     };
   }
 
@@ -121,6 +122,7 @@ export class StoresService {
         name: data.name,
         code: data.code,
         organizationId: user.organizationId,
+        cnpj: data.cnpj ?? null,
         address: data.address,
         street: data.street,
         number: data.number,
@@ -154,6 +156,7 @@ export class StoresService {
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.code !== undefined ? { code: data.code } : {}),
+        ...(data.cnpj !== undefined ? { cnpj: data.cnpj } : {}),
         ...(data.address !== undefined ? { address: data.address } : {}),
         ...(data.street !== undefined ? { street: data.street } : {}),
         ...(data.number !== undefined ? { number: data.number } : {}),

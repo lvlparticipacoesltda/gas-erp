@@ -9,12 +9,14 @@ import {
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { invalidateStoresCache } from '@/components/app-shell';
 import { api, getToken } from '@/lib/api';
+import { formatCnpj } from '@/lib/utils';
 import { formatCep } from '@/lib/viacep';
 
 interface Store {
   id: string;
   name: string;
   code: string;
+  cnpj?: string | null;
   street?: string | null;
   number?: string | null;
   complement?: string | null;
@@ -49,6 +51,7 @@ const emptyAddress: StoreAddressForm = {
 const emptyCreate = {
   name: '',
   code: '',
+  cnpj: '',
   ...emptyAddress,
 };
 
@@ -91,6 +94,7 @@ export default function MasterStoresPage() {
   const [editForm, setEditForm] = useState({
     name: '',
     code: '',
+    cnpj: '',
     active: true,
     ...emptyAddress,
   });
@@ -114,6 +118,7 @@ export default function MasterStoresPage() {
     setEditForm({
       name: store.name,
       code: store.code,
+      cnpj: store.cnpj ? formatCnpj(store.cnpj) : '',
       active: store.active,
       ...addressFromStore(store),
     });
@@ -130,6 +135,7 @@ export default function MasterStoresPage() {
           body: JSON.stringify({
             name: form.name,
             code: form.code,
+            cnpj: form.cnpj.replace(/\D/g, '') || undefined,
             ...addressPayload(form),
           }),
         },
@@ -203,6 +209,7 @@ export default function MasterStoresPage() {
           body: JSON.stringify({
             name: editForm.name,
             code: editForm.code,
+            cnpj: editForm.cnpj.replace(/\D/g, '') || undefined,
             active: editForm.active,
             ...addressPayload(editForm),
           }),
@@ -242,6 +249,15 @@ export default function MasterStoresPage() {
                   value={editForm.code}
                   onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
                   required
+                />
+              </div>
+              <div>
+                <Label>CNPJ</Label>
+                <Input
+                  value={editForm.cnpj}
+                  placeholder="00.000.000/0000-00"
+                  inputMode="numeric"
+                  onChange={(e) => setEditForm({ ...editForm, cnpj: formatCnpj(e.target.value) })}
                 />
               </div>
               <CustomerAddressFields
@@ -294,6 +310,15 @@ export default function MasterStoresPage() {
                   value={form.code}
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
                   required
+                />
+              </div>
+              <div>
+                <Label>CNPJ</Label>
+                <Input
+                  value={form.cnpj}
+                  placeholder="00.000.000/0000-00"
+                  inputMode="numeric"
+                  onChange={(e) => setForm({ ...form, cnpj: formatCnpj(e.target.value) })}
                 />
               </div>
               <CustomerAddressFields

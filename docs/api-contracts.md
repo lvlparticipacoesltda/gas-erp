@@ -29,10 +29,12 @@ Base: `/api/v1`
 
 ## Stores (master)
 
-- `GET /stores` — lista lojas da organização
-- `POST /stores` — criar loja
-- `PATCH /stores/:id` — `{ name?, active?, ... }` — **inativar**: `active: false`
+- `GET /stores` — lista lojas da organização (inclui endereço estruturado e `cnpj`)
+- `POST /stores` — criar loja. Aceita `cnpj` (opcional; persistido só com dígitos) além de nome, código e endereço
+- `PATCH /stores/:id` — `{ name?, code?, cnpj?, active?, ...endereço }` — **inativar**: `active: false`
 - `DELETE /stores/:id` — **exclusão permanente** (remove vendas e transferências da loja; operação irreversível)
+
+O `cnpj` da loja é usado no **cupom/nota da venda** (impressão): tela `web` em `/store/:storeId/sales/:saleId/receipt` (client-only) monta o cupom a partir de `GET /sales/:id` (loja com endereço + `cnpj`, itens, cliente, pagamentos) e usa a impressão do navegador (Salvar como PDF). Botão "Imprimir" fica na lista de vendas ao lado de "Ver / editar".
 
 ### Formas de pagamento por loja
 

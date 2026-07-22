@@ -9,6 +9,8 @@ const optionalTrimmed = z
 export const createStoreSchema = z.object({
   name: z.string().min(2),
   code: z.string().min(2).max(10),
+  /** CNPJ da unidade (somente dígitos são persistidos); opcional. */
+  cnpj: optionalTrimmed,
   /** Texto livre legado; opcional se campos estruturados forem enviados. */
   address: optionalTrimmed,
   street: optionalTrimmed,
@@ -39,6 +41,7 @@ export const storeAddressSchema = z.object({
   id: z.string(),
   name: z.string(),
   code: z.string().optional(),
+  cnpj: z.string().nullable().optional(),
   street: z.string().nullable().optional(),
   number: z.string().nullable().optional(),
   complement: z.string().nullable().optional(),

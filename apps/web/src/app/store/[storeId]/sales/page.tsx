@@ -434,9 +434,18 @@ export default function SalesListPage() {
                 </td>
                 <td className="p-3">{formatCurrency(s.total)}</td>
                 <td className="p-3 text-right">
-                  <Link href={`/store/${storeId}/sales/${s.id}`}>
-                    <Button type="button" variant="secondary">Ver / editar</Button>
-                  </Link>
+                  <div className="flex justify-end gap-2">
+                    <Link href={`/store/${storeId}/sales/${s.id}`}>
+                      <Button type="button" variant="secondary">Ver / editar</Button>
+                    </Link>
+                    <Link
+                      href={`/store/${storeId}/sales/${s.id}/receipt`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button type="button" variant="secondary">Imprimir</Button>
+                    </Link>
+                  </div>
                 </td>
               </tr>
             );})}
