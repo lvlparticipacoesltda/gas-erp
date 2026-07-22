@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import html2canvas from 'html2canvas-pro';
+import { jsPDF } from 'jspdf';
 import { PageLoader } from '@/components/brand-loader';
 import { api, getToken } from '@/lib/api';
 import { formatCnpj, formatCurrency } from '@/lib/utils';
@@ -96,7 +98,8 @@ export default function SaleReceiptPage() {
   const { saleId } = useParams<{ storeId: string; saleId: string }>();
   const [sale, setSale] = useState<ReceiptSale | null>(null);
   const [error, setError] = useState('');
-  const printedRef = useRef(false);
+  const [generating, setGenerating] = useState(false);
+  const paperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,10 +115,48 @@ export default function SaleReceiptPage() {
     };
   }, [saleId]);
 
-  function triggerPrint() {
-    if (printedRef.current) return;
-    printedRef.current = true;
-    window.print();
+  async function renderCanvas(): Promise<HTMLCanvasElement | null> {
+    if (!paperRef.current) return null;
+    return html2canvas(paperRef.current, {
+      scale: 3,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+    });
+  }
+
+  async function handleDownloadPdf() {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const canvas = await renderCanvas();
+      if (!canvas) return;
+      const pageWidth = 80; // mm — largura de cupom
+      const pageHeight = (canvas.height / canvas.width) * pageWidth;
+      const pdf = new jsPDF({ unit: 'mm', format: [pageWidth, pageHeight] });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageWidth, pageHeight);
+      pdf.save(`cupom-${saleId}.pdf`);
+    } catch {
+      setError('Não foi possível gerar o PDF.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleDownloadPng() {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const canvas = await renderCanvas();
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = `cupom-${saleId}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch {
+      setError('Não foi possível gerar a imagem.');
+    } finally {
+      setGenerating(false);
+    }
   }
 
   if (error) {
@@ -130,20 +171,8 @@ export default function SaleReceiptPage() {
   const attendant = getSaleAttendantName(sale);
 
   return (
-    <div className="receipt-screen flex flex-col items-center gap-4 py-6">
-      {/* Tamanho da folha do cupom (80mm). @page precisa ficar no nível
-          superior — dentro de @media print o Chrome aplica de forma
-          inconsistente (ora 80mm, ora A4). */}
-      <style>{`
-        @page { size: 80mm auto; margin: 4mm; }
-        @media print {
-          html, body { width: 80mm; }
-          .receipt-screen { padding: 0 !important; margin: 0 !important; }
-          .receipt-paper { width: 100% !important; box-shadow: none !important; }
-        }
-      `}</style>
-
-      <div className="print-hide flex w-full max-w-[420px] items-center justify-between gap-2">
+    <div className="flex flex-col items-center gap-4 py-6">
+      <div className="flex w-full max-w-[420px] items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => window.history.back()}
@@ -151,16 +180,30 @@ export default function SaleReceiptPage() {
         >
           Voltar
         </button>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
-        >
-          Imprimir / Salvar PDF
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadPng}
+            disabled={generating}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Baixar PNG
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={generating}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
+          >
+            {generating ? 'Gerando…' : 'Baixar PDF'}
+          </button>
+        </div>
       </div>
 
-      <div className="receipt-paper w-[302px] bg-white px-4 py-5 text-[11px] leading-tight text-black shadow-sm print:w-full print:shadow-none">
+      <div
+        ref={paperRef}
+        className="w-[302px] bg-white px-4 py-5 text-[11px] leading-tight text-black shadow-sm"
+      >
         {/* Cabeçalho: logo + dados da loja */}
         <div className="flex flex-col items-center text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -168,8 +211,6 @@ export default function SaleReceiptPage() {
             src="/brand/logo-wordmark.png"
             alt={sale.store?.name ?? 'Logo'}
             className="mb-2 h-10 w-auto object-contain"
-            onLoad={triggerPrint}
-            onError={triggerPrint}
           />
         </div>
 
