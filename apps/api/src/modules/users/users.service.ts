@@ -63,6 +63,10 @@ export class UsersService {
         passwordHash,
         name: data.name,
         phone: data.phone,
+        cpf: data.cpf,
+        pis: data.pis,
+        admittedAt: data.admittedAt ? new Date(`${data.admittedAt}T12:00:00.000Z`) : undefined,
+        jobTitle: data.jobTitle ?? undefined,
         role: data.role,
         active: data.active ?? true,
         permissions: data.permissions ?? [],
@@ -109,6 +113,12 @@ export class UsersService {
         email: data.email,
         name: data.name,
         phone: data.phone,
+        ...(data.cpf !== undefined ? { cpf: data.cpf ?? null } : {}),
+        ...(data.pis !== undefined ? { pis: data.pis ?? null } : {}),
+        ...(data.admittedAt !== undefined
+          ? { admittedAt: data.admittedAt ? new Date(`${data.admittedAt}T12:00:00.000Z`) : null }
+          : {}),
+        ...(data.jobTitle !== undefined ? { jobTitle: data.jobTitle ?? null } : {}),
         role: data.role,
         active: data.active,
         permissions: data.permissions,

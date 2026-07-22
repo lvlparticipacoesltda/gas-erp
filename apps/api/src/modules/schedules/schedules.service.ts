@@ -7,6 +7,7 @@ import {
 import { Prisma, ScheduleDayType, TimeClockPunchType, UserRole } from '@gas-erp/database';
 import {
   AuthUser,
+  ROLE_LABELS,
   TIME_CLOCK_DAY_STATUS_LABELS,
   TIME_CLOCK_GEOFENCE_METERS,
   TIME_CLOCK_PHOTO_MAX_BYTES,
@@ -14,6 +15,7 @@ import {
   copyScheduleSchema,
   haversineDistanceMeters,
   scheduleMonthQuerySchema,
+  timeClockCardsQuerySchema,
   timeClockHistoryQuerySchema,
   timeClockMeQuerySchema,
   timeClockPunchSchema,
@@ -91,6 +93,171 @@ function resolveDayStatus(input: {
   }
   return 'OK';
 }
+
+const WEEKDAY_LABELS_MON = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'] as const;
+
+function weekdayMon0FromDateOnly(dateStr: string): number {
+  const js = parseDateOnly(dateStr).getUTCDay(); // 0=dom
+  return js === 0 ? 6 : js - 1;
+}
+
+function sliceHm(value?: string | null): string | null {
+  return value ? value.slice(0, 5) : null;
+}
+
+function formatPrevistoFromSchedule(entry: {
+  dayType: ScheduleDayType;
+  startTime: string | null;
+  endTime: string | null;
+  breakStart: string | null;
+  breakEnd: string | null;
+} | null): string {
+  if (!entry || entry.dayType === ScheduleDayType.DAY_OFF) return 'Folga';
+  const start = sliceHm(entry.startTime);
+  const end = sliceHm(entry.endTime);
+  const breakStart = sliceHm(entry.breakStart);
+  const breakEnd = sliceHm(entry.breakEnd);
+  if (start && end && breakStart && breakEnd) {
+    return `${start}-${breakStart} ${breakEnd}-${end}`;
+  }
+  if (start && end) return `${start}-${end}`;
+  return '—';
+}
+
+function scheduleSlotsFromEntry(entry: {
+  dayType: ScheduleDayType;
+  startTime: string | null;
+  endTime: string | null;
+  breakStart: string | null;
+  breakEnd: string | null;
+} | null): { ent1: string | null; sai1: string | null; ent2: string | null; sai2: string | null } {
+  if (!entry || entry.dayType === ScheduleDayType.DAY_OFF) {
+    return { ent1: null, sai1: null, ent2: null, sai2: null };
+  }
+  const start = sliceHm(entry.startTime);
+  const end = sliceHm(entry.endTime);
+  const breakStart = sliceHm(entry.breakStart);
+  const breakEnd = sliceHm(entry.breakEnd);
+  if (start && end && breakStart && breakEnd) {
+    return { ent1: start, sai1: breakStart, ent2: breakEnd, sai2: end };
+  }
+  return { ent1: start, sai1: null, ent2: null, sai2: end };
+}
+
+function formatMinutesComma(totalMinutes: number): string {
+  const mins = Math.max(0, Math.round(totalMinutes));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')},${String(m).padStart(2, '0')}`;
+}
+
+function formatPunchHm(at: Date | null, source: string | null): string | null {
+  if (!at) return null;
+  const hm = brazilTimeHm(at);
+  return source === 'MOBILE' ? `${hm}(M)` : hm;
+}
+
+type PunchSlotBucket = {
+  ent1: Date | null;
+  sai1: Date | null;
+  ent2: Date | null;
+  sai2: Date | null;
+  sourceEnt1: string | null;
+  sourceSai1: string | null;
+  sourceEnt2: string | null;
+  sourceSai2: string | null;
+};
+
+function assignDayPunchSlots(
+  punches: Array<{ type: TimeClockPunchType; punchedAt: Date; source: string }>,
+): PunchSlotBucket {
+  const empty: PunchSlotBucket = {
+    ent1: null,
+    sai1: null,
+    ent2: null,
+    sai2: null,
+    sourceEnt1: null,
+    sourceSai1: null,
+    sourceEnt2: null,
+    sourceSai2: null,
+  };
+  if (punches.length === 0) return empty;
+
+  const ordered = [...punches].sort((a, b) => a.punchedAt.getTime() - b.punchedAt.getTime());
+  const ins = ordered.filter((p) => p.type === TimeClockPunchType.CLOCK_IN);
+  const outs = ordered.filter((p) => p.type === TimeClockPunchType.CLOCK_OUT);
+
+  // Só 2 batidas (IN+OUT): ENT.1 + SAÍ.2 (jornada sem intervalo marcado).
+  if (ins.length === 1 && outs.length === 1 && ordered.length === 2) {
+    return {
+      ...empty,
+      ent1: ins[0].punchedAt,
+      sai2: outs[0].punchedAt,
+      sourceEnt1: ins[0].source,
+      sourceSai2: outs[0].source,
+    };
+  }
+
+  return {
+    ent1: ins[0]?.punchedAt ?? null,
+    sai1: outs[0]?.punchedAt ?? null,
+    ent2: ins[1]?.punchedAt ?? null,
+    sai2: outs[1]?.punchedAt ?? null,
+    sourceEnt1: ins[0]?.source ?? null,
+    sourceSai1: outs[0]?.source ?? null,
+    sourceEnt2: ins[1]?.source ?? null,
+    sourceSai2: outs[1]?.source ?? null,
+  };
+}
+
+function workedMinutesFromSlots(slots: PunchSlotBucket): number {
+  const pairMinutes = (start: Date | null, end: Date | null) => {
+    if (!start || !end) return 0;
+    return Math.max(0, (end.getTime() - start.getTime()) / 60000);
+  };
+  if (slots.ent1 && slots.sai2 && !slots.sai1 && !slots.ent2) {
+    return pairMinutes(slots.ent1, slots.sai2);
+  }
+  return pairMinutes(slots.ent1, slots.sai1) + pairMinutes(slots.ent2, slots.sai2);
+}
+
+function mostCommon<T>(values: T[]): T | null {
+  if (values.length === 0) return null;
+  const counts = new Map<string, { count: number; value: T }>();
+  for (const value of values) {
+    const key = JSON.stringify(value);
+    const prev = counts.get(key);
+    if (prev) prev.count += 1;
+    else counts.set(key, { count: 1, value });
+  }
+  let best: { count: number; value: T } | null = null;
+  for (const item of counts.values()) {
+    if (!best || item.count > best.count) best = item;
+  }
+  return best?.value ?? null;
+}
+
+type CollabRow = {
+  id: string;
+  name: string;
+  role: UserRole;
+  email: string;
+  cpf: string | null;
+  pis: string | null;
+  admittedAt: Date | null;
+  jobTitle: string | null;
+};
+
+const collaboratorSelect = {
+  id: true,
+  name: true,
+  role: true,
+  email: true,
+  cpf: true,
+  pis: true,
+  admittedAt: true,
+  jobTitle: true,
+} as const;
 
 @Injectable()
 export class SchedulesService {
@@ -170,7 +337,7 @@ export class SchedulesService {
     user: AuthUser,
     storeId: string,
     roleFilter: 'deliverers' | 'attendants' | 'all',
-  ) {
+  ): Promise<CollabRow[]> {
     const wantDeliverers = roleFilter === 'deliverers' || roleFilter === 'all';
     const wantAttendants = roleFilter === 'attendants' || roleFilter === 'all';
 
@@ -184,13 +351,13 @@ export class SchedulesService {
               active: true,
               deliverer: { stores: { some: { storeId } } },
             },
-            select: { id: true, name: true, role: true, email: true },
+            select: collaboratorSelect,
             orderBy: { name: 'asc' },
           })
         : [];
       const self = await this.prisma.user.findUnique({
         where: { id: user.id },
-        select: { id: true, name: true, role: true, email: true },
+        select: collaboratorSelect,
       });
       const rows = [...deliverers];
       if (self && wantAttendants && !rows.some((r) => r.id === self.id)) {
@@ -203,12 +370,12 @@ export class SchedulesService {
     if (user.role === 'DELIVERER') {
       const self = await this.prisma.user.findUnique({
         where: { id: user.id },
-        select: { id: true, name: true, role: true, email: true },
+        select: collaboratorSelect,
       });
       return self ? [self] : [];
     }
 
-    const rows: Array<{ id: string; name: string; role: UserRole; email: string }> = [];
+    const rows: CollabRow[] = [];
 
     if (wantDeliverers) {
       const deliverers = await this.prisma.user.findMany({
@@ -218,7 +385,7 @@ export class SchedulesService {
           active: true,
           deliverer: { stores: { some: { storeId } } },
         },
-        select: { id: true, name: true, role: true, email: true },
+        select: collaboratorSelect,
         orderBy: { name: 'asc' },
       });
       rows.push(...deliverers);
@@ -232,7 +399,7 @@ export class SchedulesService {
           active: true,
           userStores: { some: { storeId } },
         },
-        select: { id: true, name: true, role: true, email: true },
+        select: collaboratorSelect,
         orderBy: { name: 'asc' },
       });
       rows.push(...attendants);
@@ -766,6 +933,217 @@ export class SchedulesService {
       year: params.year,
       month: params.month,
       rows,
+    };
+  }
+
+  /**
+   * Cartões de ponto no formato do fechamento (4 batidas, previsto, totais simples).
+   */
+  async getTimeClockCards(user: AuthUser, query: unknown) {
+    this.assertCanManage(user);
+    const params = timeClockCardsQuerySchema.parse(query);
+    assertStoreAccess(user, params.storeId);
+
+    const store = await this.prisma.store.findFirst({
+      where: { id: params.storeId, organizationId: user.organizationId },
+      select: {
+        id: true,
+        name: true,
+        cnpj: true,
+        organization: { select: { name: true } },
+      },
+    });
+    if (!store) throw new NotFoundException('Loja não encontrada');
+
+    const collaborators = await this.listCollaborators(user, params.storeId, params.roleFilter);
+    const filtered = params.userId
+      ? collaborators.filter((c) => c.id === params.userId)
+      : collaborators;
+    const userIds = filtered.map((c) => c.id);
+
+    if (userIds.length === 0) {
+      return {
+        store: {
+          id: store.id,
+          name: store.name,
+          cnpj: store.cnpj,
+          organizationName: store.organization.name,
+        },
+        year: params.year,
+        month: params.month,
+        cards: [],
+      };
+    }
+
+    const { start, end } = monthBounds(params.year, params.month);
+    const punchFrom = new Date(start);
+    punchFrom.setUTCDate(punchFrom.getUTCDate() - 1);
+    const punchTo = new Date(end);
+    punchTo.setUTCDate(punchTo.getUTCDate() + 1);
+    const dim = daysInMonth(params.year, params.month);
+
+    const [entries, punches] = await Promise.all([
+      this.prisma.workScheduleEntry.findMany({
+        where: {
+          organizationId: user.organizationId,
+          storeId: params.storeId,
+          userId: { in: userIds },
+          date: { gte: start, lt: end },
+        },
+      }),
+      this.prisma.timeClockPunch.findMany({
+        where: {
+          organizationId: user.organizationId,
+          storeId: params.storeId,
+          userId: { in: userIds },
+          punchedAt: { gte: punchFrom, lt: punchTo },
+        },
+        orderBy: { punchedAt: 'asc' },
+        select: {
+          userId: true,
+          type: true,
+          punchedAt: true,
+          source: true,
+        },
+      }),
+    ]);
+
+    const scheduleByKey = new Map<string, (typeof entries)[number]>();
+    const schedulesByUser = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      scheduleByKey.set(`${entry.userId}|${formatDateOnly(entry.date)}`, entry);
+      const list = schedulesByUser.get(entry.userId) ?? [];
+      list.push(entry);
+      schedulesByUser.set(entry.userId, list);
+    }
+
+    const punchesByKey = new Map<
+      string,
+      Array<{ type: TimeClockPunchType; punchedAt: Date; source: string }>
+    >();
+    for (const punch of punches) {
+      const dateKey = brazilDateKey(punch.punchedAt);
+      const [y, m] = dateKey.split('-').map(Number);
+      if (y !== params.year || m !== params.month) continue;
+      const key = `${punch.userId}|${dateKey}`;
+      const list = punchesByKey.get(key) ?? [];
+      list.push({ type: punch.type, punchedAt: punch.punchedAt, source: punch.source });
+      punchesByKey.set(key, list);
+    }
+
+    const cards = filtered
+      .map((collab) => {
+        const userEntries = schedulesByUser.get(collab.id) ?? [];
+        const horarioTrabalho = WEEKDAY_LABELS_MON.map((label, mon0) => {
+          const dayEntries = userEntries.filter(
+            (e) => weekdayMon0FromDateOnly(formatDateOnly(e.date)) === mon0,
+          );
+          const dayType = mostCommon(dayEntries.map((e) => e.dayType));
+          if (!dayType) {
+            return {
+              weekday: label,
+              previsto: '—',
+              ent1: null as string | null,
+              sai1: null as string | null,
+              ent2: null as string | null,
+              sai2: null as string | null,
+            };
+          }
+          const typed = dayEntries.filter((e) => e.dayType === dayType);
+          const pattern = mostCommon(
+            typed.map((e) => ({
+              dayType: e.dayType,
+              startTime: e.startTime,
+              endTime: e.endTime,
+              breakStart: e.breakStart,
+              breakEnd: e.breakEnd,
+            })),
+          );
+          const slots = scheduleSlotsFromEntry(pattern);
+          return {
+            weekday: label,
+            previsto: formatPrevistoFromSchedule(pattern),
+            ...slots,
+          };
+        });
+
+        let totalNormaisMinutes = 0;
+        let faltas = 0;
+        let atrasos = 0;
+
+        const days = Array.from({ length: dim }, (_, i) => {
+          const day = i + 1;
+          const date = `${params.year}-${String(params.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const key = `${collab.id}|${date}`;
+          const schedule = scheduleByKey.get(key) ?? null;
+          const slots = assignDayPunchSlots(punchesByKey.get(key) ?? []);
+          const worked = workedMinutesFromSlots(slots);
+          totalNormaisMinutes += worked;
+
+          const clockIn = slots.ent1;
+          const clockOut = slots.sai2 ?? slots.sai1;
+          const status = resolveDayStatus({
+            dayType: schedule?.dayType ?? null,
+            startTime: schedule?.startTime ?? null,
+            clockIn,
+            clockOut,
+          });
+          if (status === 'ABSENT') faltas += 1;
+          if (status === 'LATE') atrasos += 1;
+
+          return {
+            date,
+            day,
+            weekday: WEEKDAY_LABELS_MON[weekdayMon0FromDateOnly(date)],
+            dayType: schedule?.dayType ?? null,
+            previsto: formatPrevistoFromSchedule(schedule),
+            ent1: formatPunchHm(slots.ent1, slots.sourceEnt1),
+            sai1: formatPunchHm(slots.sai1, slots.sourceSai1),
+            ent2: formatPunchHm(slots.ent2, slots.sourceEnt2),
+            sai2: formatPunchHm(slots.sai2, slots.sourceSai2),
+            totalNormais: formatMinutesComma(worked),
+            totalNormaisMinutes: Math.round(worked),
+            status,
+            statusLabel: TIME_CLOCK_DAY_STATUS_LABELS[status],
+          };
+        });
+
+        return {
+          header: {
+            companyName: store.organization.name,
+            cnpj: store.cnpj,
+            storeName: store.name,
+            userId: collab.id,
+            userName: collab.name,
+            cpf: collab.cpf,
+            pis: collab.pis,
+            admittedAt: collab.admittedAt ? formatDateOnly(collab.admittedAt) : null,
+            jobTitle: collab.jobTitle,
+            role: collab.role,
+            roleLabel: ROLE_LABELS[collab.role] ?? collab.role,
+          },
+          horarioTrabalho,
+          days,
+          totals: {
+            totalNormais: formatMinutesComma(totalNormaisMinutes),
+            totalNormaisMinutes: Math.round(totalNormaisMinutes),
+            faltas,
+            atrasos,
+          },
+        };
+      })
+      .sort((a, b) => a.header.userName.localeCompare(b.header.userName, 'pt-BR'));
+
+    return {
+      store: {
+        id: store.id,
+        name: store.name,
+        cnpj: store.cnpj,
+        organizationName: store.organization.name,
+      },
+      year: params.year,
+      month: params.month,
+      cards,
     };
   }
 

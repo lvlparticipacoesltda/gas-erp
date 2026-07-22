@@ -15,8 +15,23 @@ export interface DelivererRow {
   id: string;
   status: string;
   availableStoreId?: string | null;
-  user: { id: string; name: string; email: string; phone?: string; active: boolean };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    active: boolean;
+    cpf?: string | null;
+    pis?: string | null;
+    admittedAt?: string | null;
+    jobTitle?: string | null;
+  };
   stores: DelivererStoreLink[];
+}
+
+function toDateInputValue(value?: string | null) {
+  if (!value) return '';
+  return value.slice(0, 10);
 }
 
 interface StoreOption {
@@ -37,6 +52,10 @@ const emptyCreateForm = {
   phone: '',
   password: '',
   status: 'AVAILABLE',
+  cpf: '',
+  pis: '',
+  admittedAt: '',
+  jobTitle: '',
 };
 
 type DeliverersPanelProps = {
@@ -103,6 +122,10 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
           body: JSON.stringify({
             ...createForm,
             phone: createForm.phone || undefined,
+            cpf: createForm.cpf || undefined,
+            pis: createForm.pis || undefined,
+            admittedAt: createForm.admittedAt || undefined,
+            jobTitle: createForm.jobTitle || undefined,
             storeIds: [...createStores],
           }),
         },
@@ -207,6 +230,42 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
                   onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
                   placeholder="Opcional"
                 />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>CPF</Label>
+                  <Input
+                    value={createForm.cpf}
+                    onChange={(e) => setCreateForm({ ...createForm, cpf: e.target.value })}
+                    placeholder="Opcional"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <Label>PIS</Label>
+                  <Input
+                    value={createForm.pis}
+                    onChange={(e) => setCreateForm({ ...createForm, pis: e.target.value })}
+                    placeholder="Opcional"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <Label>Data de admissão</Label>
+                  <Input
+                    type="date"
+                    value={createForm.admittedAt}
+                    onChange={(e) => setCreateForm({ ...createForm, admittedAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Cargo</Label>
+                  <Input
+                    value={createForm.jobTitle}
+                    onChange={(e) => setCreateForm({ ...createForm, jobTitle: e.target.value })}
+                    placeholder="Opcional"
+                  />
+                </div>
               </div>
               <div>
                 <Label>Senha inicial</Label>
@@ -384,6 +443,10 @@ function EditDelivererModal({
   const [email, setEmail] = useState(deliverer.user.email);
   const [phone, setPhone] = useState(deliverer.user.phone ?? '');
   const [password, setPassword] = useState('');
+  const [cpf, setCpf] = useState(deliverer.user.cpf ?? '');
+  const [pis, setPis] = useState(deliverer.user.pis ?? '');
+  const [admittedAt, setAdmittedAt] = useState(toDateInputValue(deliverer.user.admittedAt));
+  const [jobTitle, setJobTitle] = useState(deliverer.user.jobTitle ?? '');
   const [status, setStatus] = useState(deliverer.status);
   const [active, setActive] = useState(deliverer.user.active);
   const [saving, setSaving] = useState(false);
@@ -450,6 +513,10 @@ function EditDelivererModal({
             email: email.trim().toLowerCase(),
             phone: phone.trim() || undefined,
             ...(password ? { password } : {}),
+            cpf: cpf || null,
+            pis: pis || null,
+            admittedAt: admittedAt || null,
+            jobTitle: jobTitle || null,
             storeIds: [...selected],
             status,
             active,
@@ -488,6 +555,24 @@ function EditDelivererModal({
               onChange={(e) => setPhone(e.target.value)}
               placeholder="Opcional"
             />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>CPF</Label>
+              <Input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Opcional" inputMode="numeric" />
+            </div>
+            <div>
+              <Label>PIS</Label>
+              <Input value={pis} onChange={(e) => setPis(e.target.value)} placeholder="Opcional" inputMode="numeric" />
+            </div>
+            <div>
+              <Label>Data de admissão</Label>
+              <Input type="date" value={admittedAt} onChange={(e) => setAdmittedAt(e.target.value)} />
+            </div>
+            <div>
+              <Label>Cargo</Label>
+              <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="Opcional" />
+            </div>
           </div>
           <div>
             <Label>Nova senha</Label>

@@ -228,6 +228,14 @@ model User {
   passwordHash   String
   name           String
   phone          String?
+  /** CPF somente dígitos (cartão de ponto). */
+  cpf            String?
+  /** PIS somente dígitos (cartão de ponto). */
+  pis            String?
+  /** Data de admissão (cartão de ponto). */
+  admittedAt     DateTime? @db.Date
+  /** Cargo / função (cartão de ponto). */
+  jobTitle       String?
   role           UserRole
   active         Boolean  @default(true)
   permissions    String[] @default([])

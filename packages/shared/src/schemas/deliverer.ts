@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DELIVERER_STATUSES } from '../enums';
+import { userHrFieldsSchema } from './user';
 
 export const createDelivererSchema = z
   .object({
@@ -10,6 +11,7 @@ export const createDelivererSchema = z
     password: z.string().min(6).optional(),
     storeIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos uma unidade'),
     status: z.enum(DELIVERER_STATUSES).optional(),
+    ...userHrFieldsSchema.shape,
   })
   .superRefine((data, ctx) => {
     if (data.userId) return;
@@ -38,6 +40,7 @@ export const updateDelivererSchema = z.object({
   availableStoreId: z.string().min(1).nullable().optional(),
   /** Desativa o login no app (User.active) e marca entregador como offline. */
   active: z.boolean().optional(),
+  ...userHrFieldsSchema.shape,
 });
 
 export type CreateDelivererInput = z.infer<typeof createDelivererSchema>;

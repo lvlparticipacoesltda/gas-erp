@@ -2,43 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import html2canvas from 'html2canvas-pro';
+import { jsPDF } from 'jspdf';
 import {
-  SCHEDULE_DAY_TYPE_LABELS,
   TIME_CLOCK_DAY_STATUS_LABELS,
   canManageSchedules,
   type AuthUser,
-  type ScheduleDayType,
   type TimeClockDayStatus,
 } from '@gas-erp/shared';
 import { api, getToken } from '@/lib/api';
 import { FilterBar, FilterField } from '@/components/filters';
-import { Badge, Button, Card, Select, Table } from '@/components/ui';
+import { Button, Card, Select } from '@/components/ui';
 import { PageLoader } from '@/components/brand-loader';
 import { cn } from '@/lib/utils';
+import { TimeClockCardView, type TimeClockCard } from './time-clock-card-view';
 
 type RoleFilter = 'deliverers' | 'attendants' | 'all';
 
-interface ReportRow {
-  userId: string;
-  userName: string;
-  userRole: string;
-  date: string;
-  dayType: ScheduleDayType | null;
-  scheduledStart: string | null;
-  scheduledEnd: string | null;
-  clockIn: string | null;
-  clockOut: string | null;
-  status: TimeClockDayStatus;
-  statusLabel: string;
-  sourceIn: string | null;
-  sourceOut: string | null;
-}
-
-interface ReportResponse {
-  store: { id: string; name: string };
+interface CardsResponse {
+  store: { id: string; name: string; cnpj: string | null; organizationName: string };
   year: number;
   month: number;
-  rows: ReportRow[];
+  cards: TimeClockCard[];
 }
 
 const MONTH_NAMES = [
@@ -46,17 +31,31 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
-const ROLE_SHORT: Record<string, string> = {
-  DELIVERER: 'Entregador',
-  ATTENDANT: 'Atendente',
-  STORE_MANAGER: 'Gerente',
-};
-
-function statusTone(status: TimeClockDayStatus): 'default' | 'success' | 'warning' | 'danger' {
-  if (status === 'OK') return 'success';
-  if (status === 'LATE' || status === 'INCOMPLETE' || status === 'OFF_SCHEDULE') return 'warning';
-  if (status === 'ABSENT') return 'danger';
-  return 'default';
+async function cardElementToPdfPage(
+  pdf: jsPDF,
+  el: HTMLElement,
+  isFirstPage: boolean,
+) {
+  const canvas = await html2canvas(el, {
+    scale: 2,
+    backgroundColor: '#ffffff',
+    useCORS: true,
+  });
+  const imgData = canvas.toDataURL('image/png');
+  const pageW = 210;
+  const pageH = 297;
+  const margin = 8;
+  const maxW = pageW - margin * 2;
+  const maxH = pageH - margin * 2;
+  const ratio = canvas.height / canvas.width;
+  let w = maxW;
+  let h = w * ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h / ratio;
+  }
+  if (!isFirstPage) pdf.addPage();
+  pdf.addImage(imgData, 'PNG', margin, margin, w, h);
 }
 
 export function TimeClockLogPanel({
@@ -83,10 +82,11 @@ export function TimeClockLogPanel({
     showRoleTabs ? 'deliverers' : 'all',
   );
   const [userId, setUserId] = useState('');
-  const [data, setData] = useState<ReportResponse | null>(null);
+  const [data, setData] = useState<CardsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | TimeClockDayStatus>('all');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (fixedStoreId) setStoreId(fixedStoreId);
@@ -113,10 +113,10 @@ export function TimeClockLogPanel({
         roleFilter,
       });
       if (userId) params.set('userId', userId);
-      const res = await api<ReportResponse>(`/time-clock/report?${params}`, {}, getToken());
+      const res = await api<CardsResponse>(`/time-clock/cards?${params}`, {}, getToken());
       setData(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar log de ponto');
+      setError(err instanceof Error ? err.message : 'Falha ao carregar cartões de ponto');
       setData(null);
     } finally {
       setLoading(false);
@@ -128,23 +128,50 @@ export function TimeClockLogPanel({
   }, [load]);
 
   const collaborators = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const row of data?.rows ?? []) {
-      map.set(row.userId, row.userName);
-    }
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
-  }, [data?.rows]);
+    return (data?.cards ?? [])
+      .map((c) => [c.header.userId, c.header.userName] as const)
+      .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  }, [data?.cards]);
 
-  const rows = useMemo(() => {
-    const list = data?.rows ?? [];
+  const cards = useMemo(() => {
+    const list = data?.cards ?? [];
     if (statusFilter === 'all') return list;
-    return list.filter((r) => r.status === statusFilter);
-  }, [data?.rows, statusFilter]);
+    return list.filter((card) => card.days.some((d) => d.status === statusFilter));
+  }, [data?.cards, statusFilter]);
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
     setYear(d.getFullYear());
     setMonth(d.getMonth() + 1);
+  }
+
+  async function exportPdf(userIds: string[]) {
+    if (exporting || userIds.length === 0) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      let first = true;
+      for (const id of userIds) {
+        const el = document.querySelector<HTMLElement>(`[data-time-clock-card="${id}"]`);
+        if (!el) continue;
+        await cardElementToPdfPage(pdf, el, first);
+        first = false;
+      }
+      if (first) {
+        setError('Nenhum cartão disponível para exportar.');
+        return;
+      }
+      const suffix =
+        userIds.length === 1
+          ? cards.find((c) => c.header.userId === userIds[0])?.header.userName.replace(/\s+/g, '-')
+          : 'todos';
+      pdf.save(`cartao-ponto-${year}-${String(month).padStart(2, '0')}-${suffix || 'export'}.pdf`);
+    } catch {
+      setError('Não foi possível gerar o PDF.');
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (!canView) {
@@ -164,6 +191,14 @@ export function TimeClockLogPanel({
         >
           ← Voltar para escala
         </Link>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={exporting || cards.length === 0}
+          onClick={() => void exportPdf(cards.map((c) => c.header.userId))}
+        >
+          {exporting ? 'Gerando PDF…' : 'Exportar todos'}
+        </Button>
       </div>
 
       <FilterBar>
@@ -268,92 +303,49 @@ export function TimeClockLogPanel({
       ) : null}
 
       {loading ? (
-        <PageLoader label="Carregando log de ponto…" />
+        <PageLoader label="Carregando cartões de ponto…" />
       ) : (
-        <Card className="overflow-hidden p-0">
-          <div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600">
+        <div className="space-y-4">
+          <div className="text-sm text-slate-600">
             {data?.store.name ? (
               <>
                 Unidade <span className="font-medium text-slate-900">{data.store.name}</span>
                 {' · '}
               </>
             ) : null}
-            {rows.length} registro{rows.length === 1 ? '' : 's'}
+            {cards.length} {cards.length === 1 ? 'cartão' : 'cartões'}
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <thead>
-                <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3 font-medium">Data</th>
-                  <th className="px-4 py-3 font-medium">Colaborador</th>
-                  <th className="px-4 py-3 font-medium">Escala</th>
-                  <th className="px-4 py-3 font-medium">Entrada</th>
-                  <th className="px-4 py-3 font-medium">Saída</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={`${row.userId}-${row.date}`} className="border-t border-slate-100 text-sm">
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-900">
-                      {new Date(row.date + 'T12:00:00').toLocaleDateString('pt-BR', {
-                        weekday: 'short',
-                        day: '2-digit',
-                        month: '2-digit',
-                      })}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{row.userName}</div>
-                      <div className="text-xs text-slate-500">
-                        {ROLE_SHORT[row.userRole] ?? row.userRole}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {row.dayType ? (
-                        <>
-                          <div>{SCHEDULE_DAY_TYPE_LABELS[row.dayType]}</div>
-                          {row.dayType !== 'DAY_OFF' && row.scheduledStart && row.scheduledEnd ? (
-                            <div className="text-xs text-slate-500">
-                              {row.scheduledStart} – {row.scheduledEnd}
-                            </div>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-slate-900">
-                      {row.clockIn ?? '—'}
-                      {row.sourceIn ? (
-                        <div className="text-[10px] text-slate-400">
-                          {row.sourceIn === 'MOBILE' ? 'App' : 'Web'}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-slate-900">
-                      {row.clockOut ?? '—'}
-                      {row.sourceOut ? (
-                        <div className="text-[10px] text-slate-400">
-                          {row.sourceOut === 'MOBILE' ? 'App' : 'Web'}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={statusTone(row.status)}>{row.statusLabel}</Badge>
-                    </td>
-                  </tr>
-                ))}
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
-                      Nenhum registro de escala ou ponto neste período.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </Table>
-          </div>
-        </Card>
+
+          {cards.length === 0 ? (
+            <Card className="p-8 text-center text-sm text-slate-500">
+              Nenhum colaborador encontrado para os filtros selecionados.
+            </Card>
+          ) : (
+            cards.map((card) => (
+              <Card key={card.header.userId} className="overflow-x-auto p-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {card.header.userName}
+                    <span className="ml-2 text-xs font-normal text-slate-500">
+                      {card.header.jobTitle || card.header.roleLabel}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={exporting}
+                    onClick={() => void exportPdf([card.header.userId])}
+                  >
+                    Exportar PDF
+                  </Button>
+                </div>
+                <div className="overflow-x-auto">
+                  <TimeClockCardView card={card} year={year} month={month} />
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
       )}
     </div>
   );

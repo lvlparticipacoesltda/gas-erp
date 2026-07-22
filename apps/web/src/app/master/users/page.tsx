@@ -21,7 +21,16 @@ interface UserRow {
   role: string;
   active: boolean;
   permissions: string[];
+  cpf?: string | null;
+  pis?: string | null;
+  admittedAt?: string | null;
+  jobTitle?: string | null;
   userStores: { store: { id: string; name: string } }[];
+}
+
+function toDateInputValue(value?: string | null) {
+  if (!value) return '';
+  return value.slice(0, 10);
 }
 
 interface Store {
@@ -41,6 +50,10 @@ const emptyCreate = {
   role: 'ATTENDANT',
   storeIds: [] as string[],
   permissions: [] as string[],
+  cpf: '',
+  pis: '',
+  admittedAt: '',
+  jobTitle: '',
 };
 
 export default function MasterUsersPage() {
@@ -57,6 +70,10 @@ export default function MasterUsersPage() {
     active: true,
     password: '',
     permissions: [] as string[],
+    cpf: '',
+    pis: '',
+    admittedAt: '',
+    jobTitle: '',
   });
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
@@ -107,6 +124,10 @@ export default function MasterUsersPage() {
       active: user.active,
       password: '',
       permissions: effectivePermissions(user.role, user.permissions),
+      cpf: user.cpf ?? '',
+      pis: user.pis ?? '',
+      admittedAt: toDateInputValue(user.admittedAt),
+      jobTitle: user.jobTitle ?? '',
     });
   }
 
@@ -135,6 +156,10 @@ export default function MasterUsersPage() {
             ...form,
             storeIds: form.storeIds.length ? form.storeIds : undefined,
             permissions: permissionsToPayload(form.role, form.permissions),
+            cpf: form.cpf || undefined,
+            pis: form.pis || undefined,
+            admittedAt: form.admittedAt || undefined,
+            jobTitle: form.jobTitle || undefined,
           }),
         },
         getToken(),
@@ -212,6 +237,10 @@ export default function MasterUsersPage() {
       storeIds: editForm.storeIds,
       active: editForm.active,
       permissions: permissionsToPayload(editForm.role, editForm.permissions),
+      cpf: editForm.cpf || null,
+      pis: editForm.pis || null,
+      admittedAt: editForm.admittedAt || null,
+      jobTitle: editForm.jobTitle || null,
     };
     if (editForm.password) payload.password = editForm.password;
     try {
@@ -258,6 +287,42 @@ export default function MasterUsersPage() {
                   value={editForm.phone}
                   onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                 />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>CPF</Label>
+                  <Input
+                    value={editForm.cpf}
+                    onChange={(e) => setEditForm({ ...editForm, cpf: e.target.value })}
+                    placeholder="Opcional"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <Label>PIS</Label>
+                  <Input
+                    value={editForm.pis}
+                    onChange={(e) => setEditForm({ ...editForm, pis: e.target.value })}
+                    placeholder="Opcional"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <Label>Data de admissão</Label>
+                  <Input
+                    type="date"
+                    value={editForm.admittedAt}
+                    onChange={(e) => setEditForm({ ...editForm, admittedAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Cargo</Label>
+                  <Input
+                    value={editForm.jobTitle}
+                    onChange={(e) => setEditForm({ ...editForm, jobTitle: e.target.value })}
+                    placeholder="Opcional"
+                  />
+                </div>
               </div>
               <div>
                 <Label>Nova senha</Label>
@@ -338,6 +403,42 @@ export default function MasterUsersPage() {
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required
                 />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>CPF</Label>
+                  <Input
+                    value={form.cpf}
+                    onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+                    placeholder="Opcional"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <Label>PIS</Label>
+                  <Input
+                    value={form.pis}
+                    onChange={(e) => setForm({ ...form, pis: e.target.value })}
+                    placeholder="Opcional"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <Label>Data de admissão</Label>
+                  <Input
+                    type="date"
+                    value={form.admittedAt}
+                    onChange={(e) => setForm({ ...form, admittedAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Cargo</Label>
+                  <Input
+                    value={form.jobTitle}
+                    onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
+                    placeholder="Opcional"
+                  />
+                </div>
               </div>
               <div>
                 <Label>Papel</Label>

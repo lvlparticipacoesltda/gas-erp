@@ -67,7 +67,19 @@ export class DeliverersService {
   ) {}
 
   private readonly include = {
-    user: { select: { id: true, name: true, email: true, phone: true, active: true } },
+    user: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        active: true,
+        cpf: true,
+        pis: true,
+        admittedAt: true,
+        jobTitle: true,
+      },
+    },
     stores: { include: { store: true } },
   } as const;
 
@@ -678,6 +690,10 @@ export class DeliverersService {
       phone?: string;
       password?: string;
       storeIds: string[];
+      cpf?: string | null;
+      pis?: string | null;
+      admittedAt?: string | null;
+      jobTitle?: string | null;
     },
   ): Promise<string> {
     const email = data.email!;
@@ -696,6 +712,10 @@ export class DeliverersService {
         passwordHash,
         name: data.name!,
         phone: data.phone,
+        cpf: data.cpf ?? undefined,
+        pis: data.pis ?? undefined,
+        admittedAt: data.admittedAt ? new Date(`${data.admittedAt}T12:00:00.000Z`) : undefined,
+        jobTitle: data.jobTitle ?? undefined,
         role: 'DELIVERER',
         active: true,
         userStores: { create: data.storeIds.map((storeId) => ({ storeId })) },
@@ -721,7 +741,11 @@ export class DeliverersService {
         || data.name !== undefined
         || data.email !== undefined
         || data.phone !== undefined
-        || data.password !== undefined;
+        || data.password !== undefined
+        || data.cpf !== undefined
+        || data.pis !== undefined
+        || data.admittedAt !== undefined
+        || data.jobTitle !== undefined;
       if (restricted) {
         throw new ForbiddenException('Atendentes só podem alterar a disponibilidade do entregador');
       }
@@ -782,7 +806,11 @@ export class DeliverersService {
       || normalizedEmail !== undefined
       || data.phone !== undefined
       || data.active !== undefined
-      || passwordHash !== undefined;
+      || passwordHash !== undefined
+      || data.cpf !== undefined
+      || data.pis !== undefined
+      || data.admittedAt !== undefined
+      || data.jobTitle !== undefined;
 
     const nextStatus =
       data.active === false
@@ -849,6 +877,16 @@ export class DeliverersService {
             ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
             ...(data.active !== undefined ? { active: data.active } : {}),
             ...(passwordHash ? { passwordHash } : {}),
+            ...(data.cpf !== undefined ? { cpf: data.cpf ?? null } : {}),
+            ...(data.pis !== undefined ? { pis: data.pis ?? null } : {}),
+            ...(data.admittedAt !== undefined
+              ? {
+                  admittedAt: data.admittedAt
+                    ? new Date(`${data.admittedAt}T12:00:00.000Z`)
+                    : null,
+                }
+              : {}),
+            ...(data.jobTitle !== undefined ? { jobTitle: data.jobTitle ?? null } : {}),
           },
         });
       }

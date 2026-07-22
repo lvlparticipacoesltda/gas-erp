@@ -100,6 +100,10 @@ export const timeClockReportQuerySchema = z.object({
 });
 export type TimeClockReportQuery = z.infer<typeof timeClockReportQuerySchema>;
 
+/** Cartões de ponto (mesmo filtro do report flat). */
+export const timeClockCardsQuerySchema = timeClockReportQuerySchema;
+export type TimeClockCardsQuery = z.infer<typeof timeClockCardsQuerySchema>;
+
 export const TIME_CLOCK_DAY_STATUSES = [
   'OK',
   'LATE',
