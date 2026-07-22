@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Badge, Button, Select } from '@/components/ui';
+import { Badge, Button, Input, Label, Select } from '@/components/ui';
 import { BrandLoader } from '@/components/brand-loader';
 import { useRealtimeRefetch } from '@/hooks/use-realtime-refetch';
 import { api, getToken } from '@/lib/api';
@@ -75,6 +75,13 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(() => readSidebarCollapsed(storeId));
   const [actionId, setActionId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{
+    saleId: string;
+    deliveryId: string;
+    customerName: string;
+  } | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState('');
 
   useEffect(() => {
     setCollapsed(readSidebarCollapsed(storeId));
@@ -138,20 +145,37 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
     }
   }
 
-  async function cancelSale(saleId: string, deliveryId: string) {
-    const reason = window.prompt('Motivo do cancelamento:');
-    if (reason == null) return;
-    if (!reason.trim()) {
-      window.alert('Informe o motivo do cancelamento.');
+  function openCancelModal(saleId: string, deliveryId: string, customerName: string) {
+    setCancelTarget({ saleId, deliveryId, customerName });
+    setCancelReason('');
+    setCancelError('');
+  }
+
+  function closeCancelModal() {
+    if (actionId && cancelTarget && actionId === cancelTarget.deliveryId) return;
+    setCancelTarget(null);
+    setCancelReason('');
+    setCancelError('');
+  }
+
+  async function confirmCancelSale() {
+    if (!cancelTarget) return;
+    if (!cancelReason.trim()) {
+      setCancelError('Informe o motivo do cancelamento.');
       return;
     }
-    setActionId(deliveryId);
+    setCancelError('');
+    setActionId(cancelTarget.deliveryId);
     try {
-      await api(`/sales/${saleId}/status`, {
+      await api(`/sales/${cancelTarget.saleId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'CANCELLED', canceledReason: reason.trim() }),
+        body: JSON.stringify({ status: 'CANCELLED', canceledReason: cancelReason.trim() }),
       }, getToken());
+      setCancelTarget(null);
+      setCancelReason('');
       await load();
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Não foi possível cancelar o pedido.');
     } finally {
       setActionId(null);
     }
@@ -204,11 +228,26 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
             </span>
           </button>
         </aside>
+        {cancelTarget && (
+          <CancelOrderModal
+            customerName={cancelTarget.customerName}
+            reason={cancelReason}
+            error={cancelError}
+            busy={actionId === cancelTarget.deliveryId}
+            onReasonChange={(value) => {
+              setCancelReason(value);
+              if (cancelError) setCancelError('');
+            }}
+            onClose={closeCancelModal}
+            onConfirm={() => void confirmCancelSale()}
+          />
+        )}
       </>
     );
   }
 
   return (
+    <>
     <aside
       className={`flex w-full shrink-0 flex-col border-l border-slate-200 bg-slate-50 lg:w-64 ${className ?? ''}`}
     >
@@ -264,7 +303,13 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
                   deliverers={deliverers}
                   busy={actionId === d.id}
                   onAssign={(delivererId) => assignDeliverer(d.id, delivererId)}
-                  onCancel={() => cancelSale(d.sale.id, d.id)}
+                  onCancel={() =>
+                    openCancelModal(
+                      d.sale.id,
+                      d.id,
+                      d.sale.customer?.name ?? 'Cliente não identificado',
+                    )
+                  }
                 />
               ))}
             </div>
@@ -310,6 +355,91 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
         )}
       </div>
     </aside>
+    {cancelTarget && (
+      <CancelOrderModal
+        customerName={cancelTarget.customerName}
+        reason={cancelReason}
+        error={cancelError}
+        busy={actionId === cancelTarget.deliveryId}
+        onReasonChange={(value) => {
+          setCancelReason(value);
+          if (cancelError) setCancelError('');
+        }}
+        onClose={closeCancelModal}
+        onConfirm={() => void confirmCancelSale()}
+      />
+    )}
+    </>
+  );
+}
+
+function CancelOrderModal({
+  customerName,
+  reason,
+  error,
+  busy,
+  onReasonChange,
+  onClose,
+  onConfirm,
+}: {
+  customerName: string;
+  reason: string;
+  error: string;
+  busy: boolean;
+  onReasonChange: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Fechar"
+        className="absolute inset-0 bg-slate-900/40"
+        disabled={busy}
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-order-title"
+        className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-2xl"
+      >
+        <h2 id="cancel-order-title" className="text-lg font-semibold text-slate-900">
+          Cancelar pedido
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Informe o motivo do cancelamento de <span className="font-medium text-slate-700">{customerName}</span>.
+        </p>
+
+        <div className="mt-4">
+          <Label>Motivo do cancelamento</Label>
+          <Input
+            autoFocus
+            value={reason}
+            disabled={busy}
+            placeholder="Ex.: cliente desistiu, endereço incorreto…"
+            onChange={(e) => onReasonChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                onConfirm();
+              }
+            }}
+          />
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>
+            Voltar
+          </Button>
+          <Button type="button" variant="danger" disabled={busy} onClick={onConfirm}>
+            {busy ? 'Cancelando…' : 'Confirmar cancelamento'}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
