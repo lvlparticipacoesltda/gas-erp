@@ -132,6 +132,10 @@ export class DeliveriesService {
   async findByStore(user: AuthUser, storeId: string) {
     assertStoreAccess(user, storeId);
 
+    // Auto-cria Delivery PENDING para vendas de entrega confirmadas sem entregador
+    // (ex.: pedidos em espera criados antes do deploy / migration).
+    await this.ensureWaitingDeliveries(storeId);
+
     const deliveries = await this.prisma.delivery.findMany({
       where: {
         sale: { storeId, status: { in: [SaleStatus.CONFIRMED, SaleStatus.IN_DELIVERY] } },
@@ -158,6 +162,44 @@ export class DeliveriesService {
 
     const now = new Date();
     return deliveries.map((delivery) => withDeliveryMetrics(delivery, now));
+  }
+
+  /**
+   * Garante Delivery para vendas de entrega em CONFIRMED sem entregador e sem Delivery.
+   * Best-effort: se a migration de delivererId nullable ainda não rodou, ignora o erro.
+   */
+  private async ensureWaitingDeliveries(storeId: string) {
+    const orphans = await this.prisma.sale.findMany({
+      where: {
+        storeId,
+        status: SaleStatus.CONFIRMED,
+        channel: { not: 'IN_STORE' },
+        delivererId: null,
+        delivery: null,
+        backdateApproval: { in: ['NOT_REQUIRED', 'APPROVED'] },
+        mobileApproval: { in: ['NOT_REQUIRED', 'APPROVED'] },
+      },
+      select: { id: true },
+      take: 50,
+    });
+    if (orphans.length === 0) return;
+
+    try {
+      await this.prisma.delivery.createMany({
+        data: orphans.map((sale) => ({
+          saleId: sale.id,
+          delivererId: null,
+          status: DeliveryStatus.PENDING,
+        })),
+        skipDuplicates: true,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Não foi possível criar entregas em espera (rode a migration delivery_optional_deliverer): ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
   }
 
   async findByDeliverer(user: AuthUser) {

@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Badge, Button, Select } from '@/components/ui';
 import { BrandLoader } from '@/components/brand-loader';
+import { useRealtimeRefetch } from '@/hooks/use-realtime-refetch';
 import { api, getToken } from '@/lib/api';
 import { formatSaleAddress, timeAgo } from '@/lib/sale-utils';
 import {
@@ -67,6 +69,7 @@ function persistSidebarCollapsed(storeId: string, collapsed: boolean) {
 }
 
 export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps) {
+  const pathname = usePathname();
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,10 +92,17 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
   }, [storeId]);
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 20000);
+    setLoading(true);
+    void load();
+    const timer = setInterval(() => void load(), 20000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, pathname]);
+
+  useRealtimeRefetch(
+    storeId ? { type: 'store', storeId } : null,
+    load,
+    Boolean(storeId),
+  );
 
   useEffect(() => {
     if (!storeId) return;
