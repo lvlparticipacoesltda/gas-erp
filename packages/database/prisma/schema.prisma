@@ -528,6 +528,9 @@ model Sale {
   deliveryCity          String?
   deliveryState         String?
   deliveryLandmark      String?
+  /** Coordenadas geocodificadas uma única vez (evita re-consultar a API do Google a cada leitura). */
+  deliveryLatitude      Float?
+  deliveryLongitude     Float?
   gasDoPovoBenefit      Boolean     @default(false)
   deliveryFee           Decimal     @db.Decimal(12, 2) @default(0)
   /** Forma de pagamento da taxa de entrega (quando o pagamento é por produto). */

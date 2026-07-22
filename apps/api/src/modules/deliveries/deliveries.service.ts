@@ -92,28 +92,22 @@ function withDeliveryMetrics<T extends DeliveryWithSale>(delivery: T, now: Date)
   };
 }
 
-async function resolveDestination(
-  geocoding: GeocodingService,
-  sale: {
-    deliveryStreet: string | null;
-    deliveryNumber: string | null;
-    deliveryNeighborhood: string | null;
-    deliveryCity: string | null;
-    deliveryState: string | null;
-  },
-): Promise<{ latitude: number; longitude: number } | null> {
-  if (!sale.deliveryStreet?.trim() || !sale.deliveryCity?.trim() || !sale.deliveryState?.trim()) {
-    return null;
-  }
-  const result = await geocoding.geocodeAddress({
-    street: sale.deliveryStreet,
-    number: sale.deliveryNumber ?? undefined,
-    neighborhood: sale.deliveryNeighborhood ?? undefined,
-    city: sale.deliveryCity,
-    state: sale.deliveryState,
-  });
-  if (!result) return null;
-  return { latitude: result.latitude, longitude: result.longitude };
+type SaleForDestination = {
+  id: string;
+  deliveryStreet: string | null;
+  deliveryNumber: string | null;
+  deliveryNeighborhood: string | null;
+  deliveryCity: string | null;
+  deliveryState: string | null;
+  deliveryLatitude: number | null;
+  deliveryLongitude: number | null;
+};
+
+function persistedDestination(
+  sale: Pick<SaleForDestination, 'deliveryLatitude' | 'deliveryLongitude'>,
+): { latitude: number; longitude: number } | null {
+  if (sale.deliveryLatitude == null || sale.deliveryLongitude == null) return null;
+  return { latitude: sale.deliveryLatitude, longitude: sale.deliveryLongitude };
 }
 
 @Injectable()
@@ -128,6 +122,45 @@ export class DeliveriesService {
     private stock: StockService,
     private push: PushService,
   ) {}
+
+  /**
+   * Destino da entrega: usa as coordenadas persistidas na venda; se ausentes,
+   * geocodifica uma única vez e grava na Sale (backfill de vendas antigas).
+   */
+  private async resolveDestination(
+    sale: SaleForDestination,
+  ): Promise<{ latitude: number; longitude: number } | null> {
+    const persisted = persistedDestination(sale);
+    if (persisted) return persisted;
+
+    if (!sale.deliveryStreet?.trim() || !sale.deliveryCity?.trim() || !sale.deliveryState?.trim()) {
+      return null;
+    }
+    const result = await this.geocoding.geocodeAddress({
+      street: sale.deliveryStreet,
+      number: sale.deliveryNumber ?? undefined,
+      neighborhood: sale.deliveryNeighborhood ?? undefined,
+      city: sale.deliveryCity,
+      state: sale.deliveryState,
+    });
+    if (!result) return null;
+
+    // Best-effort: falha ao gravar não impede a resposta (cache em memória cobre).
+    await this.prisma.sale
+      .update({
+        where: { id: sale.id },
+        data: { deliveryLatitude: result.latitude, deliveryLongitude: result.longitude },
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `Falha ao persistir coordenadas da venda ${sale.id}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      });
+
+    return { latitude: result.latitude, longitude: result.longitude };
+  }
 
   async findByStore(user: AuthUser, storeId: string) {
     assertStoreAccess(user, storeId);
@@ -230,7 +263,14 @@ export class DeliveriesService {
     const enriched = await Promise.all(
       deliveries.map(async (delivery) => {
         const base = withDeliveryMetrics(delivery, now);
-        const destination = await resolveDestination(this.geocoding, delivery.sale);
+        // Só entregas ativas disparam geocoding (API paga); o histórico usa apenas
+        // as coordenadas já persistidas na venda (leitura do banco, custo zero).
+        const isActive =
+          delivery.status === DeliveryStatus.PENDING
+          || delivery.status === DeliveryStatus.IN_PROGRESS;
+        const destination = isActive
+          ? await this.resolveDestination(delivery.sale)
+          : persistedDestination(delivery.sale);
         return { ...base, destination };
       }),
     );
@@ -249,6 +289,7 @@ export class DeliveriesService {
         deliverer: true,
         sale: {
           select: {
+            id: true,
             storeId: true,
             deliveryStreet: true,
             deliveryNumber: true,
@@ -257,6 +298,8 @@ export class DeliveriesService {
             deliveryCity: true,
             deliveryState: true,
             deliveryLandmark: true,
+            deliveryLatitude: true,
+            deliveryLongitude: true,
             store: { select: { organizationId: true } },
           },
         },
@@ -269,7 +312,7 @@ export class DeliveriesService {
       throw new ForbiddenException('Sem permissão');
     }
 
-    const destination = await resolveDestination(this.geocoding, delivery.sale);
+    const destination = await this.resolveDestination(delivery.sale);
     const destAddress = buildRoutingAddress(delivery.sale);
 
     this.logger.log(

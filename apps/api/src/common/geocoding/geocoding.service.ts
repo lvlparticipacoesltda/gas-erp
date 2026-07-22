@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { geocodeAddressQuerySchema, type GeocodeAddressQuery, type GeocodeResult } from '@gas-erp/shared';
 
 interface CacheEntry {
-  result: GeocodeResult;
+  /** null = endereço sem resultado (cache negativo, evita re-consultar o Google). */
+  result: GeocodeResult | null;
   expiresAt: number;
 }
 
@@ -23,6 +24,8 @@ interface NominatimHit {
 }
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Falhas (ZERO_RESULTS etc.) também são cacheadas, com TTL menor — o endereço pode ser corrigido. */
+const NEGATIVE_CACHE_TTL_MS = 60 * 60 * 1000;
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 /** Bump quando a lógica de match muda — invalida cache em memória de pins errados. */
@@ -32,6 +35,8 @@ const CACHE_VERSION = 'v3';
 export class GeocodingService {
   private readonly logger = new Logger(GeocodingService.name);
   private readonly cache = new Map<string, CacheEntry>();
+  /** Deduplica consultas concorrentes ao mesmo endereço (ex.: Promise.all em listas). */
+  private readonly inFlight = new Map<string, Promise<GeocodeResult | null>>();
 
   constructor(private config: ConfigService) {}
 
@@ -229,6 +234,20 @@ export class GeocodingService {
       return cached.result;
     }
 
+    const pending = this.inFlight.get(key);
+    if (pending) return pending;
+
+    const promise = this.resolveAddress(data, key).finally(() => {
+      this.inFlight.delete(key);
+    });
+    this.inFlight.set(key, promise);
+    return promise;
+  }
+
+  private async resolveAddress(
+    data: GeocodeAddressQuery,
+    key: string,
+  ): Promise<GeocodeResult | null> {
     const query = this.buildFreeQuery(data);
     const wantedNumber = this.normalizeHouseNumber(data.number);
 
@@ -242,7 +261,12 @@ export class GeocodingService {
       }
 
       const fromNominatim = await this.geocodeWithNominatim(data);
-      if (!fromNominatim) return null;
+      if (!fromNominatim) {
+        // Cache negativo: sem ele, endereços não localizáveis eram re-consultados
+        // no Google a cada chamada (ex.: poll de 30s do app do entregador).
+        this.cache.set(key, { result: null, expiresAt: Date.now() + NEGATIVE_CACHE_TTL_MS });
+        return null;
+      }
 
       this.cache.set(key, { result: fromNominatim, expiresAt: Date.now() + CACHE_TTL_MS });
       return fromNominatim;

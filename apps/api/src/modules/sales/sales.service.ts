@@ -35,6 +35,7 @@ import {
   StoreRealtimeService,
 } from '../../common/realtime/store-realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GeocodingService } from '../../common/geocoding/geocoding.service';
 
 /** Venda com os campos necessários para montar uma notificação master. */
 type NotifiableSale = {
@@ -63,7 +64,49 @@ export class SalesService {
     private paymentMethods: StorePaymentMethodsService,
     private realtime: StoreRealtimeService,
     private notifications: NotificationsService,
+    private geocoding: GeocodingService,
   ) {}
+
+  /**
+   * Geocodifica o endereço de entrega e persiste as coordenadas na venda.
+   * Fire-and-forget: não bloqueia nem falha a criação da venda.
+   */
+  private geocodeSaleDestination(
+    saleId: string,
+    address: {
+      deliveryStreet?: string | null;
+      deliveryNumber?: string | null;
+      deliveryNeighborhood?: string | null;
+      deliveryCity?: string | null;
+      deliveryState?: string | null;
+    },
+  ): void {
+    if (
+      !address.deliveryStreet?.trim()
+      || !address.deliveryCity?.trim()
+      || !address.deliveryState?.trim()
+    ) {
+      return;
+    }
+    void this.geocoding
+      .geocodeAddress({
+        street: address.deliveryStreet,
+        number: address.deliveryNumber ?? undefined,
+        neighborhood: address.deliveryNeighborhood ?? undefined,
+        city: address.deliveryCity,
+        state: address.deliveryState,
+      })
+      .then((result) => {
+        if (!result) return;
+        return this.prisma.sale.update({
+          where: { id: saleId },
+          data: { deliveryLatitude: result.latitude, deliveryLongitude: result.longitude },
+        });
+      })
+      .catch(() => {
+        // Sem coordenadas agora: o backfill acontece na primeira leitura da entrega.
+      });
+  }
 
   private notifyStoreRealtime(
     storeId: string,
@@ -379,6 +422,10 @@ export class SalesService {
       select: { id: true },
     });
 
+    if (!isPickup) {
+      this.geocodeSaleDestination(created.id, data);
+    }
+
     let newDelivery: { id: string; delivererId: string | null } | null = null;
 
     if (!isPendingBackdate) {
@@ -535,6 +582,10 @@ export class SalesService {
       },
       include: this.saleInclude,
     });
+
+    if (!isPickup) {
+      this.geocodeSaleDestination(sale.id, data);
+    }
 
     try {
       await this.audit.log(user, 'CREATE_MOBILE', 'Sale', sale.id, {
