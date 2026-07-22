@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { PageLoader } from '@/components/brand-loader';
@@ -95,7 +95,18 @@ function formatDateTimeFull(iso: string): string {
 }
 
 export default function SaleReceiptPage() {
-  const { saleId } = useParams<{ storeId: string; saleId: string }>();
+  const { storeId, saleId } = useParams<{ storeId: string; saleId: string }>();
+  const router = useRouter();
+
+  function handleBack() {
+    // O comprovante costuma abrir em nova aba; nesse caso não há histórico.
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(`/store/${storeId}/sales`);
+    }
+  }
+
   const [sale, setSale] = useState<ReceiptSale | null>(null);
   const [error, setError] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -195,7 +206,7 @@ export default function SaleReceiptPage() {
       <div className="flex w-full max-w-[420px] items-center justify-between gap-2">
         <button
           type="button"
-          onClick={() => window.history.back()}
+          onClick={handleBack}
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           Voltar
