@@ -28,9 +28,16 @@ interface DelivererOption {
   user: { name: string };
 }
 
+interface StoreOption {
+  id: string;
+  name: string;
+}
+
 interface SalesFilterState extends SalesReportFilters {
   dateFrom: string;
   dateTo: string;
+  /** Master: '' = todas as unidades; caso contrário, loja específica. */
+  storeId?: string;
 }
 
 function defaultFilters(): SalesFilterState {
@@ -42,6 +49,7 @@ function defaultFilters(): SalesFilterState {
     delivererId: '',
     customerSearch: '',
     paymentMethod: '',
+    storeId: '',
   };
 }
 
@@ -49,8 +57,9 @@ function formatDay(dateKey: string): string {
   return dateKey.split('-').reverse().join('/');
 }
 
-function buildSalesQuery(storeId: string, filters: SalesFilterState): string {
-  const params = new URLSearchParams({ storeId });
+function buildSalesQuery(storeId: string | undefined, filters: SalesFilterState): string {
+  const params = new URLSearchParams();
+  if (storeId) params.set('storeId', storeId);
   const dateQuery = buildDashboardDateQuery(filters.dateFrom, filters.dateTo);
   for (const part of dateQuery.split('&')) {
     const [key, value] = part.split('=');
@@ -112,18 +121,52 @@ function cellValue(row: SalesReportRow, key: keyof SalesReportRow): string {
   return String(value);
 }
 
-export function SalesReportPanel({ storeId }: { storeId: string }) {
+export function SalesReportPanel({
+  storeId,
+  master = false,
+}: {
+  storeId?: string;
+  master?: boolean;
+}) {
   const [draft, setDraft] = useState(defaultFilters);
   const [applied, setApplied] = useState(defaultFilters);
   const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
+  const [stores, setStores] = useState<StoreOption[]>([]);
   const [data, setData] = useState<SalesReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
+  // Loja em foco: no modo loja é o prop; no master é a unidade selecionada.
+  const selectedStoreId = master ? (draft.storeId ?? '') : (storeId ?? '');
+  const appliedStoreId = master ? (applied.storeId ?? '') : (storeId ?? '');
+  // Filtro de entregador só faz sentido com uma unidade específica.
+  const showDelivererFilter = !master || !!selectedStoreId;
+
+  // Master: carrega a lista de unidades para o filtro "Unidade".
   useEffect(() => {
+    if (!master) return;
     let cancelled = false;
-    api<DelivererOption[]>(`/deliverers?storeId=${storeId}`, {}, getToken())
+    api<StoreOption[]>('/stores', {}, getToken())
+      .then((rows) => {
+        if (!cancelled) setStores(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setStores([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [master]);
+
+  // Entregadores dependem da unidade em foco (por loja).
+  useEffect(() => {
+    if (!selectedStoreId) {
+      setDeliverers([]);
+      return;
+    }
+    let cancelled = false;
+    api<DelivererOption[]>(`/deliverers?storeId=${selectedStoreId}`, {}, getToken())
       .then((rows) => {
         if (!cancelled) setDeliverers(rows);
       })
@@ -133,13 +176,13 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [storeId]);
+  }, [selectedStoreId]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError('');
-    const query = buildSalesQuery(storeId, applied);
+    const query = buildSalesQuery(appliedStoreId || undefined, applied);
     api<SalesReportResponse>(`/reports/sales?${query}`, {}, getToken())
       .then((result) => {
         if (!cancelled) setData(result);
@@ -153,7 +196,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [storeId, applied]);
+  }, [appliedStoreId, applied]);
 
   const handleSearch = useCallback(() => {
     setApplied({ ...draft });
@@ -169,7 +212,7 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
     setExporting(true);
     setError('');
     try {
-      const query = buildSalesQuery(storeId, applied);
+      const query = buildSalesQuery(appliedStoreId || undefined, applied);
       const res = await fetch(`${API_URL}/reports/export?type=sales&${query}&format=csv`, {
         headers: { Authorization: `Bearer ${getToken() ?? ''}` },
         cache: 'no-store',
@@ -192,15 +235,18 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
     } finally {
       setExporting(false);
     }
-  }, [storeId, applied]);
+  }, [appliedStoreId, applied]);
 
   if (loading && !data) return <PageLoader label="Carregando relatório de vendas…" />;
 
   const isRefetching = loading && !!data;
   const showFinancial = data?.totalCost != null && data?.grossProfit != null;
+  const storeColumn: { key: keyof SalesReportRow; label: string; className?: string }[] = master
+    ? [{ key: 'storeName', label: 'Unidade', className: 'min-w-[10rem]' }]
+    : [];
   const tableColumns = showFinancial
-    ? [...BASE_TABLE_COLUMNS, ...FINANCIAL_TABLE_COLUMNS, ...TAIL_TABLE_COLUMNS]
-    : [...BASE_TABLE_COLUMNS, ...TAIL_TABLE_COLUMNS];
+    ? [...storeColumn, ...BASE_TABLE_COLUMNS, ...FINANCIAL_TABLE_COLUMNS, ...TAIL_TABLE_COLUMNS]
+    : [...storeColumn, ...BASE_TABLE_COLUMNS, ...TAIL_TABLE_COLUMNS];
 
   return (
     <div className="space-y-6">
@@ -241,6 +287,30 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               />
             </div>
           </div>
+          {master && (
+            <div className="min-w-0">
+              <Label>Unidade</Label>
+              <Select
+                className="mt-1 w-full"
+                value={draft.storeId ?? ''}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    storeId: e.target.value,
+                    // Trocar de unidade limpa o filtro de entregador (é por loja).
+                    delivererId: '',
+                  }))
+                }
+              >
+                <option value="">Todas as unidades</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div className="min-w-0">
             <Label>Status</Label>
             <Select
@@ -256,21 +326,23 @@ export function SalesReportPanel({ storeId }: { storeId: string }) {
               ))}
             </Select>
           </div>
-          <div className="min-w-0">
-            <Label>Entregador</Label>
-            <Select
-              className="mt-1 w-full"
-              value={draft.delivererId ?? ''}
-              onChange={(e) => setDraft((prev) => ({ ...prev, delivererId: e.target.value }))}
-            >
-              <option value="">Todos</option>
-              {deliverers.map((deliverer) => (
-                <option key={deliverer.id} value={deliverer.id}>
-                  {deliverer.user.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+          {showDelivererFilter && (
+            <div className="min-w-0">
+              <Label>Entregador</Label>
+              <Select
+                className="mt-1 w-full"
+                value={draft.delivererId ?? ''}
+                onChange={(e) => setDraft((prev) => ({ ...prev, delivererId: e.target.value }))}
+              >
+                <option value="">Todos</option>
+                {deliverers.map((deliverer) => (
+                  <option key={deliverer.id} value={deliverer.id}>
+                    {deliverer.user.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div className="min-w-0">
             <Label>Cliente</Label>
             <Input

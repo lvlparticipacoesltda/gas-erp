@@ -123,10 +123,10 @@ Registra auditoria (`AuditLog` + `SaleStatusLog`).
 
 ### Reports
 
-- `GET /reports/sales?storeId=...&dateFrom=...&dateTo=...&status=...&delivererId=...&paymentMethod=...` — relatório de vendas (inclui margem e taxas)
-- `GET /reports/purchases?storeId=...&dateFrom=...&dateTo=...` — relatório de compras
-- `GET /reports/stock?storeId=...` — posição de estoque
-- `GET /reports/export?type=sales|purchases|stock&storeId=...&format=csv` — download CSV
+- `GET /reports/sales?storeId=...&dateFrom=...&dateTo=...&status=...&delivererId=...&paymentMethod=...` — relatório de vendas (inclui margem e taxas). `storeId` é opcional: sem ele, ORG_MASTER/PLATFORM_ADMIN recebem o consolidado de todas as unidades da organização e cada linha (`rows[]`) inclui `storeId`/`storeName` (coluna Unidade)
+- `GET /reports/purchases?storeId=...&dateFrom=...&dateTo=...` — relatório de compras (`storeId` obrigatório)
+- `GET /reports/stock?storeId=...` — posição de estoque (`storeId` obrigatório)
+- `GET /reports/export?type=sales|purchases|stock&storeId=...&format=csv` — download CSV. Para `type=sales`, `storeId` é opcional (master agrega todas as unidades e o CSV ganha a coluna "Unidade"); para `purchases`/`stock` o `storeId` é obrigatório
 
 ### Geocoding
 

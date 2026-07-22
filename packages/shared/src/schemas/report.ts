@@ -19,7 +19,12 @@ const dateKey = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (use AAAA-MM-DD)');
 
 export const reportPeriodQuerySchema = z.object({
-  storeId: z.string().min(1, 'storeId é obrigatório'),
+  /**
+   * Loja do relatório. Obrigatório para compras/estoque. Para vendas é
+   * opcional: ORG_MASTER/PLATFORM_ADMIN sem `storeId` recebem todas as
+   * unidades da organização (relatório consolidado do master).
+   */
+  storeId: z.string().min(1).optional(),
   date: dateKey.optional(),
   dateFrom: dateKey.optional(),
   dateTo: dateKey.optional(),
@@ -95,6 +100,9 @@ export interface SalesReportByDeliverer {
 /** Uma linha do relatório detalhado de vendas (formato planilha). */
 export interface SalesReportRow {
   saleId: string;
+  /** Preenchido no relatório master (consolidado de todas as unidades). */
+  storeId?: string;
+  storeName?: string;
   saleDate: string;
   createdAt: string;
   status: string;

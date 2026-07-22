@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PaymentMethod, Prisma, SaleStatus, PurchaseInvoiceStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -41,6 +41,7 @@ import { assertStoreAccess } from '../../common/guards';
 import { resolveDashboardDateRange } from '../../common/utils/business-day';
 
 const salesReportInclude = {
+  store: { select: { id: true, name: true } },
   customer: { select: { name: true, phone: true } },
   attendant: { select: { name: true } },
   deliverer: { include: { user: { select: { name: true } } } },
@@ -116,6 +117,8 @@ function mapSaleToReportRow(sale: SaleForReport, showFinancial: boolean): SalesR
 
   return {
     saleId: sale.id,
+    storeId: sale.storeId,
+    storeName: sale.store?.name ?? undefined,
     saleDate: formatDateKeyInTimezone(sale.saleDate),
     createdAt: formatReportDateTime(sale.createdAt),
     status: sale.status,
@@ -174,14 +177,14 @@ export class ReportsService {
 
   async salesReport(
     user: AuthUser,
-    storeId: string,
+    storeId: string | undefined,
     dateQuery: DashboardDateQuery = {},
     filters: SalesReportFilters = {},
   ): Promise<SalesReportResponse> {
-    assertStoreAccess(user, storeId);
+    const storeFilter = await this.resolveSalesStoreFilter(user, storeId);
     const { start, end, dateFrom, dateTo } = this.resolveRange(dateQuery);
 
-    const countedSaleWhere = this.buildSalesReportWhere(storeId, start, end, filters);
+    const countedSaleWhere = this.buildSalesReportWhere(storeFilter, start, end, filters);
 
     const [statusGroups, dayGroups, paymentRows, deliveries, sales] = await Promise.all([
       this.prisma.sale.groupBy({
@@ -208,7 +211,7 @@ export class ReportsService {
       this.prisma.delivery.findMany({
         where: {
           sale: {
-            storeId,
+            storeId: storeFilter,
             saleDate: { gte: start, lt: end },
             backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
             mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
@@ -392,14 +395,38 @@ export class ReportsService {
     };
   }
 
+  /**
+   * Resolve o filtro de loja do relatório de vendas.
+   * - Com `storeId`: valida acesso e restringe àquela loja.
+   * - Sem `storeId`: apenas ORG_MASTER/PLATFORM_ADMIN; agrega todas as lojas
+   *   ativas da organização (relatório consolidado do master).
+   */
+  private async resolveSalesStoreFilter(
+    user: AuthUser,
+    storeId: string | undefined,
+  ): Promise<Prisma.SaleWhereInput['storeId']> {
+    if (storeId) {
+      assertStoreAccess(user, storeId);
+      return storeId;
+    }
+    if (user.role !== 'ORG_MASTER' && user.role !== 'PLATFORM_ADMIN') {
+      throw new ForbiddenException('Apenas o master pode ver o relatório consolidado.');
+    }
+    const stores = await this.prisma.store.findMany({
+      where: { organizationId: user.organizationId, active: true },
+      select: { id: true },
+    });
+    return { in: stores.map((store) => store.id) };
+  }
+
   private buildSalesReportWhere(
-    storeId: string,
+    storeFilter: Prisma.SaleWhereInput['storeId'],
     start: Date,
     end: Date,
     filters: SalesReportFilters,
   ): Prisma.SaleWhereInput {
     const where: Prisma.SaleWhereInput = {
-      storeId,
+      storeId: storeFilter,
       saleDate: { gte: start, lt: end },
       backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
       mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
@@ -635,17 +662,20 @@ export class ReportsService {
   async exportCsv(
     user: AuthUser,
     type: ReportType,
-    storeId: string,
+    storeId: string | undefined,
     dateQuery: DashboardDateQuery = {},
     salesFilters: SalesReportFilters = {},
   ): Promise<{ filename: string; csv: string }> {
     if (type === 'sales') {
       const report = await this.salesReport(user, storeId, dateQuery, salesFilters);
       const showFinancial = canViewFinancialMargins(user.role);
+      // Coluna Unidade só no relatório consolidado (sem loja específica).
+      const showStore = !storeId;
       const headers = [
         'Data da venda',
         'Criado em',
         'ID venda',
+        ...(showStore ? ['Unidade'] : []),
         'Status',
         'Canal',
         'Cliente',
@@ -680,6 +710,7 @@ export class ReportsService {
         formatDateKey(r.saleDate),
         r.createdAt,
         r.saleId,
+        ...(showStore ? [r.storeName ?? ''] : []),
         r.statusLabel,
         r.channelLabel,
         r.customerName ?? '',
@@ -714,6 +745,10 @@ export class ReportsService {
         filename: buildFilename('vendas', report.dateFrom, report.dateTo),
         csv: toCsv(headers, rows),
       };
+    }
+
+    if (!storeId) {
+      throw new BadRequestException('storeId é obrigatório para este relatório.');
     }
 
     if (type === 'purchases') {

@@ -20,7 +20,7 @@ export class ReportsController {
   @Get('sales')
   sales(
     @CurrentUser() user: AuthUser,
-    @Query('storeId') storeId: string,
+    @Query('storeId') storeId?: string,
     @Query('date') date?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
@@ -30,7 +30,7 @@ export class ReportsController {
     @Query('customerSearch') customerSearch?: string,
     @Query('paymentMethod') paymentMethod?: string,
   ) {
-    this.assertStoreId(storeId);
+    // storeId opcional: sem loja, o master recebe o consolidado (regra no service).
     return this.service.salesReport(
       user,
       storeId,
@@ -68,7 +68,7 @@ export class ReportsController {
     @CurrentUser() user: AuthUser,
     @Res({ passthrough: true }) res: Response,
     @Query('type') type: string,
-    @Query('storeId') storeId: string,
+    @Query('storeId') storeId?: string,
     @Query('date') date?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
@@ -79,7 +79,8 @@ export class ReportsController {
     @Query('customerSearch') customerSearch?: string,
     @Query('paymentMethod') paymentMethod?: string,
   ): Promise<string> {
-    this.assertStoreId(storeId);
+    // storeId opcional só para sales (consolidado master). O service exige
+    // storeId para purchases/stock.
     if (!REPORT_TYPES.includes(type as ReportType)) {
       throw new BadRequestException('Tipo de relatório inválido (use sales, purchases ou stock).');
     }
