@@ -99,6 +99,7 @@ export default function SaleReceiptPage() {
   const [sale, setSale] = useState<ReceiptSale | null>(null);
   const [error, setError] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [format, setFormat] = useState<'cupom' | 'a4'>('cupom');
   const paperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -130,11 +131,30 @@ export default function SaleReceiptPage() {
     try {
       const canvas = await renderCanvas();
       if (!canvas) return;
-      const pageWidth = 80; // mm — largura de cupom
-      const pageHeight = (canvas.height / canvas.width) * pageWidth;
-      const pdf = new jsPDF({ unit: 'mm', format: [pageWidth, pageHeight] });
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageWidth, pageHeight);
-      pdf.save(`cupom-${saleId}.pdf`);
+      const ratio = canvas.height / canvas.width;
+      const imgData = canvas.toDataURL('image/png');
+
+      if (format === 'a4') {
+        const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+        const pageW = 210;
+        const pageH = 297;
+        const margin = 10;
+        let w = pageW - margin * 2;
+        let h = w * ratio;
+        if (h > pageH - margin * 2) {
+          h = pageH - margin * 2;
+          w = h / ratio;
+        }
+        const x = (pageW - w) / 2;
+        pdf.addImage(imgData, 'PNG', x, margin, w, h);
+        pdf.save(`cupom-${saleId}.pdf`);
+      } else {
+        const pageWidth = 80; // mm — largura de cupom
+        const pageHeight = ratio * pageWidth;
+        const pdf = new jsPDF({ unit: 'mm', format: [pageWidth, pageHeight] });
+        pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
+        pdf.save(`cupom-${saleId}.pdf`);
+      }
     } catch {
       setError('Não foi possível gerar o PDF.');
     } finally {
@@ -180,7 +200,16 @@ export default function SaleReceiptPage() {
         >
           Voltar
         </button>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Tamanho do PDF"
+            value={format}
+            onChange={(e) => setFormat(e.target.value as 'cupom' | 'a4')}
+            className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none hover:bg-slate-50 focus:border-brand focus:ring-2 focus:ring-brand-muted"
+          >
+            <option value="cupom">Cupom (80mm)</option>
+            <option value="a4">A4</option>
+          </select>
           <button
             type="button"
             onClick={handleDownloadPng}
