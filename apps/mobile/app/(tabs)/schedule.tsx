@@ -4,12 +4,14 @@ import {
   Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import {
@@ -33,13 +35,27 @@ const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
-const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+const WEEKDAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
-function dayColor(type: ScheduleDayType | undefined) {
-  if (!type) return colors.border;
+function dayFillColor(type: ScheduleDayType) {
   if (type === 'WORK') return colors.success;
   if (type === 'HALF_DAY') return colors.warning;
   return colors.textFaint;
+}
+
+function dayTypeBadgeColors(type: ScheduleDayType) {
+  if (type === 'WORK') return { bg: colors.successBg, text: colors.successText };
+  if (type === 'HALF_DAY') return { bg: colors.warningBg, text: colors.warningText };
+  return { bg: colors.surfaceAlt, text: colors.textMuted };
+}
+
+function formatCommitmentDate(date: string) {
+  const formatted = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
 export default function ScheduleScreen() {
@@ -48,6 +64,7 @@ export default function ScheduleScreen() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<ScheduleEntryDto[]>([]);
   const [storeId, setStoreId] = useState<string | null>(null);
@@ -61,8 +78,8 @@ export default function ScheduleScreen() {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [distanceM, setDistanceM] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const data = await fetchMySchedule(year, month);
@@ -71,10 +88,12 @@ export default function ScheduleScreen() {
       setStoreLat(data.store.latitude);
       setStoreLng(data.store.longitude);
       setEntries(data.collaborators[0]?.entries ?? []);
+      return data.store.id as string | null;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar escala');
+      return null;
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [year, month]);
 
@@ -95,6 +114,16 @@ export default function ScheduleScreen() {
     if (storeId) void loadPunch(storeId);
   }, [storeId, loadPunch]);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const sid = await load({ silent: true });
+      if (sid) await loadPunch(sid);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, loadPunch]);
+
   const entryByDate = useMemo(() => {
     const map = new Map<string, ScheduleEntryDto>();
     for (const e of entries) map.set(e.date, e);
@@ -113,7 +142,7 @@ export default function ScheduleScreen() {
     return { work, half, off };
   }, [entries]);
 
-  const calendarCells = useMemo(() => {
+  const calendarWeeks = useMemo(() => {
     const first = new Date(year, month - 1, 1);
     const startPad = first.getDay();
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -123,7 +152,13 @@ export default function ScheduleScreen() {
       const date = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       cells.push({ day: d, date });
     }
-    return cells;
+    while (cells.length % 7 !== 0) cells.push({ day: null, date: null });
+
+    const weeks: Array<typeof cells> = [];
+    for (let i = 0; i < cells.length; i += 7) {
+      weeks.push(cells.slice(i, i + 7));
+    }
+    return weeks;
   }, [year, month]);
 
   const nextCommitment = useMemo(() => {
@@ -135,6 +170,14 @@ export default function ScheduleScreen() {
   }, [entries]);
 
   const selectedEntry = selectedDate ? entryByDate.get(selectedDate) : undefined;
+  const nextBadgeColors = nextCommitment
+    ? dayTypeBadgeColors(nextCommitment.dayType)
+    : null;
+
+  const canPunch =
+    Boolean(photoBase64 || photoUri) &&
+    distanceM != null &&
+    distanceM <= TIME_CLOCK_GEOFENCE_METERS;
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
@@ -225,24 +268,40 @@ export default function ScheduleScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <Text style={styles.hello}>Olá, {user?.name?.split(' ')[0] ?? 'entregador'}!</Text>
         <Text style={styles.sub}>Confira sua escala de trabalho</Text>
         {storeName ? <Text style={styles.store}>Unidade: {storeName}</Text> : null}
 
         {error ? <StateMessage title="Atenção" subtitle={error} /> : null}
 
-        <View style={styles.card}>
-          <View style={styles.monthRow}>
-            <Pressable onPress={() => shiftMonth(-1)} hitSlop={12}>
-              <Text style={styles.monthNav}>‹</Text>
-            </Pressable>
-            <Text style={styles.monthTitle}>
-              {MONTH_NAMES[month - 1]} {year}
-            </Text>
-            <Pressable onPress={() => shiftMonth(1)} hitSlop={12}>
-              <Text style={styles.monthNav}>›</Text>
-            </Pressable>
+        <View style={styles.calCard}>
+          <View style={styles.calHeader}>
+            <View style={styles.calHeaderLeft}>
+              <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+              <Text style={styles.calHeaderTitle}>Escala de Trabalho</Text>
+            </View>
+            <View style={styles.monthRow}>
+              <Pressable onPress={() => shiftMonth(-1)} hitSlop={12}>
+                <Ionicons name="chevron-back" size={20} color={colors.text} />
+              </Pressable>
+              <Text style={styles.monthTitle}>
+                {MONTH_NAMES[month - 1]} / {year}
+              </Text>
+              <Pressable onPress={() => shiftMonth(1)} hitSlop={12}>
+                <Ionicons name="chevron-forward" size={20} color={colors.text} />
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.weekRow}>
@@ -253,60 +312,90 @@ export default function ScheduleScreen() {
             ))}
           </View>
           <View style={styles.grid}>
-            {calendarCells.map((cell, idx) => {
-              const entry = cell.date ? entryByDate.get(cell.date) : undefined;
-              const isSelected = cell.date === selectedDate;
-              return (
-                <Pressable
-                  key={idx}
-                  style={[styles.dayCell, isSelected && styles.daySelected]}
-                  disabled={!cell.day}
-                  onPress={() => cell.date && setSelectedDate(cell.date)}
-                >
-                  {cell.day ? (
-                    <>
-                      <Text style={styles.dayNum}>{cell.day}</Text>
-                      <View
-                        style={[styles.dot, { backgroundColor: dayColor(entry?.dayType) }]}
-                      />
-                    </>
-                  ) : null}
-                </Pressable>
-              );
-            })}
+            {calendarWeeks.map((week, wi) => (
+              <View key={wi} style={styles.weekGridRow}>
+                {week.map((cell, idx) => {
+                  const entry = cell.date ? entryByDate.get(cell.date) : undefined;
+                  const isSelected = cell.date === selectedDate;
+                  const hasEntry = Boolean(entry);
+                  const fill = entry ? dayFillColor(entry.dayType) : undefined;
+                  return (
+                    <Pressable
+                      key={`${wi}-${idx}`}
+                      style={styles.dayCell}
+                      disabled={!cell.day}
+                      onPress={() => cell.date && setSelectedDate(cell.date)}
+                    >
+                      {cell.day ? (
+                        <View
+                          style={[
+                            styles.daySquare,
+                            hasEntry && fill
+                              ? { backgroundColor: fill }
+                              : styles.daySquareEmpty,
+                            isSelected && styles.daySelected,
+                            isSelected && !hasEntry && styles.daySelectedEmpty,
+                          ]}
+                        >
+                        <Text
+                          style={[
+                            styles.dayNum,
+                            !hasEntry && styles.dayNumMuted,
+                            hasEntry && { color: colors.primaryText },
+                          ]}
+                        >
+                            {cell.day}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={styles.daySquarePlaceholder} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
           </View>
         </View>
 
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{summary.work}</Text>
-            <Text style={styles.summaryLabel}>Trabalhados</Text>
+            <Ionicons name="briefcase-outline" size={22} color={colors.success} />
+            <Text style={styles.summaryLabel}>Efetivo</Text>
+            <Text style={styles.summaryValue}>{summary.work} dias</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{summary.half}</Text>
+            <Ionicons name="time-outline" size={22} color={colors.warning} />
             <Text style={styles.summaryLabel}>Meias jornadas</Text>
+            <Text style={styles.summaryValue}>{summary.half} dias</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{summary.off}</Text>
+            <Ionicons name="bed-outline" size={22} color={colors.textFaint} />
             <Text style={styles.summaryLabel}>Folgas</Text>
+            <Text style={styles.summaryValue}>{summary.off} dias</Text>
           </View>
         </View>
 
-        {nextCommitment ? (
-          <View style={styles.card}>
+        {nextCommitment && nextBadgeColors ? (
+          <View style={styles.nextSection}>
             <Text style={styles.sectionTitle}>Próximo compromisso</Text>
-            <Text style={styles.nextDate}>
-              {new Date(nextCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR', {
-                weekday: 'long',
-                day: '2-digit',
-                month: 'long',
-              })}
-            </Text>
-            <Text style={styles.nextHours}>
-              {nextCommitment.startTime?.slice(0, 5)} às {nextCommitment.endTime?.slice(0, 5)}
-              {' · '}
-              {SCHEDULE_DAY_TYPE_LABELS[nextCommitment.dayType]}
-            </Text>
+            <View style={styles.nextCard}>
+              <Ionicons name="calendar-outline" size={22} color={colors.success} />
+              <View style={styles.nextTextBlock}>
+                <Text style={styles.nextDate}>
+                  {formatCommitmentDate(nextCommitment.date)}
+                </Text>
+                <Text style={styles.nextHours}>
+                  {nextCommitment.startTime?.slice(0, 5)} às{' '}
+                  {nextCommitment.endTime?.slice(0, 5)}
+                </Text>
+              </View>
+              <View style={[styles.nextBadge, { backgroundColor: nextBadgeColors.bg }]}>
+                <Text style={[styles.nextBadgeText, { color: nextBadgeColors.text }]}>
+                  {SCHEDULE_DAY_TYPE_LABELS[nextCommitment.dayType]}
+                </Text>
+              </View>
+            </View>
           </View>
         ) : null}
 
@@ -342,8 +431,8 @@ export default function ScheduleScreen() {
             <Image source={{ uri: photoUri }} style={styles.preview} />
           ) : null}
           <Pressable
-            style={[styles.primaryBtn, punchBusy && styles.btnDisabled]}
-            disabled={punchBusy}
+            style={[styles.primaryBtn, (!canPunch || punchBusy) && styles.btnDisabled]}
+            disabled={!canPunch || punchBusy}
             onPress={() => void submitPunch()}
           >
             {punchBusy ? (
@@ -422,52 +511,118 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: spacing.sm,
   },
-  monthRow: {
+  calCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  calHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
-  monthTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
-  monthNav: { fontSize: 28, color: colors.primary, paddingHorizontal: 8 },
-  weekRow: { flexDirection: 'row' },
+  calHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
+  },
+  calHeaderTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  monthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  monthTitle: { fontSize: 13, fontWeight: '600', color: colors.text },
+  weekRow: { flexDirection: 'row', marginBottom: spacing.xs },
   weekLabel: {
-    width: `${100 / 7}%`,
+    flex: 1,
     textAlign: 'center',
     fontSize: 11,
     color: colors.textFaint,
     fontWeight: '600',
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  grid: { gap: 4 },
+  weekGridRow: { flexDirection: 'row' },
   dayCell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    paddingVertical: 3,
+  },
+  daySquare: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  daySquareEmpty: {
+    backgroundColor: 'transparent',
+  },
+  daySquarePlaceholder: {
+    width: 40,
+    height: 40,
   },
   daySelected: {
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: colors.text,
-    borderRadius: radius.sm,
   },
-  dayNum: { fontSize: 13, color: colors.text, fontWeight: '500' },
-  dot: { width: 7, height: 7, borderRadius: 4 },
+  daySelectedEmpty: {
+    backgroundColor: colors.surface,
+  },
+  dayNum: { fontSize: 15, color: colors.text, fontWeight: '700' },
+  dayNumMuted: { color: colors.textFaint, fontWeight: '500' },
   summaryRow: { flexDirection: 'row', gap: spacing.sm },
   summaryCard: {
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: radius.md,
-    padding: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
+    gap: 6,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  summaryValue: { fontSize: 20, fontWeight: '700', color: colors.text },
-  summaryLabel: { fontSize: 11, color: colors.textMuted, textAlign: 'center' },
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  summaryValue: { fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
-  nextDate: { fontSize: 14, color: colors.text, textTransform: 'capitalize' },
+  nextSection: { gap: spacing.sm },
+  nextCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  nextTextBlock: { flex: 1, gap: 2 },
+  nextDate: { fontSize: 14, fontWeight: '700', color: colors.text },
   nextHours: { fontSize: 13, color: colors.textMuted },
+  nextBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+  },
+  nextBadgeText: { fontSize: 12, fontWeight: '600' },
   hint: { fontSize: 12, color: colors.textMuted },
   punchStatus: { fontSize: 13, color: colors.text, fontWeight: '600' },
   punchActions: { flexDirection: 'row', gap: spacing.sm },

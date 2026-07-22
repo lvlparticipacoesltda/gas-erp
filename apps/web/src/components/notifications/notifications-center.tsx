@@ -7,6 +7,7 @@ import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { useRealtimeRefetch } from '@/hooks/use-realtime-refetch';
 import type { RealtimeChannel } from '@/lib/realtime';
 import type { PaginatedResponse } from '@gas-erp/shared';
+import { Pagination } from '@/components/pagination';
 import { cn } from '@/lib/utils';
 
 const ORG_CHANNEL: RealtimeChannel = { type: 'org' };
@@ -40,7 +41,7 @@ interface NotificationItem {
   createdAt: string;
 }
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 20;
 
 function isCancelled(type: string) {
   return type === 'SALE_CANCELLED';
@@ -53,6 +54,9 @@ export function NotificationsCenter() {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<NotificationItem | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
   const loadUnread = useCallback(() => {
     api<{ count: number }>('/notifications/unread-count', {}, getToken())
@@ -60,14 +64,21 @@ export function NotificationsCenter() {
       .catch(() => undefined);
   }, []);
 
-  const loadList = useCallback(() => {
+  const loadList = useCallback((targetPage: number) => {
     setLoading(true);
     api<PaginatedResponse<NotificationItem>>(
-      `/notifications?page=1&pageSize=${PAGE_SIZE}`,
+      `/notifications?page=${targetPage}&pageSize=${PAGE_SIZE}`,
       {},
       getToken(),
     )
-      .then((res) => setItems(res.data))
+      .then((res) => {
+        setItems(res.data);
+        setTotalPages(res.totalPages);
+        setTotal(res.total);
+        if (targetPage > res.totalPages) {
+          setPage(res.totalPages);
+        }
+      })
       .catch(() => undefined)
       .finally(() => setLoading(false));
   }, []);
@@ -81,8 +92,8 @@ export function NotificationsCenter() {
     ORG_CHANNEL,
     useCallback(() => {
       loadUnread();
-      if (open) loadList();
-    }, [loadUnread, loadList, open]),
+      if (open) loadList(page);
+    }, [loadUnread, loadList, open, page]),
     true,
   );
 
@@ -91,10 +102,16 @@ export function NotificationsCenter() {
       setEntered(false);
       return;
     }
-    loadList();
+    loadList(page);
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(raf);
-  }, [open, loadList]);
+  }, [open, page, loadList]);
+
+  function openPanel() {
+    setPage(1);
+    setSelected(null);
+    setOpen(true);
+  }
 
   function close() {
     setEntered(false);
@@ -126,7 +143,7 @@ export function NotificationsCenter() {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openPanel}
         className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white shadow-sm transition hover:bg-brand-dark"
         aria-label="Central de mensagens"
       >
@@ -187,53 +204,64 @@ export function NotificationsCenter() {
                   </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto">
-                  {loading && items.length === 0 ? (
-                    <p className="p-6 text-center text-sm text-slate-400">Carregando…</p>
-                  ) : items.length === 0 ? (
-                    <p className="p-6 text-center text-sm text-slate-400">Nenhuma notificação ainda.</p>
-                  ) : (
-                    <ul className="divide-y divide-slate-100">
-                      {items.map((item) => (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            onClick={() => openDetail(item)}
-                            className="flex w-full items-start gap-3 px-5 py-4 text-left transition hover:bg-slate-50"
-                          >
-                            <span
-                              className={cn(
-                                'mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                                isCancelled(item.type)
-                                  ? 'bg-red-100 text-red-600'
-                                  : 'bg-emerald-100 text-emerald-600',
-                              )}
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex-1 overflow-y-auto">
+                    {loading && items.length === 0 ? (
+                      <p className="p-6 text-center text-sm text-slate-400">Carregando…</p>
+                    ) : items.length === 0 ? (
+                      <p className="p-6 text-center text-sm text-slate-400">Nenhuma notificação ainda.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {items.map((item) => (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              onClick={() => openDetail(item)}
+                              className="flex w-full items-start gap-3 px-5 py-4 text-left transition hover:bg-slate-50"
                             >
-                              {isCancelled(item.type) ? (
-                                <Ban className="h-4 w-4" />
-                              ) : (
-                                <PackageCheck className="h-4 w-4" />
-                              )}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="flex items-center gap-2">
-                                <span className="truncate text-sm font-medium text-slate-900">
-                                  {item.title}
-                                </span>
-                                {!item.read && (
-                                  <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="Não lida" />
+                              <span
+                                className={cn(
+                                  'mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                                  isCancelled(item.type)
+                                    ? 'bg-red-100 text-red-600'
+                                    : 'bg-emerald-100 text-emerald-600',
+                                )}
+                              >
+                                {isCancelled(item.type) ? (
+                                  <Ban className="h-4 w-4" />
+                                ) : (
+                                  <PackageCheck className="h-4 w-4" />
                                 )}
                               </span>
-                              <span className="mt-0.5 block truncate text-sm text-slate-500">{item.body}</span>
-                              <span className="mt-1 block text-xs text-slate-400">
-                                {formatDateTime(item.createdAt)}
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-medium text-slate-900">
+                                    {item.title}
+                                  </span>
+                                  {!item.read && (
+                                    <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="Não lida" />
+                                  )}
+                                </span>
+                                <span className="mt-0.5 block truncate text-sm text-slate-500">{item.body}</span>
+                                <span className="mt-1 block text-xs text-slate-400">
+                                  {formatDateTime(item.createdAt)}
+                                </span>
                               </span>
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <Pagination
+                    className="shrink-0 border-t border-slate-100 px-4 py-3"
+                    page={page}
+                    totalPages={totalPages}
+                    total={total}
+                    pageSize={PAGE_SIZE}
+                    loading={loading}
+                    onPageChange={setPage}
+                  />
                 </div>
               </>
             )}

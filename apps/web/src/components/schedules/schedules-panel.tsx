@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SCHEDULE_DAY_TYPE_LABELS,
   canManageSchedules,
@@ -127,6 +127,9 @@ export function SchedulesPanel({
   const [copyTargetMonth, setCopyTargetMonth] = useState(month === 12 ? 1 : month + 1);
   const [copyTargetYear, setCopyTargetYear] = useState(month === 12 ? year + 1 : year);
 
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const pendingScrollLeftRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (fixedStoreId) setStoreId(fixedStoreId);
   }, [fixedStoreId]);
@@ -137,13 +140,13 @@ export function SchedulesPanel({
     }
   }, [fixedStoreId, stores, storeId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!storeId) {
       setLoading(false);
       setError('Selecione uma unidade');
       return;
     }
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({
@@ -158,10 +161,26 @@ export function SchedulesPanel({
       setError(err instanceof Error ? err.message : 'Falha ao carregar escala');
       setGrid(null);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [storeId, year, month, roleFilter]);
 
+  useEffect(() => {
+    if (pendingScrollLeftRef.current == null) return;
+    const left = pendingScrollLeftRef.current;
+    pendingScrollLeftRef.current = null;
+    requestAnimationFrame(() => {
+      if (tableScrollRef.current) {
+        tableScrollRef.current.scrollLeft = left;
+      }
+    });
+  }, [grid]);
+
+  function captureTableScroll() {
+    if (tableScrollRef.current) {
+      pendingScrollLeftRef.current = tableScrollRef.current.scrollLeft;
+    }
+  }
   const loadPunch = useCallback(async () => {
     if (!showPunchCard || !storeId) return;
     try {
@@ -230,7 +249,8 @@ export function SchedulesPanel({
         getToken(),
       );
       setSelected(null);
-      await load();
+      captureTableScroll();
+      await load({ silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao salvar');
     } finally {
@@ -244,7 +264,8 @@ export function SchedulesPanel({
     try {
       await api(`/schedules/day/${selected.entry.id}`, { method: 'DELETE' }, getToken());
       setSelected(null);
-      await load();
+      captureTableScroll();
+      await load({ silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao excluir');
     } finally {
@@ -372,27 +393,30 @@ export function SchedulesPanel({
 
         {showRoleTabs ? (
           <FilterField label="Colaboradores">
-            <div className="flex rounded-lg border border-slate-200 p-0.5">
+            <div className="inline-flex gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
               {(
                 [
                   ['deliverers', 'Entregadores'],
                   ['attendants', 'Atendentes'],
                 ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setRoleFilter(value)}
-                  className={cn(
-                    'rounded-md px-3 py-1.5 text-xs font-medium',
-                    roleFilter === value
-                      ? 'bg-brand-600 text-white'
-                      : 'text-slate-600 hover:bg-slate-50',
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
+              ).map(([value, label]) => {
+                const selectedRole = roleFilter === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setRoleFilter(value)}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                      selectedRole
+                        ? 'bg-brand text-white shadow-sm'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100',
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </FilterField>
         ) : null}
@@ -418,7 +442,7 @@ export function SchedulesPanel({
         <Card className="p-6 text-sm text-slate-500">Nenhuma escala para exibir.</Card>
       ) : (
         <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
+          <div ref={tableScrollRef} className="overflow-x-auto">
             <table className="min-w-full border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 text-slate-600">
