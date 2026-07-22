@@ -37,6 +37,15 @@ function TabsNav() {
         }}
       />
       <Tabs.Screen
+        name="schedule"
+        options={{
+          title: 'Escala',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="sale"
         options={{
           title: 'Venda',

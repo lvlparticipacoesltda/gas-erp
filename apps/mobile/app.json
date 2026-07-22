@@ -24,9 +24,10 @@
           "location",
           "fetch"
         ],
-        "NSLocationWhenInUseUsageDescription": "Usamos sua localização para exibir sua posição no mapa da loja e registrar o trajeto das entregas.",
+        "NSLocationWhenInUseUsageDescription": "Usamos sua localização para exibir sua posição no mapa da loja, registrar o trajeto das entregas e validar o ponto na unidade.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Usamos sua localização em segundo plano para manter sua posição atualizada no mapa da loja e acompanhar entregas em rota.",
-        "NSLocationAlwaysUsageDescription": "Usamos sua localização em segundo plano para manter sua posição atualizada no mapa da loja e acompanhar entregas em rota."
+        "NSLocationAlwaysUsageDescription": "Usamos sua localização em segundo plano para manter sua posição atualizada no mapa da loja e acompanhar entregas em rota.",
+        "NSCameraUsageDescription": "Usamos a câmera para a foto de validação ao bater o ponto na unidade."
       }
     },
     "android": {
@@ -40,6 +41,7 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "POST_NOTIFICATIONS"
@@ -48,6 +50,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Usamos a câmera para a foto de validação ao bater o ponto na unidade."
+        }
+      ],
       [
         "react-native-maps",
         {

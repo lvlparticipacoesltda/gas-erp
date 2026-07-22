@@ -16,6 +16,7 @@ export * from './schemas/stock';
 export * from './schemas/deliverer';
 export * from './schemas/push';
 export * from './schemas/delivery';
+export * from './schemas/schedule';
 export * from './permissions';
 export * from './sale-display';
 export * from './sale-financials';

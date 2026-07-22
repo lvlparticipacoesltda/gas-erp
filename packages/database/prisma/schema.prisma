@@ -114,6 +114,22 @@ enum PurchaseInvoiceStatus {
   CANCELLED
 }
 
+enum ScheduleDayType {
+  WORK
+  HALF_DAY
+  DAY_OFF
+}
+
+enum TimeClockPunchType {
+  CLOCK_IN
+  CLOCK_OUT
+}
+
+enum TimeClockSource {
+  WEB
+  MOBILE
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -131,6 +147,8 @@ model Organization {
   auditLogs           AuditLog[]
   storePaymentMethods StorePaymentMethod[]
   notifications       Notification[]
+  workScheduleEntries WorkScheduleEntry[]
+  timeClockPunches    TimeClockPunch[]
 }
 
 model Store {
@@ -170,6 +188,8 @@ model Store {
   paymentMethods      StorePaymentMethod[]
   customerProductPrices CustomerProductPrice[]
   customers           Customer[]
+  workScheduleEntries WorkScheduleEntry[]
+  timeClockPunches    TimeClockPunch[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -226,6 +246,10 @@ model User {
   saleBackdateLogs SaleBackdateLog[]
   salesMobileApproved Sale[] @relation("SaleMobileApprover")
   saleMobileApprovalLogs SaleMobileApprovalLog[]
+  workScheduleEntries WorkScheduleEntry[]
+  workSchedulesCreated WorkScheduleEntry[] @relation("WorkScheduleCreatedBy")
+  workSchedulesUpdated WorkScheduleEntry[] @relation("WorkScheduleUpdatedBy")
+  timeClockPunches    TimeClockPunch[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -816,4 +840,59 @@ model PurchaseInvoicePayment {
   invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId])
+}
+
+/** Dia planejado na escala de um colaborador (atendente ou entregador) em uma unidade. */
+model WorkScheduleEntry {
+  id             String          @id @default(cuid())
+  organizationId String
+  storeId        String
+  userId         String
+  date           DateTime        @db.Date
+  dayType        ScheduleDayType
+  /** Horário "HH:mm" (obrigatório para WORK / HALF_DAY). */
+  startTime      String?
+  endTime        String?
+  breakStart     String?
+  breakEnd       String?
+  notes          String?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("WorkScheduleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy    User?        @relation("WorkScheduleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, userId, date])
+  @@index([organizationId, storeId, date])
+  @@index([userId, date])
+}
+
+/** Registro de bater ponto (entrada/saída). */
+model TimeClockPunch {
+  id             String             @id @default(cuid())
+  organizationId String
+  storeId        String
+  userId         String
+  type           TimeClockPunchType
+  punchedAt      DateTime           @default(now())
+  latitude       Float?
+  longitude      Float?
+  accuracy       Float?
+  distanceMeters Float?
+  /** JPEG da selfie de validação (obrigatório no app mobile). */
+  photoBytes     Bytes?
+  source         TimeClockSource
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, userId, punchedAt])
+  @@index([organizationId, punchedAt])
 }

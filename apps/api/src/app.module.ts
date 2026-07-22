@@ -18,6 +18,7 @@ import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SchedulesModule } from './modules/schedules/schedules.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './common/realtime/realtime.module';
@@ -48,6 +49,7 @@ import { RealtimeModule } from './common/realtime/realtime.module';
     DashboardModule,
     ReportsModule,
     NotificationsModule,
+    SchedulesModule,
     HealthModule,
   ],
 })

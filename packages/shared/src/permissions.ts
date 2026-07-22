@@ -11,6 +11,7 @@ export const STORE_SCREEN_KEYS = [
   'store.stock.transfers',
   'store.deliverers',
   'store.deliverers.map',
+  'store.schedules',
   'store.daily-summary',
   'store.reports',
 ] as const;
@@ -28,6 +29,7 @@ export const STORE_SCREEN_LABELS: Record<StoreScreenKey, string> = {
   'store.stock.transfers': 'Transferências',
   'store.deliverers': 'Entregadores',
   'store.deliverers.map': 'Mapa de entregadores',
+  'store.schedules': 'Escalas de trabalho',
   'store.daily-summary': 'Resumo diário',
   'store.reports': 'Relatórios',
 };
@@ -45,6 +47,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, StoreScreenKey[]> = {
     'store.customers',
     'store.stock',
     'store.deliverers.map',
+    'store.schedules',
   ],
   FINANCE: [
     'store.daily-summary',
@@ -88,6 +91,11 @@ export function canApproveMobileSales(role: string): boolean {
 }
 
 export const canManageDeliverers = canManageSales;
+
+/** Cadastro/edição de escalas — master e gerente. */
+export function canManageSchedules(role: string): boolean {
+  return role === 'ORG_MASTER' || role === 'STORE_MANAGER' || role === 'PLATFORM_ADMIN';
+}
 
 /** Margem / custo fornecedor — master, gerente e financeiro. */
 export function canViewFinancialMargins(role: string): boolean {
