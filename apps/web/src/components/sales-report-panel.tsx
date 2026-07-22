@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PageLoader } from '@/components/brand-loader';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedList } from '@/components/paginated-list';
-import { Button, Card, Input, Label, Select, Table } from '@/components/ui';
+import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
@@ -13,7 +13,6 @@ import {
   PAYMENT_METHODS,
   SALE_STATUS_LABELS,
   SALE_STATUSES,
-  formatWaitTime,
   todayDateKey,
   type SalesReportFilters,
   type SalesReportResponse,
@@ -384,57 +383,6 @@ export function SalesReportPanel({
 
       {data && (
         <>
-          <div className={`grid gap-4 ${showFinancial ? 'md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8' : 'md:grid-cols-3'}`}>
-            <Card>
-              <div className="text-sm text-slate-500">Faturamento</div>
-              <div className="text-2xl font-bold">{formatCurrency(data.totalRevenue)}</div>
-            </Card>
-            {showFinancial && (
-              <>
-                <Card>
-                  <div className="text-sm text-slate-500">CMV</div>
-                  <div className="text-2xl font-bold">{formatCurrency(data.totalCost!)}</div>
-                </Card>
-                <Card>
-                  <div className="text-sm text-slate-500">Lucro bruto</div>
-                  <div className="text-2xl font-bold">{formatCurrency(data.grossProfit!)}</div>
-                </Card>
-                <Card>
-                  <div className="text-sm text-slate-500">Margem bruta</div>
-                  <div className="text-2xl font-bold">
-                    {data.grossMarginPercent != null ? `${data.grossMarginPercent}%` : '—'}
-                  </div>
-                </Card>
-                <Card>
-                  <div className="text-sm text-slate-500">Taxas pagamento</div>
-                  <div className="text-2xl font-bold">{formatCurrency(data.totalProcessingFees ?? 0)}</div>
-                </Card>
-                <Card>
-                  <div className="text-sm text-slate-500">Faturamento líquido</div>
-                  <div className="text-2xl font-bold">{formatCurrency(data.netRevenue ?? 0)}</div>
-                </Card>
-                <Card>
-                  <div className="text-sm text-slate-500">Lucro líquido</div>
-                  <div className="text-2xl font-bold">{formatCurrency(data.netProfit ?? 0)}</div>
-                </Card>
-                <Card>
-                  <div className="text-sm text-slate-500">Margem líquida</div>
-                  <div className="text-2xl font-bold">
-                    {data.netMarginPercent != null ? `${data.netMarginPercent}%` : '—'}
-                  </div>
-                </Card>
-              </>
-            )}
-            <Card>
-              <div className="text-sm text-slate-500">Vendas</div>
-              <div className="text-2xl font-bold">{data.salesCount}</div>
-            </Card>
-            <Card>
-              <div className="text-sm text-slate-500">Ticket médio</div>
-              <div className="text-2xl font-bold">{formatCurrency(data.averageTicket)}</div>
-            </Card>
-          </div>
-
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-slate-500">
               Período · {data.date} · {data.rows.length} registro{data.rows.length === 1 ? '' : 's'}
@@ -445,73 +393,41 @@ export function SalesReportPanel({
             </Button>
           </div>
 
-          {data.byDeliverer.length > 0 && (
-            <>
-              <h2 className="font-semibold text-slate-900">Por entregador</h2>
-              <PaginatedList items={data.byDeliverer}>
-                {(rows) => (
-                  <Table>
-                    <thead className="bg-slate-50 text-left">
-                      <tr>
-                        <th className="p-3">Entregador</th>
-                        <th className="p-3">Rotas realizadas</th>
-                        <th className="p-3">Rotas canceladas</th>
-                        <th className="p-3">Tempo médio até aceitar</th>
-                        <th className="p-3">Tempo médio em rota</th>
-                        <th className="p-3">Tempo médio total da entrega</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((deliverer) => (
-                        <tr key={deliverer.delivererId} className="border-t border-slate-100">
-                          <td className="p-3">{deliverer.delivererName}</td>
-                          <td className="p-3">{deliverer.completedCount}</td>
-                          <td className="p-3">{deliverer.cancelledCount}</td>
-                          <td className="p-3">{formatWaitTime(deliverer.avgWaitTimeSeconds)}</td>
-                          <td className="p-3">{formatWaitTime(deliverer.avgRouteDurationSeconds)}</td>
-                          <td className="p-3">{formatWaitTime(deliverer.avgTotalDeliveryTimeSeconds)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                )}
-              </PaginatedList>
-            </>
-          )}
-
           <LoadingOverlay loading={isRefetching} minHeight="min-h-[30vh]" label="Atualizando relatório…">
             {data.rows.length === 0 ? (
               <p className="text-sm text-slate-500">Nenhuma venda encontrada com os filtros selecionados.</p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <PaginatedList items={data.rows} emptyMessage="">
                   {(rows) => (
-                    <table className="min-w-max w-full text-xs">
-                      <thead className="bg-slate-50 text-left">
-                        <tr>
-                          {tableColumns.map((col) => (
-                            <th key={col.key} className={`whitespace-nowrap p-2 font-medium ${col.className ?? ''}`}>
-                              {col.label}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((row) => (
-                          <tr key={row.saleId} className="border-t border-slate-100 hover:bg-slate-50/80">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-max w-full text-xs">
+                        <thead className="bg-slate-50 text-left">
+                          <tr>
                             {tableColumns.map((col) => (
-                              <td
-                                key={col.key}
-                                className={`max-w-[16rem] truncate whitespace-nowrap p-2 text-slate-700 ${col.className ?? ''}`}
-                                title={cellValue(row, col.key as keyof SalesReportRow)}
-                              >
-                                {cellValue(row, col.key as keyof SalesReportRow)}
-                              </td>
+                              <th key={col.key} className={`whitespace-nowrap p-2 font-medium ${col.className ?? ''}`}>
+                                {col.label}
+                              </th>
                             ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {rows.map((row) => (
+                            <tr key={row.saleId} className="border-t border-slate-100 hover:bg-slate-50/80">
+                              {tableColumns.map((col) => (
+                                <td
+                                  key={col.key}
+                                  className={`max-w-[16rem] truncate whitespace-nowrap p-2 text-slate-700 ${col.className ?? ''}`}
+                                  title={cellValue(row, col.key as keyof SalesReportRow)}
+                                >
+                                  {cellValue(row, col.key as keyof SalesReportRow)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </PaginatedList>
               </div>
