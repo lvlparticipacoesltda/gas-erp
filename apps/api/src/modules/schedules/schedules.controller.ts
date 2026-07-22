@@ -45,6 +45,11 @@ export class SchedulesController {
     return this.schedules.punch(user, body);
   }
 
+  @Get('time-clock/report')
+  report(@CurrentUser() user: AuthUser, @Query() query: Record<string, string>) {
+    return this.schedules.getTimeClockReport(user, query);
+  }
+
   @Get('time-clock')
   history(@CurrentUser() user: AuthUser, @Query() query: Record<string, string>) {
     return this.schedules.listPunches(user, query);

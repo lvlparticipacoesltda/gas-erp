@@ -90,6 +90,35 @@ export const timeClockHistoryQuerySchema = z.object({
 });
 export type TimeClockHistoryQuery = z.infer<typeof timeClockHistoryQuerySchema>;
 
+/** Relatório mensal: escala planejada × batidas de ponto. */
+export const timeClockReportQuerySchema = z.object({
+  storeId: z.string().min(1),
+  year: z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+  userId: z.string().min(1).optional(),
+  roleFilter: z.enum(['deliverers', 'attendants', 'all']).default('all'),
+});
+export type TimeClockReportQuery = z.infer<typeof timeClockReportQuerySchema>;
+
+export const TIME_CLOCK_DAY_STATUSES = [
+  'OK',
+  'LATE',
+  'ABSENT',
+  'INCOMPLETE',
+  'DAY_OFF',
+  'OFF_SCHEDULE',
+] as const;
+export type TimeClockDayStatus = (typeof TIME_CLOCK_DAY_STATUSES)[number];
+
+export const TIME_CLOCK_DAY_STATUS_LABELS: Record<TimeClockDayStatus, string> = {
+  OK: 'Presente',
+  LATE: 'Atraso',
+  ABSENT: 'Ausente',
+  INCOMPLETE: 'Sem saída',
+  DAY_OFF: 'Folga',
+  OFF_SCHEDULE: 'Fora da escala',
+};
+
 export const timeClockPunchSchema = z.object({
   storeId: z.string().min(1),
   type: z.enum(TIME_CLOCK_PUNCH_TYPES),

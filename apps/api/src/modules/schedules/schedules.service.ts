@@ -7,6 +7,7 @@ import {
 import { Prisma, ScheduleDayType, TimeClockPunchType, UserRole } from '@gas-erp/database';
 import {
   AuthUser,
+  TIME_CLOCK_DAY_STATUS_LABELS,
   TIME_CLOCK_GEOFENCE_METERS,
   TIME_CLOCK_PHOTO_MAX_BYTES,
   canManageSchedules,
@@ -16,10 +17,16 @@ import {
   timeClockHistoryQuerySchema,
   timeClockMeQuerySchema,
   timeClockPunchSchema,
+  timeClockReportQuerySchema,
   upsertScheduleDaySchema,
+  type TimeClockDayStatus,
 } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertScreenPermission, assertStoreAccess } from '../../common/guards';
+
+const BR_TZ = 'America/Sao_Paulo';
+/** Tolerância (minutos) após o horário de entrada da escala antes de marcar atraso. */
+const LATE_GRACE_MINUTES = 10;
 
 function monthBounds(year: number, month: number): { start: Date; end: Date } {
   const start = new Date(Date.UTC(year, month - 1, 1));
@@ -38,6 +45,51 @@ function formatDateOnly(date: Date): string {
 
 function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function brazilDateKey(date: Date): string {
+  return date.toLocaleDateString('en-CA', { timeZone: BR_TZ });
+}
+
+function brazilTimeHm(date: Date): string {
+  return date.toLocaleTimeString('pt-BR', {
+    timeZone: BR_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+function parseHmToMinutes(hm: string): number | null {
+  const match = hm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function resolveDayStatus(input: {
+  dayType: ScheduleDayType | null;
+  startTime: string | null;
+  clockIn: Date | null;
+  clockOut: Date | null;
+}): TimeClockDayStatus {
+  const { dayType, startTime, clockIn, clockOut } = input;
+
+  if (!dayType || dayType === ScheduleDayType.DAY_OFF) {
+    if (clockIn || clockOut) return 'OFF_SCHEDULE';
+    return 'DAY_OFF';
+  }
+
+  if (!clockIn && !clockOut) return 'ABSENT';
+  if (!clockIn || !clockOut) return 'INCOMPLETE';
+
+  if (startTime) {
+    const expected = parseHmToMinutes(startTime.slice(0, 5));
+    const actual = parseHmToMinutes(brazilTimeHm(clockIn));
+    if (expected != null && actual != null && actual > expected + LATE_GRACE_MINUTES) {
+      return 'LATE';
+    }
+  }
+  return 'OK';
 }
 
 @Injectable()
@@ -570,6 +622,151 @@ export class SchedulesService {
       },
       take: 500,
     });
+  }
+
+  /**
+   * Log mensal: compara escala planejada com batidas (entrada/saída) por colaborador/dia.
+   */
+  async getTimeClockReport(user: AuthUser, query: unknown) {
+    this.assertCanManage(user);
+    const params = timeClockReportQuerySchema.parse(query);
+    assertStoreAccess(user, params.storeId);
+
+    const store = await this.prisma.store.findFirst({
+      where: { id: params.storeId, organizationId: user.organizationId },
+      select: { id: true, name: true },
+    });
+    if (!store) throw new NotFoundException('Loja não encontrada');
+
+    const collaborators = await this.listCollaborators(user, params.storeId, params.roleFilter);
+    const filtered = params.userId
+      ? collaborators.filter((c) => c.id === params.userId)
+      : collaborators;
+    const userIds = filtered.map((c) => c.id);
+    if (userIds.length === 0) {
+      return { store, year: params.year, month: params.month, rows: [] };
+    }
+
+    const { start, end } = monthBounds(params.year, params.month);
+    // Margem de 1 dia nas pontas para punches perto da meia-noite no fuso BR.
+    const punchFrom = new Date(start);
+    punchFrom.setUTCDate(punchFrom.getUTCDate() - 1);
+    const punchTo = new Date(end);
+    punchTo.setUTCDate(punchTo.getUTCDate() + 1);
+
+    const [entries, punches] = await Promise.all([
+      this.prisma.workScheduleEntry.findMany({
+        where: {
+          organizationId: user.organizationId,
+          storeId: params.storeId,
+          userId: { in: userIds },
+          date: { gte: start, lt: end },
+        },
+      }),
+      this.prisma.timeClockPunch.findMany({
+        where: {
+          organizationId: user.organizationId,
+          storeId: params.storeId,
+          userId: { in: userIds },
+          punchedAt: { gte: punchFrom, lt: punchTo },
+        },
+        orderBy: { punchedAt: 'asc' },
+        select: {
+          userId: true,
+          type: true,
+          punchedAt: true,
+          source: true,
+        },
+      }),
+    ]);
+
+    const scheduleByKey = new Map<string, (typeof entries)[number]>();
+    for (const entry of entries) {
+      scheduleByKey.set(`${entry.userId}|${formatDateOnly(entry.date)}`, entry);
+    }
+
+    type DayPunches = {
+      clockIn: Date | null;
+      clockOut: Date | null;
+      sourceIn: string | null;
+      sourceOut: string | null;
+    };
+    const punchesByKey = new Map<string, DayPunches>();
+    for (const punch of punches) {
+      const dateKey = brazilDateKey(punch.punchedAt);
+      // Ignora batidas fora do mês filtrado (após conversão BR).
+      const [y, m] = dateKey.split('-').map(Number);
+      if (y !== params.year || m !== params.month) continue;
+
+      const key = `${punch.userId}|${dateKey}`;
+      const bucket = punchesByKey.get(key) ?? {
+        clockIn: null,
+        clockOut: null,
+        sourceIn: null,
+        sourceOut: null,
+      };
+      if (punch.type === TimeClockPunchType.CLOCK_IN && !bucket.clockIn) {
+        bucket.clockIn = punch.punchedAt;
+        bucket.sourceIn = punch.source;
+      }
+      if (punch.type === TimeClockPunchType.CLOCK_OUT) {
+        bucket.clockOut = punch.punchedAt;
+        bucket.sourceOut = punch.source;
+      }
+      punchesByKey.set(key, bucket);
+    }
+
+    const collabById = new Map(filtered.map((c) => [c.id, c]));
+    const keys = new Set<string>([...scheduleByKey.keys(), ...punchesByKey.keys()]);
+    const rows = [...keys]
+      .map((key) => {
+        const [userId, date] = key.split('|');
+        const collab = collabById.get(userId);
+        if (!collab) return null;
+        const schedule = scheduleByKey.get(key) ?? null;
+        const punch = punchesByKey.get(key) ?? {
+          clockIn: null,
+          clockOut: null,
+          sourceIn: null,
+          sourceOut: null,
+        };
+        const status = resolveDayStatus({
+          dayType: schedule?.dayType ?? null,
+          startTime: schedule?.startTime ?? null,
+          clockIn: punch.clockIn,
+          clockOut: punch.clockOut,
+        });
+        return {
+          userId,
+          userName: collab.name,
+          userRole: collab.role,
+          date,
+          dayType: schedule?.dayType ?? null,
+          scheduledStart: schedule?.startTime?.slice(0, 5) ?? null,
+          scheduledEnd: schedule?.endTime?.slice(0, 5) ?? null,
+          clockIn: punch.clockIn ? brazilTimeHm(punch.clockIn) : null,
+          clockOut: punch.clockOut ? brazilTimeHm(punch.clockOut) : null,
+          clockInAt: punch.clockIn?.toISOString() ?? null,
+          clockOutAt: punch.clockOut?.toISOString() ?? null,
+          sourceIn: punch.sourceIn,
+          sourceOut: punch.sourceOut,
+          status,
+          statusLabel: TIME_CLOCK_DAY_STATUS_LABELS[status],
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row != null)
+      .sort((a, b) => {
+        const byDate = b.date.localeCompare(a.date);
+        if (byDate !== 0) return byDate;
+        return a.userName.localeCompare(b.userName, 'pt-BR');
+      });
+
+    return {
+      store,
+      year: params.year,
+      month: params.month,
+      rows,
+    };
   }
 
   /** Escala do próprio entregador no app (qualquer loja vinculada). */

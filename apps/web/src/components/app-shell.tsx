@@ -154,6 +154,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     { href: '/master/deliverers', label: 'Entregadores' },
     { href: '/master/deliverers/map', label: 'Mapa de entregadores' },
     { href: '/master/schedules', label: 'Escalas de trabalho' },
+    { href: '/master/schedules/ponto', label: 'Log de ponto' },
     { href: '/master/purchases', label: 'Compras' },
     { href: '/master/reports', label: 'Relatórios' },
     { href: '/master/settings', label: 'Minha conta' },
