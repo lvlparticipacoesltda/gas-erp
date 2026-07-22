@@ -12,7 +12,12 @@ import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/componen
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
-import { getSaleDisplayStatus, getSaleDelivererName, type PaginatedResponse } from '@gas-erp/shared';
+import {
+  getSaleDisplayStatus,
+  getSaleDelivererName,
+  PAYMENT_METHOD_LABELS,
+  type PaginatedResponse,
+} from '@gas-erp/shared';
 
 interface CustomerAddress {
   id?: string;
@@ -49,6 +54,23 @@ interface CustomerSale {
   attendant?: { name: string } | null;
   deliverer?: { user: { name: string } } | null;
   items: { quantity: number; product: { name: string } }[];
+  payments?: {
+    amount: number | string;
+    method: string;
+    storePaymentMethod?: { label: string; systemCode?: string | null } | null;
+  }[] | null;
+}
+
+function formatSalePayments(sale: CustomerSale): string {
+  if (!sale.payments || sale.payments.length === 0) return '';
+  const labels = Array.from(
+    new Set(
+      sale.payments.map(
+        (p) => p.storePaymentMethod?.label ?? PAYMENT_METHOD_LABELS[p.method] ?? p.method,
+      ),
+    ),
+  );
+  return labels.join(', ');
 }
 
 interface CustomerForm extends CustomerAddressForm {
@@ -159,6 +181,7 @@ function CustomerHistoryModal({
                 const display = getSaleDisplayStatus(sale);
                 const itemsSummary = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
                 const address = formatSaleAddress(sale);
+                const payments = formatSalePayments(sale);
                 return (
                   <li key={sale.id} className="rounded-lg border border-slate-200 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -173,6 +196,10 @@ function CustomerHistoryModal({
                           <div className="flex gap-2">
                             <dt className="shrink-0 text-slate-500">Entregador:</dt>
                             <dd>{getSaleDelivererName(sale) ?? '—'}</dd>
+                          </div>
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 text-slate-500">Pagamento:</dt>
+                            <dd>{payments || '—'}</dd>
                           </div>
                           <div className="flex gap-2">
                             <dt className="shrink-0 text-slate-500">Endereço:</dt>

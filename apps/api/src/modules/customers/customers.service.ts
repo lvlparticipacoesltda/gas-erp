@@ -81,6 +81,11 @@ export class CustomersService {
           attendant: { select: { name: true } },
           deliverer: { include: { user: { select: { name: true } } } },
           items: { include: { product: { select: { name: true } } } },
+          payments: {
+            include: {
+              storePaymentMethod: { select: { id: true, label: true, systemCode: true } },
+            },
+          },
         },
       }),
       this.prisma.sale.count({ where: saleWhere }),

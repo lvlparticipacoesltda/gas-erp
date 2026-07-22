@@ -7,6 +7,7 @@ import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { CustomerAddressFields, type CustomerAddressForm } from '@/components/customer-address-fields';
 import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-picker';
+import { CustomerLastOrderCard } from '@/components/customer-last-order-card';
 import {
   SalePaymentsEditor,
   createDefaultPaymentLines,
@@ -623,6 +624,10 @@ export default function NewSalePage() {
         {step === 1 && (
           <Card>
             <CustomerPicker storeId={storeId} value={customerPick} onChange={applyCustomerPick} />
+
+            {customerPick.kind === 'customer' && (
+              <CustomerLastOrderCard storeId={storeId} customerId={customerPick.customer.id} />
+            )}
 
             <div className="mt-6">
               <Label>Canal de venda</Label>

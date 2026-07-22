@@ -63,7 +63,7 @@ export default function SalesListPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [useDateRange, setUseDateRange] = useState(false);
-  const [filterDate, setFilterDate] = useState('');
+  const [filterDate, setFilterDate] = useState(todayDateKey);
   const [delivererId, setDelivererId] = useState('');
   const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
   const currentUser = getStoredUser<{ role: string }>();
@@ -277,16 +277,26 @@ export default function SalesListPage() {
                   max={todayDateKey()}
                   onChange={(e) => setFilterDate(e.target.value)}
                 />
-                <p className="mt-1 text-xs text-slate-500">Deixe em branco para listar todas as datas</p>
+                <p className="mt-1 text-xs text-slate-500">Padrão: hoje. Deixe em branco para listar todas as datas</p>
               </>
             )}
             <button
               type="button"
               onClick={() => {
-                setUseDateRange((current) => !current);
-                setDateFrom('');
-                setDateTo('');
-                setFilterDate('');
+                setUseDateRange((current) => {
+                  const next = !current;
+                  if (next) {
+                    const today = todayDateKey();
+                    setDateFrom(today);
+                    setDateTo(today);
+                    setFilterDate('');
+                  } else {
+                    setFilterDate(todayDateKey());
+                    setDateFrom('');
+                    setDateTo('');
+                  }
+                  return next;
+                });
               }}
               className="mt-2 text-xs font-medium text-brand hover:underline"
             >
@@ -370,19 +380,20 @@ export default function SalesListPage() {
             Só aguardando aprovação (app)
           </label>
         )}
-        {(filterDate || dateFrom || dateTo || delivererId) && (
+        {(filterDate !== todayDateKey() || dateFrom || dateTo || delivererId || useDateRange) && (
           <Button
             type="button"
             variant="secondary"
             className="mb-0.5"
             onClick={() => {
-              setFilterDate('');
+              setUseDateRange(false);
+              setFilterDate(todayDateKey());
               setDateFrom('');
               setDateTo('');
               setDelivererId('');
             }}
           >
-            Limpar data e entregador
+            Voltar para hoje
           </Button>
         )}
         </div>

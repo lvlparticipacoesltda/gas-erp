@@ -48,7 +48,7 @@ Cada forma inclui `feeMode` (`NONE`, `PERCENT`, `FIXED`, `PERCENT_AND_FIXED`), `
 Operações escopadas por loja (`storeId` obrigatório).
 
 - `GET /customers?storeId=...` — lista clientes da loja
-- `GET /customers/:id` — detalhe
+- `GET /customers/:id?storeId=&page=&pageSize=` — detalhe + histórico paginado de vendas (não canceladas, mais recentes primeiro). Cada venda inclui `items` (com `product.name`), `attendant`, `deliverer`, endereço de entrega e `payments` (com `storePaymentMethod { label, systemCode }`). `sales.total` = total de pedidos
 - `POST /customers` — criar (vinculado à loja)
 - `PATCH /customers/:id` — atualizar (inclui `active: false` para inativar)
 - `DELETE /customers/:id?storeId=...` — **exclusão permanente** (desvincula vendas; remove cliente e endereços)
