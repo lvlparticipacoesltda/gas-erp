@@ -131,11 +131,15 @@ export default function SaleReceiptPage() {
 
   return (
     <div className="receipt-screen flex flex-col items-center gap-4 py-6">
-      {/* Ajusta o tamanho da folha só nesta tela (cupom 80mm). */}
+      {/* Tamanho da folha do cupom (80mm). @page precisa ficar no nível
+          superior — dentro de @media print o Chrome aplica de forma
+          inconsistente (ora 80mm, ora A4). */}
       <style>{`
+        @page { size: 80mm auto; margin: 4mm; }
         @media print {
-          @page { size: 80mm auto; margin: 4mm; }
-          .receipt-screen { padding: 0 !important; }
+          html, body { width: 80mm; }
+          .receipt-screen { padding: 0 !important; margin: 0 !important; }
+          .receipt-paper { width: 100% !important; box-shadow: none !important; }
         }
       `}</style>
 
