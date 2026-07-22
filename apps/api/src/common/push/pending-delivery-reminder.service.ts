@@ -34,6 +34,7 @@ export class PendingDeliveryReminderService implements OnModuleInit, OnModuleDes
     const pending = await this.prisma.delivery.findMany({
       where: {
         status: 'PENDING',
+        delivererId: { not: null },
         deliverer: {
           deliveries: {
             none: { status: 'IN_PROGRESS' },
@@ -48,6 +49,7 @@ export class PendingDeliveryReminderService implements OnModuleInit, OnModuleDes
     });
 
     for (const delivery of pending) {
+      if (!delivery.delivererId) continue;
       const sent = await this.push.notifyPendingDeliveryReminder(
         delivery.delivererId,
         delivery.id,

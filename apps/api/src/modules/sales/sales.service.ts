@@ -379,7 +379,7 @@ export class SalesService {
       select: { id: true },
     });
 
-    let newDelivery: { id: string; delivererId: string } | null = null;
+    let newDelivery: { id: string; delivererId: string | null } | null = null;
 
     if (!isPendingBackdate) {
       try {
@@ -421,7 +421,7 @@ export class SalesService {
       // Venda já foi salva; falha de auditoria não deve bloquear o fluxo.
     }
 
-    if (newDelivery) {
+    if (newDelivery?.delivererId) {
       void this.push
         .notifyNewDelivery(newDelivery.delivererId, newDelivery.id)
         .catch(() => undefined);
@@ -789,7 +789,7 @@ export class SalesService {
     data: CreateSaleInput,
     userId: string,
     isPickup: boolean,
-  ): Promise<{ id: string; delivererId: string } | null> {
+  ): Promise<{ id: string; delivererId: string | null } | null> {
     // Retirada (portaria) já é venda finalizada → baixa na criação.
     // Entrega: estoque só baixa quando a venda for marcada como DELIVERED.
     if (isPickup) {
@@ -800,26 +800,28 @@ export class SalesService {
         userId,
         saleId,
       );
+      return null;
     }
 
-    if (!isPickup && data.delivererId) {
-      const delivery = await tx.delivery.create({
-        data: {
-          saleId,
-          delivererId: data.delivererId,
-          status: DeliveryStatus.PENDING,
-        },
-        select: { id: true, delivererId: true },
-      });
+    // Entrega: sempre cria Delivery. Sem entregador = pedido em espera (sidebar).
+    const delivery = await tx.delivery.create({
+      data: {
+        saleId,
+        delivererId: data.delivererId || null,
+        status: DeliveryStatus.PENDING,
+      },
+      select: { id: true, delivererId: true },
+    });
+
+    if (data.delivererId) {
       // Garante unidade ativa = loja da rota (mapa por unidade).
       await tx.deliverer.update({
         where: { id: data.delivererId },
         data: { availableStoreId: data.storeId },
       });
-      return delivery;
     }
 
-    return null;
+    return delivery;
   }
 
   async approveBackdate(user: AuthUser, id: string) {
@@ -886,7 +888,7 @@ export class SalesService {
       // Auditoria não deve bloquear o fluxo.
     }
 
-    if (pushDelivery) {
+    if (pushDelivery?.delivererId) {
       void this.push
         .notifyNewDelivery(pushDelivery.delivererId, pushDelivery.id)
         .catch(() => undefined);
@@ -1307,7 +1309,7 @@ export class SalesService {
         }
 
         if (data.delivererId !== sale.delivererId || !sale.delivery) {
-          pushNewDelivery = { delivererId: delivery.delivererId, deliveryId: delivery.id };
+          pushNewDelivery = { delivererId: data.delivererId, deliveryId: delivery.id };
         }
 
         await tx.deliverer.update({
@@ -1322,8 +1324,11 @@ export class SalesService {
           data: { status: DeliveryStatus.CANCELLED },
         });
         if (
-          sale.delivery.status === DeliveryStatus.PENDING ||
-          sale.delivery.status === DeliveryStatus.IN_PROGRESS
+          sale.delivery.delivererId
+          && (
+            sale.delivery.status === DeliveryStatus.PENDING ||
+            sale.delivery.status === DeliveryStatus.IN_PROGRESS
+          )
         ) {
           pushCancelled = {
             delivererId: sale.delivery.delivererId,
@@ -1491,7 +1496,7 @@ export class SalesService {
 
     const isDelivererOwner =
       user.role === 'DELIVERER'
-      && sale.delivery?.deliverer.userId === user.id;
+      && sale.delivery?.deliverer?.userId === user.id;
 
     if (hasUnitPriceAdjustments && !isDelivererOwner) {
       const isFinance = user.role === 'FINANCE';

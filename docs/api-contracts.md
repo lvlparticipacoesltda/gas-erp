@@ -167,12 +167,13 @@ Requer FCM configurado — ver [mobile-push-fcm.md](mobile-push-fcm.md).
 
 ### Deliveries (app entregador)
 
-- `GET /deliveries?storeId=...` — entregas ativas da loja (`PENDING` / `IN_PROGRESS`)
+- `GET /deliveries?storeId=...` — entregas ativas da loja (`PENDING` / `IN_PROGRESS`). Inclui pedidos **em espera** (`delivererId` nulo)
 - `GET /deliveries/my` — entregas do entregador logado; inclui `destination: { latitude, longitude } | null` (geocodificado)
 - `GET /deliveries/:id/route?originLat=&originLng=` — rota Google Directions (`encodedPolyline`, `distanceMeters`, `durationSeconds`, `bounds`)
 - `POST /deliveries/:id/tracking` — `{ latitude, longitude, accuracy? }`
 - `GET /deliveries/:id/tracking` — histórico GPS
 - `PATCH /deliveries/:id/status` — `{ status: IN_PROGRESS | DELIVERED | CANCELLED }`
+- `PATCH /deliveries/:id/assign` — `{ delivererId }` — aloca entregador a um pedido em espera (staff da loja)
 
 #### Quem pode mudar o status
 

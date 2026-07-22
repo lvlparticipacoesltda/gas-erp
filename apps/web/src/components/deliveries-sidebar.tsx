@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Badge, Button } from '@/components/ui';
+import { Badge, Button, Select } from '@/components/ui';
 import { BrandLoader } from '@/components/brand-loader';
 import { api, getToken } from '@/lib/api';
 import { formatSaleAddress, timeAgo } from '@/lib/sale-utils';
@@ -10,6 +10,12 @@ import {
   getDeliveryDisplayStatus,
   getElapsedWaitingSeconds,
 } from '@gas-erp/shared';
+
+interface DelivererOption {
+  id: string;
+  user: { name: string };
+  status?: string;
+}
 
 interface DeliveryRow {
   id: string;
@@ -22,6 +28,7 @@ interface DeliveryRow {
   routeDurationSeconds?: number | null;
   elapsedWaitingSeconds?: number;
   elapsedRouteSeconds?: number | null;
+  delivererId?: string | null;
   sale: {
     id: string;
     status: string;
@@ -35,7 +42,7 @@ interface DeliveryRow {
     customer?: { name: string; phone?: string | null } | null;
     items: { quantity: number; product: { name: string } }[];
   };
-  deliverer: { user: { name: string } };
+  deliverer?: { user: { name: string } } | null;
 }
 
 interface DeliveriesSidebarProps {
@@ -61,6 +68,7 @@ function persistSidebarCollapsed(storeId: string, collapsed: boolean) {
 
 export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps) {
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
+  const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(() => readSidebarCollapsed(storeId));
   const [actionId, setActionId] = useState<string | null>(null);
@@ -86,6 +94,13 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
     return () => clearInterval(timer);
   }, [load]);
 
+  useEffect(() => {
+    if (!storeId) return;
+    api<DelivererOption[]>(`/deliverers?storeId=${storeId}`, {}, getToken())
+      .then(setDeliverers)
+      .catch(() => setDeliverers([]));
+  }, [storeId]);
+
   async function updateDelivery(id: string, status: 'DELIVERED') {
     setActionId(id);
     try {
@@ -99,7 +114,41 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
     }
   }
 
-  const pending = deliveries.filter((d) => d.status === 'PENDING');
+  async function assignDeliverer(id: string, delivererId: string) {
+    if (!delivererId) return;
+    setActionId(id);
+    try {
+      await api(`/deliveries/${id}/assign`, {
+        method: 'PATCH',
+        body: JSON.stringify({ delivererId }),
+      }, getToken());
+      await load();
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function cancelSale(saleId: string, deliveryId: string) {
+    const reason = window.prompt('Motivo do cancelamento:');
+    if (reason == null) return;
+    if (!reason.trim()) {
+      window.alert('Informe o motivo do cancelamento.');
+      return;
+    }
+    setActionId(deliveryId);
+    try {
+      await api(`/sales/${saleId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'CANCELLED', canceledReason: reason.trim() }),
+      }, getToken());
+      await load();
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  const waiting = deliveries.filter((d) => d.status === 'PENDING' && !d.delivererId && !d.deliverer);
+  const pending = deliveries.filter((d) => d.status === 'PENDING' && (d.delivererId || d.deliverer));
   const inProgress = deliveries.filter((d) => d.status === 'IN_PROGRESS');
 
   function expand() {
@@ -189,6 +238,29 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
           </p>
         )}
 
+        {waiting.length > 0 && (
+          <section>
+            <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] text-white">
+                {waiting.length}
+              </span>
+              Em espera
+            </h3>
+            <div className="space-y-2">
+              {waiting.map((d) => (
+                <WaitingDeliveryCard
+                  key={d.id}
+                  delivery={d}
+                  deliverers={deliverers}
+                  busy={actionId === d.id}
+                  onAssign={(delivererId) => assignDeliverer(d.id, delivererId)}
+                  onCancel={() => cancelSale(d.sale.id, d.id)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
         {pending.length > 0 && (
           <section>
             <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-orange-700">
@@ -231,6 +303,76 @@ export function DeliveriesSidebar({ storeId, className }: DeliveriesSidebarProps
   );
 }
 
+function WaitingDeliveryCard({
+  delivery,
+  deliverers,
+  busy,
+  onAssign,
+  onCancel,
+}: {
+  delivery: DeliveryRow;
+  deliverers: DelivererOption[];
+  busy: boolean;
+  onAssign: (delivererId: string) => void;
+  onCancel: () => void;
+}) {
+  const { sale } = delivery;
+  const products = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
+  const address = delivery.deliveryAddress ?? formatSaleAddress(sale);
+  const [selectedDelivererId, setSelectedDelivererId] = useState('');
+  const waitLabel = `Aguardando há ${formatWaitTime(
+    delivery.elapsedWaitingSeconds ?? getElapsedWaitingSeconds(delivery.sale.createdAt),
+  )}`;
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 shadow-sm">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <Badge tone="warning">Em espera</Badge>
+        <span className="text-xs text-red-500">{timeAgo(delivery.createdAt)}</span>
+      </div>
+      <p className="font-medium text-slate-900">{sale.customer?.name ?? 'Cliente não identificado'}</p>
+      {address && <p className="mt-1 text-xs leading-relaxed text-slate-600">{address}</p>}
+      {sale.customer?.phone && (
+        <p className="mt-1 text-xs text-slate-500">{sale.customer.phone}</p>
+      )}
+      <p className="mt-2 text-xs text-slate-500">{products}</p>
+      <p className="mt-2 text-xs font-medium text-amber-700">⏱ {waitLabel}</p>
+
+      <div className="mt-3 space-y-2">
+        <Select
+          value={selectedDelivererId}
+          disabled={busy}
+          onChange={(e) => setSelectedDelivererId(e.target.value)}
+        >
+          <option value="">Selecionar entregador…</option>
+          {deliverers.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.user.name}
+            </option>
+          ))}
+        </Select>
+        <Button
+          type="button"
+          className="w-full !py-1.5 text-xs"
+          disabled={busy || !selectedDelivererId}
+          onClick={() => onAssign(selectedDelivererId)}
+        >
+          {busy ? 'Salvando...' : 'Alocar entregador'}
+        </Button>
+        <Button
+          type="button"
+          variant="danger"
+          className="w-full !py-1.5 text-xs"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Cancelar pedido
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function DeliveryCard({
   delivery,
   busy,
@@ -262,7 +404,9 @@ function DeliveryCard({
         <p className="mt-1 text-xs text-slate-500">{sale.customer.phone}</p>
       )}
       <p className="mt-2 text-xs text-slate-500">{products}</p>
-      <p className="mt-2 text-xs font-medium text-brand-dark">🛵 {delivery.deliverer.user.name}</p>
+      <p className="mt-2 text-xs font-medium text-brand-dark">
+        🛵 {delivery.deliverer?.user.name ?? 'Sem entregador'}
+      </p>
       {waitLabel && <p className="mt-2 text-xs font-medium text-amber-700">⏱ {waitLabel}</p>}
       {onAction && actionLabel && (
         <Button

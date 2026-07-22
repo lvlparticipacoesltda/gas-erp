@@ -1056,7 +1056,7 @@ export default function NewSalePage() {
                       disabled={submitting}
                       onClick={() => submitSale(false)}
                     >
-                      {needsBackdateApproval ? 'Enviar sem entregador' : 'Finalizar sem entregador'}
+                      {needsBackdateApproval ? 'Enviar em espera' : 'Pedido em Espera'}
                     </Button>
                     <Button
                       type="button"

@@ -318,15 +318,17 @@ export class ReportsService {
       .sort((a, b) => b.total - a.total);
 
     const routeStats = aggregateDelivererRouteStats(
-      deliveries.map((delivery) => ({
-        status: delivery.status,
-        delivererId: delivery.delivererId,
-        delivererName: delivery.deliverer.user.name,
-        saleId: delivery.saleId,
-        saleCreatedAt: delivery.sale.createdAt,
-        startedAt: delivery.startedAt,
-        completedAt: delivery.completedAt,
-      })),
+      deliveries
+        .filter((delivery) => delivery.delivererId && delivery.deliverer)
+        .map((delivery) => ({
+          status: delivery.status,
+          delivererId: delivery.delivererId!,
+          delivererName: delivery.deliverer!.user.name,
+          saleId: delivery.saleId,
+          saleCreatedAt: delivery.sale.createdAt,
+          startedAt: delivery.startedAt,
+          completedAt: delivery.completedAt,
+        })),
     );
     const byDeliverer = routeStats.byDeliverer;
 

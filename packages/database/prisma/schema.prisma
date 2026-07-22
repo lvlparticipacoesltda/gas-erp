@@ -654,7 +654,8 @@ model SaleStatusLog {
 model Delivery {
   id                    String         @id @default(cuid())
   saleId                String         @unique
-  delivererId           String
+  /** Null = pedido em espera (ainda sem entregador alocado). */
+  delivererId           String?
   status                DeliveryStatus @default(PENDING)
   startedAt             DateTime?
   completedAt           DateTime?
@@ -663,7 +664,7 @@ model Delivery {
   updatedAt             DateTime       @updatedAt
 
   sale            Sale                    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  deliverer       Deliverer               @relation(fields: [delivererId], references: [id])
+  deliverer       Deliverer?              @relation(fields: [delivererId], references: [id])
   trackingPoints  DeliveryTrackingPoint[]
 
   @@index([delivererId, status])

@@ -42,4 +42,9 @@ export class DeliveriesController {
   updateStatus(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     return this.service.updateStatus(user, id, body);
   }
+
+  @Patch(':id/assign')
+  assignDeliverer(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.service.assignDeliverer(user, id, body);
+  }
 }

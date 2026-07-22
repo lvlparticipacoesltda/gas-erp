@@ -1,9 +1,11 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DeliveryStatus, SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  assignDeliveryDelivererSchema,
   deliveryRouteQuerySchema,
   deliveryTrackingSchema,
+  isDelivererAssignableForSale,
   updateDeliveryStatusSchema,
 } from '@gas-erp/shared';
 import { AuthUser } from '@gas-erp/shared';
@@ -13,6 +15,7 @@ import { GeocodingService } from '../../common/geocoding/geocoding.service';
 import { RoutingService } from '../../common/routing/routing.service';
 import { StoreRealtimeService } from '../../common/realtime/store-realtime.service';
 import { StockService } from '../stock/stock.service';
+import { PushService } from '../../common/push/push.service';
 
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
 
@@ -123,6 +126,7 @@ export class DeliveriesService {
     private routing: RoutingService,
     private realtime: StoreRealtimeService,
     private stock: StockService,
+    private push: PushService,
   ) {}
 
   async findByStore(user: AuthUser, storeId: string) {
@@ -219,7 +223,7 @@ export class DeliveriesService {
     if (!delivery || delivery.sale.store.organizationId !== user.organizationId) {
       throw new NotFoundException('Entrega não encontrada');
     }
-    if (delivery.deliverer.userId !== user.id && user.role !== 'ORG_MASTER') {
+    if (!delivery.deliverer || (delivery.deliverer.userId !== user.id && user.role !== 'ORG_MASTER')) {
       throw new ForbiddenException('Sem permissão');
     }
 
@@ -255,6 +259,9 @@ export class DeliveriesService {
     });
     if (!delivery || delivery.sale.store.organizationId !== user.organizationId) {
       throw new NotFoundException('Entrega não encontrada');
+    }
+    if (!delivery.delivererId || !delivery.deliverer) {
+      throw new BadRequestException('Pedido ainda sem entregador alocado.');
     }
     if (delivery.deliverer.userId !== user.id && user.role !== 'ORG_MASTER') {
       throw new ForbiddenException('Sem permissão');
@@ -324,6 +331,10 @@ export class DeliveriesService {
 
     assertStoreAccess(user, delivery.sale.storeId);
 
+    if (!delivery.delivererId || !delivery.deliverer) {
+      throw new BadRequestException('Aloque um entregador antes de iniciar ou concluir a entrega.');
+    }
+
     const isDeliverer = delivery.deliverer.userId === user.id;
     const isStoreStaff = STORE_STAFF_ROLES.has(user.role);
     if (!isDeliverer && !isStoreStaff) {
@@ -334,6 +345,8 @@ export class DeliveriesService {
     if (status === 'IN_PROGRESS' && !(user.role === 'DELIVERER' && isDeliverer)) {
       throw new ForbiddenException('Apenas o entregador responsável pode iniciar a rota');
     }
+
+    const delivererId = delivery.delivererId;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (status === 'DELIVERED') {
@@ -375,7 +388,7 @@ export class DeliveriesService {
           },
         });
         await tx.deliverer.update({
-          where: { id: delivery.delivererId },
+          where: { id: delivererId },
           data: { status: 'AVAILABLE', availableStoreId: delivery.sale.storeId },
         });
       } else if (status === 'IN_PROGRESS') {
@@ -392,7 +405,7 @@ export class DeliveriesService {
           },
         });
         await tx.deliverer.update({
-          where: { id: delivery.delivererId },
+          where: { id: delivererId },
           data: { status: 'ON_DELIVERY', availableStoreId: delivery.sale.storeId },
         });
       }
@@ -408,6 +421,105 @@ export class DeliveriesService {
       );
     } catch {
       // Eventos em tempo real não devem bloquear o fluxo principal.
+    }
+
+    return updated;
+  }
+
+  /** Aloca entregador a um pedido em espera (Delivery.PENDING sem delivererId). */
+  async assignDeliverer(user: AuthUser, deliveryId: string, input: unknown) {
+    const { delivererId } = assignDeliveryDelivererSchema.parse(input);
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: {
+        sale: { include: { store: true } },
+      },
+    });
+    if (!delivery || delivery.sale.store.organizationId !== user.organizationId) {
+      throw new NotFoundException('Entrega não encontrada');
+    }
+    assertStoreAccess(user, delivery.sale.storeId);
+
+    if (!STORE_STAFF_ROLES.has(user.role)) {
+      throw new ForbiddenException('Sem permissão para alocar entregador.');
+    }
+    if (delivery.status !== DeliveryStatus.PENDING) {
+      throw new BadRequestException('Só é possível alocar entregador em pedidos pendentes.');
+    }
+
+    const deliverer = await this.prisma.deliverer.findFirst({
+      where: {
+        id: delivererId,
+        stores: {
+          some: { storeId: delivery.sale.storeId, store: { organizationId: user.organizationId } },
+        },
+      },
+      include: { user: { select: { active: true } } },
+    });
+    if (!deliverer) {
+      throw new BadRequestException('Entregador não atende esta unidade.');
+    }
+    const { assignable, reason } = isDelivererAssignableForSale(
+      {
+        status: deliverer.status,
+        user: deliverer.user,
+        availableStoreId: deliverer.availableStoreId,
+      },
+      delivery.sale.storeId,
+    );
+    if (!assignable) {
+      throw new BadRequestException(
+        reason ? `Entregador indisponível: ${reason}.` : 'Entregador indisponível.',
+      );
+    }
+
+    const previousDelivererId = delivery.delivererId;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.delivery.update({
+        where: { id: deliveryId },
+        data: {
+          delivererId,
+          pendingReminderSentAt: null,
+        },
+        include: {
+          sale: {
+            include: {
+              customer: true,
+              items: { include: { product: true } },
+            },
+          },
+          deliverer: { include: { user: { select: { id: true, name: true } } } },
+        },
+      });
+
+      await tx.sale.update({
+        where: { id: delivery.saleId },
+        data: { delivererId },
+      });
+
+      await tx.deliverer.update({
+        where: { id: delivererId },
+        data: { availableStoreId: delivery.sale.storeId },
+      });
+
+      if (previousDelivererId && previousDelivererId !== delivererId) {
+        await tx.deliveryTrackingPoint.deleteMany({ where: { deliveryId } });
+      }
+
+      return next;
+    });
+
+    void this.push.notifyNewDelivery(delivererId, deliveryId).catch(() => undefined);
+
+    try {
+      this.realtime.notifyStoreChange(
+        delivery.sale.storeId,
+        delivery.sale.store.organizationId,
+        'delivery_updated',
+      );
+    } catch {
+      // realtime best-effort
     }
 
     return updated;

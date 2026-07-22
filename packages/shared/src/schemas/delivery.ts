@@ -13,7 +13,12 @@ export const updateDeliveryStatusSchema = z.object({
   status: z.enum(['IN_PROGRESS', 'DELIVERED', 'CANCELLED']),
 });
 
+export const assignDeliveryDelivererSchema = z.object({
+  delivererId: z.string().min(1),
+});
+
 export type DeliveryTrackingInput = z.infer<typeof deliveryTrackingSchema>;
+export type AssignDeliveryDelivererInput = z.infer<typeof assignDeliveryDelivererSchema>;
 
 export const deliveryDestinationSchema = z.object({
   latitude: z.number(),
