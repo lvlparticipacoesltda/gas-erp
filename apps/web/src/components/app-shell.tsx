@@ -28,9 +28,9 @@ let cachedUser: AuthUser | null = null;
 let cachedStores: Store[] | null = null;
 let storesRequest: Promise<Store[]> | null = null;
 
-function fetchStores(): Promise<Store[]> {
-  if (cachedStores) return Promise.resolve(cachedStores);
-  if (!storesRequest) {
+function fetchStores(force = false): Promise<Store[]> {
+  if (!force && cachedStores) return Promise.resolve(cachedStores);
+  if (force || !storesRequest) {
     const token = getToken();
     storesRequest = api<Store[]>('/stores', {}, token).then((data) => {
       cachedStores = data;
@@ -38,6 +38,12 @@ function fetchStores(): Promise<Store[]> {
     });
   }
   return storesRequest;
+}
+
+/** Invalida o cache de lojas (ex.: após criar/editar/excluir uma loja no master). */
+export function invalidateStoresCache() {
+  cachedStores = null;
+  storesRequest = null;
 }
 
 export function clearAppShellCache() {
@@ -74,17 +80,28 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
         setUser(fresh);
         setSessionReady(true);
 
-        return fetchStores().then((data) => {
-          setStores(data);
+        return fetchStores().then(async (data) => {
+          let list = data;
+          // O cache de lojas pode estar desatualizado (ex.: loja recém-criada
+          // que ainda não aparece na lista). Se a loja atual (da URL) não estiver
+          // presente, recarrega do servidor antes de montar o seletor.
+          if (
+            mode === 'store' &&
+            storeIdFromPath &&
+            !list.some((s) => s.id === storeIdFromPath)
+          ) {
+            list = await fetchStores(true);
+          }
+          setStores(list);
           if (mode === 'store') {
             if (storeIdFromPath) {
               setStoreId(storeIdFromPath);
               setCurrentStoreId(storeIdFromPath);
-            } else if (getCurrentStoreId() && data.some((s) => s.id === getCurrentStoreId())) {
+            } else if (getCurrentStoreId() && list.some((s) => s.id === getCurrentStoreId())) {
               setStoreId(getCurrentStoreId());
-            } else if (data[0]) {
-              setStoreId(data[0].id);
-              setCurrentStoreId(data[0].id);
+            } else if (list[0]) {
+              setStoreId(list[0].id);
+              setCurrentStoreId(list[0].id);
             }
           }
         });

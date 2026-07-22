@@ -7,6 +7,7 @@ import {
   type CustomerAddressForm,
 } from '@/components/customer-address-fields';
 import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
+import { invalidateStoresCache } from '@/components/app-shell';
 import { api, getToken } from '@/lib/api';
 import { formatCep } from '@/lib/viacep';
 
@@ -97,6 +98,9 @@ export default function MasterStoresPage() {
   const [ready, setReady] = useState(false);
 
   async function load() {
+    // A lista de lojas mudou (ou vamos recarregá-la): invalida o cache usado
+    // pelo seletor de lojas da barra lateral para evitar lista desatualizada.
+    invalidateStoresCache();
     setStores(await api<Store[]>('/stores', {}, getToken()));
   }
 
