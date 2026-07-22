@@ -8,6 +8,7 @@ import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Badge, Button, Input, PageHeader, Select, Table } from '@/components/ui';
 import { FilterBar, FilterField } from '@/components/filters';
+import { SaleReceiptDrawer } from '@/components/sale-receipt-drawer';
 import { useRealtimeRefetch } from '@/hooks/use-realtime-refetch';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -66,6 +67,7 @@ export default function SalesListPage() {
   const [filterDate, setFilterDate] = useState(todayDateKey);
   const [delivererId, setDelivererId] = useState('');
   const [deliverers, setDeliverers] = useState<DelivererOption[]>([]);
+  const [receiptSaleId, setReceiptSaleId] = useState<string | null>(null);
   const currentUser = getStoredUser<{ role: string }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
   const canApproveMobile = currentUser ? canApproveMobileSales(currentUser.role) : false;
@@ -438,13 +440,13 @@ export default function SalesListPage() {
                     <Link href={`/store/${storeId}/sales/${s.id}`}>
                       <Button type="button" variant="secondary">Ver / editar</Button>
                     </Link>
-                    <Link
-                      href={`/store/${storeId}/sales/${s.id}/receipt`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setReceiptSaleId(s.id)}
                     >
-                      <Button type="button" variant="secondary">Imprimir</Button>
-                    </Link>
+                      Imprimir
+                    </Button>
                   </div>
                 </td>
               </tr>
@@ -460,6 +462,12 @@ export default function SalesListPage() {
         </Table>
       </PaginatedSection>
       </LoadingOverlay>
+
+      <SaleReceiptDrawer
+        storeId={storeId}
+        saleId={receiptSaleId}
+        onClose={() => setReceiptSaleId(null)}
+      />
     </>
   );
 }
