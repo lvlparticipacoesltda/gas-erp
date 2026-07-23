@@ -281,7 +281,7 @@ export class SchedulesService {
 
   private assertCanViewTimeClock(user: AuthUser) {
     if (canViewTimeClockLog(user.role, user.permissions)) return;
-    throw new ForbiddenException('Sem permissão para consultar o log de ponto');
+    throw new ForbiddenException('Sem permissão para consultar o cartão de ponto');
   }
 
   async getMonthGrid(user: AuthUser, query: unknown) {

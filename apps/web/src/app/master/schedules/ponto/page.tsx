@@ -27,8 +27,8 @@ export default function MasterTimeClockLogPage() {
   return (
     <>
       <PageHeader
-        title="Log de ponto"
-        subtitle="Cartões de ponto por colaborador — consulta e exportação"
+        title="Cartão de ponto"
+        subtitle="Consulta e exportação por colaborador"
         action={
           <Link
             href="/master/schedules"

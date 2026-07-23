@@ -252,7 +252,7 @@ export function TimeClockLogPanel({
   if (!canView) {
     return (
       <Card className="p-6 text-sm text-slate-600">
-        Sem permissão para consultar o log de ponto.
+        Sem permissão para consultar o cartão de ponto.
       </Card>
     );
   }

@@ -19,7 +19,7 @@ export const STORE_NAV_ITEMS: {
   { screen: 'store.deliverers', segment: 'deliverers', label: 'Entregadores' },
   { screen: 'store.deliverers.map', segment: 'deliverers/map', label: 'Mapa de entregadores' },
   { screen: 'store.schedules', segment: 'schedules', label: 'Escalas de trabalho' },
-  { screen: 'store.time-clock', segment: 'schedules/ponto', label: 'Log de ponto' },
+  { screen: 'store.time-clock', segment: 'schedules/ponto', label: 'Cartão de ponto' },
   { screen: 'store.reports', segment: 'reports', label: 'Relatórios' },
 ];
 

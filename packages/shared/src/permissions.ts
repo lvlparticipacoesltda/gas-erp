@@ -31,7 +31,7 @@ export const STORE_SCREEN_LABELS: Record<StoreScreenKey, string> = {
   'store.deliverers': 'Entregadores',
   'store.deliverers.map': 'Mapa de entregadores',
   'store.schedules': 'Escalas de trabalho',
-  'store.time-clock': 'Log de ponto',
+  'store.time-clock': 'Cartão de ponto',
   'store.daily-summary': 'Resumo diário',
   'store.reports': 'Relatórios',
 };

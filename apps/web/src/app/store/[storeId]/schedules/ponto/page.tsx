@@ -23,7 +23,7 @@ export default function StoreTimeClockLogPage() {
   return (
     <>
       <PageHeader
-        title="Log de ponto"
+        title="Cartão de ponto"
         subtitle="Compare batidas de entrada/saída com a escala da unidade"
         action={
           <Link
