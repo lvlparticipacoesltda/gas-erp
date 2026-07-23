@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
@@ -259,18 +258,7 @@ export default function MasterUsersPage() {
 
   return (
     <>
-    <PageHeader
-      title="Usuários"
-      subtitle="Acesso ao painel web — papéis, lojas e telas permitidas"
-      action={
-        <Link
-          href="/master/users/ponto"
-          className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Log de ponto
-        </Link>
-      }
-    />
+    <PageHeader title="Usuários" subtitle="Acesso ao painel web — papéis, lojas e telas permitidas" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 font-semibold">{editing ? 'Editar usuário' : 'Novo usuário'}</h2>

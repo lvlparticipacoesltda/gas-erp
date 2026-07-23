@@ -12,6 +12,7 @@ import {
   TIME_CLOCK_GEOFENCE_METERS,
   TIME_CLOCK_PHOTO_MAX_BYTES,
   canManageSchedules,
+  canViewTimeClockLog,
   copyScheduleSchema,
   getBusinessDayBounds,
   haversineDistanceMeters,
@@ -272,6 +273,11 @@ export class SchedulesService {
     if (!canManageSchedules(user.role)) {
       throw new ForbiddenException('Apenas master ou gerente podem editar a escala');
     }
+  }
+
+  private assertCanViewTimeClock(user: AuthUser) {
+    if (canViewTimeClockLog(user.role, user.permissions)) return;
+    throw new ForbiddenException('Sem permissão para consultar o log de ponto');
   }
 
   async getMonthGrid(user: AuthUser, query: unknown) {
@@ -934,7 +940,7 @@ export class SchedulesService {
    * Cartões de ponto no formato do fechamento (4 batidas, previsto, totais simples).
    */
   async getTimeClockCards(user: AuthUser, query: unknown) {
-    this.assertCanViewSchedules(user);
+    this.assertCanViewTimeClock(user);
     const params = timeClockCardsQuerySchema.parse(query);
     assertStoreAccess(user, params.storeId);
 

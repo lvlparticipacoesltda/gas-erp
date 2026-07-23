@@ -31,7 +31,7 @@ export default function MasterSchedulesPage() {
         subtitle="Cadastre a escala mensal de entregadores e atendentes por unidade"
         action={
           <Link
-            href="/master/users/ponto"
+            href="/master/schedules/ponto"
             className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
             Log de ponto

@@ -12,6 +12,7 @@ export const STORE_SCREEN_KEYS = [
   'store.deliverers',
   'store.deliverers.map',
   'store.schedules',
+  'store.time-clock',
   'store.daily-summary',
   'store.reports',
 ] as const;
@@ -30,6 +31,7 @@ export const STORE_SCREEN_LABELS: Record<StoreScreenKey, string> = {
   'store.deliverers': 'Entregadores',
   'store.deliverers.map': 'Mapa de entregadores',
   'store.schedules': 'Escalas de trabalho',
+  'store.time-clock': 'Log de ponto',
   'store.daily-summary': 'Resumo diário',
   'store.reports': 'Relatórios',
 };
@@ -153,7 +155,7 @@ export function canViewTimeClockLog(
   permissions?: string[] | null,
 ): boolean {
   if (canManageSchedules(role)) return true;
-  return hasScreenPermission(role, permissions, 'store.schedules');
+  return hasScreenPermission(role, permissions, 'store.time-clock');
 }
 
 export const userPermissionsSchema = z.array(z.enum(STORE_SCREEN_KEYS)).optional();
