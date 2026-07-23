@@ -14,11 +14,33 @@ export class UsersService {
     private audit: AuditService,
   ) {}
 
-  async findAll(user: AuthUser, page = 1, pageSize = 20) {
+  async findAll(
+    user: AuthUser,
+    page = 1,
+    pageSize = 20,
+    filters: { search?: string; role?: string; active?: string } = {},
+  ) {
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
+    const search = filters.search?.trim();
+    const role = filters.role?.trim();
     const where = {
       organizationId: user.organizationId,
-      role: { not: 'DELIVERER' as const },
+      role: role
+        ? (role as 'ORG_MASTER' | 'STORE_MANAGER' | 'ATTENDANT' | 'FINANCE' | 'PLATFORM_ADMIN')
+        : ({ not: 'DELIVERER' as const }),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' as const } },
+              { email: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+      ...(filters.active === 'true'
+        ? { active: true }
+        : filters.active === 'false'
+          ? { active: false }
+          : {}),
     };
     const [data, total] = await Promise.all([
       this.prisma.user.findMany({

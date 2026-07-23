@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Plus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { BrandLoader, PageLoader } from '@/components/brand-loader';
 import { CustomerAddressFields, customerAddressPayload, type CustomerAddressForm } from '@/components/customer-address-fields';
 import { CustomerProductPricesEditor } from '@/components/customer-product-prices-editor';
+import { FilterPanel } from '@/components/filter-panel';
 import { LoadingOverlay } from '@/components/loading-overlay';
-import { Pagination } from '@/components/pagination';
-import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
+import { Modal } from '@/components/modal';
+import { PaginatedSection } from '@/components/paginated-section';
+import { DEFAULT_TABLE_PAGE_SIZE, Pagination } from '@/components/pagination';
+import { TableAction, TableActions } from '@/components/table-actions';
+import { Badge, Button, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
@@ -94,7 +99,6 @@ const emptyForm: CustomerForm = {
   state: 'SP',
 };
 
-const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 10;
 
 function addressFromCustomer(addr?: CustomerAddress): CustomerAddressForm {
@@ -157,101 +161,99 @@ function CustomerHistoryModal({
   }, [customer.id, storeId, page]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl">
-        <div className="border-b border-slate-100 px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-900">Histórico de pedidos</h2>
-          <p className="mt-1 text-sm text-slate-500">{customer.name}</p>
+    <Modal
+      open
+      onClose={onClose}
+      title="Histórico de pedidos"
+      subtitle={customer.name}
+      size="xl"
+    >
+      {loading && sales.length === 0 && !error && (
+        <div className="flex justify-center py-10">
+          <BrandLoader size="md" label="Carregando pedidos…" />
         </div>
-
-        <div className="overflow-y-auto px-6 py-4">
-          {loading && sales.length === 0 && !error && (
-            <div className="flex justify-center py-10">
-              <BrandLoader size="md" label="Carregando pedidos…" />
-            </div>
-          )}
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {!error && sales.length === 0 && !loading && (
-            <p className="text-sm text-slate-500">Nenhum pedido encontrado para este cliente nesta unidade.</p>
-          )}
-          {!error && sales.length > 0 && (
-            <LoadingOverlay loading={loading} label="Carregando…" minHeight="min-h-[10rem]">
-            <ul className="space-y-3">
-              {sales.map((sale) => {
-                const display = getSaleDisplayStatus(sale);
-                const itemsSummary = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
-                const address = formatSaleAddress(sale);
-                const payments = formatSalePayments(sale);
-                return (
-                  <li key={sale.id} className="rounded-lg border border-slate-200 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-slate-900">{formatDate(sale.createdAt)}</p>
-                        <p className="mt-1 text-sm text-slate-600">{itemsSummary || 'Sem itens'}</p>
-                        <dl className="mt-3 space-y-1 text-sm text-slate-600">
-                          <div className="flex gap-2">
-                            <dt className="shrink-0 text-slate-500">Atendente:</dt>
-                            <dd>{sale.attendant?.name ?? '—'}</dd>
-                          </div>
-                          <div className="flex gap-2">
-                            <dt className="shrink-0 text-slate-500">Entregador:</dt>
-                            <dd>{getSaleDelivererName(sale) ?? '—'}</dd>
-                          </div>
-                          <div className="flex gap-2">
-                            <dt className="shrink-0 text-slate-500">Pagamento:</dt>
-                            <dd>{payments || '—'}</dd>
-                          </div>
-                          <div className="flex gap-2">
-                            <dt className="shrink-0 text-slate-500">Endereço:</dt>
-                            <dd>{address || '—'}</dd>
-                          </div>
-                        </dl>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-2">
-                        <Badge tone={display.tone}>{display.label}</Badge>
-                        <span className="font-semibold text-slate-900">{formatCurrency(sale.total)}</span>
-                        <Link href={`/store/${storeId}/sales/${sale.id}`}>
-                          <Button type="button" variant="secondary">Ver pedido</Button>
-                        </Link>
-                      </div>
+      )}
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {!error && sales.length === 0 && !loading && (
+        <p className="text-sm text-slate-500">Nenhum pedido encontrado para este cliente nesta unidade.</p>
+      )}
+      {!error && sales.length > 0 && (
+        <LoadingOverlay loading={loading} label="Carregando…" minHeight="min-h-[10rem]">
+          <ul className="space-y-3">
+            {sales.map((sale) => {
+              const display = getSaleDisplayStatus(sale);
+              const itemsSummary = sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join(', ');
+              const address = formatSaleAddress(sale);
+              const payments = formatSalePayments(sale);
+              return (
+                <li key={sale.id} className="rounded-lg border border-slate-200 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-slate-900">{formatDate(sale.createdAt)}</p>
+                      <p className="mt-1 text-sm text-slate-600">{itemsSummary || 'Sem itens'}</p>
+                      <dl className="mt-3 space-y-1 text-sm text-slate-600">
+                        <div className="flex gap-2">
+                          <dt className="shrink-0 text-slate-500">Atendente:</dt>
+                          <dd>{sale.attendant?.name ?? '—'}</dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="shrink-0 text-slate-500">Entregador:</dt>
+                          <dd>{getSaleDelivererName(sale) ?? '—'}</dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="shrink-0 text-slate-500">Pagamento:</dt>
+                          <dd>{payments || '—'}</dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="shrink-0 text-slate-500">Endereço:</dt>
+                          <dd>{address || '—'}</dd>
+                        </div>
+                      </dl>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-            </LoadingOverlay>
-          )}
-          {!error && total > 0 && (
-            <Pagination
-              className="mt-4"
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              pageSize={HISTORY_PAGE_SIZE}
-              loading={loading}
-              onPageChange={setPage}
-            />
-          )}
-        </div>
-
-        <div className="border-t border-slate-100 px-6 py-4">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Fechar
-          </Button>
-        </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <Badge tone={display.tone}>{display.label}</Badge>
+                      <span className="font-semibold text-slate-900">{formatCurrency(sale.total)}</span>
+                      <Link href={`/store/${storeId}/sales/${sale.id}`}>
+                        <Button type="button" variant="secondary">Ver pedido</Button>
+                      </Link>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </LoadingOverlay>
+      )}
+      {!error && total > 0 && (
+        <Pagination
+          className="mt-4"
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={HISTORY_PAGE_SIZE}
+          loading={loading}
+          onPageChange={setPage}
+        />
+      )}
+      <div className="mt-4 flex justify-end border-t border-slate-100 pt-4">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Fechar
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
 export default function CustomersPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [draftSearch, setDraftSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
@@ -259,21 +261,19 @@ export default function CustomersPage() {
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch]);
+  const [saving, setSaving] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
+      const params = new URLSearchParams({
+        storeId,
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (appliedSearch.trim()) params.set('search', appliedSearch.trim());
       const res = await api<PaginatedResponse<Customer>>(
-        `/customers?storeId=${storeId}&search=${encodeURIComponent(debouncedSearch)}&page=${page}&pageSize=${PAGE_SIZE}`,
+        `/customers?${params}`,
         {},
         getToken(),
       );
@@ -288,9 +288,28 @@ export default function CustomersPage() {
 
   useEffect(() => {
     load();
-  }, [debouncedSearch, page]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, page, pageSize, appliedSearch]);
 
-  function startEdit(customer: Customer) {
+  function applyFilters() {
+    setPage(1);
+    setAppliedSearch(draftSearch);
+  }
+
+  function resetFilters() {
+    setDraftSearch('');
+    setPage(1);
+    setAppliedSearch('');
+  }
+
+  function openCreate() {
+    setFormError('');
+    setForm(emptyForm);
+    setEditing(null);
+    setModal('create');
+  }
+
+  function openEdit(customer: Customer) {
     const addr = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0];
     setFormError('');
     setEditing(customer);
@@ -301,11 +320,19 @@ export default function CustomersPage() {
       active: customer.active ?? true,
       ...addressFromCustomer(addr),
     });
+    setModal('edit');
+  }
+
+  function closeModal() {
+    setModal(null);
+    setEditing(null);
+    setFormError('');
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError('');
+    setSaving(true);
     try {
       await api('/customers', {
         method: 'POST',
@@ -317,10 +344,12 @@ export default function CustomersPage() {
           addresses: [buildAddressPayload(form)],
         }),
       }, getToken());
-      setForm(emptyForm);
-      load();
+      closeModal();
+      await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao cadastrar cliente');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -339,8 +368,8 @@ export default function CustomersPage() {
         method: 'PATCH',
         body: JSON.stringify({ active: false }),
       }, getToken());
-      if (editing?.id === customer.id) setEditing(null);
-      load();
+      if (editing?.id === customer.id) closeModal();
+      await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao inativar cliente');
     }
@@ -357,9 +386,9 @@ export default function CustomersPage() {
     setFormError('');
     try {
       await api(`/customers/${customer.id}?storeId=${storeId}`, { method: 'DELETE' }, getToken());
-      if (editing?.id === customer.id) setEditing(null);
+      if (editing?.id === customer.id) closeModal();
       if (historyCustomer?.id === customer.id) setHistoryCustomer(null);
-      load();
+      await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao excluir cliente');
     }
@@ -377,6 +406,7 @@ export default function CustomersPage() {
     }
 
     setFormError('');
+    setSaving(true);
     try {
       await api(`/customers/${editing.id}?storeId=${storeId}`, {
         method: 'PATCH',
@@ -388,10 +418,12 @@ export default function CustomersPage() {
           addresses: [buildAddressPayload(editForm)],
         }),
       }, getToken());
-      setEditing(null);
-      load();
+      closeModal();
+      await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao salvar cliente');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -424,119 +456,145 @@ export default function CustomersPage() {
     <>
       <PageHeader title="Clientes" subtitle="Cadastro e busca de clientes desta unidade" />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <h2 className="mb-4 font-semibold">{editing ? 'Editar cliente' : 'Novo cliente'}</h2>
-          {formError && (
-            <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
-          )}
-          {editing ? (
-            <>
-              <form onSubmit={handleUpdate} className="space-y-3">
-                {identityFields(editForm, setEditForm)}
-                <CustomerAddressFields
-                  value={editForm}
-                  onChange={(address) => setEditForm({ ...editForm, ...address })}
-                />
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={editForm.active}
-                    onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })}
-                  />
-                  Cliente ativo (desmarque para inativar nas buscas)
-                </label>
-                <div className="flex gap-2 pt-2">
-                  <Button type="submit">Salvar cliente</Button>
-                  <Button type="button" variant="secondary" onClick={() => { setEditing(null); setFormError(''); }}>Cancelar</Button>
-                </div>
-              </form>
-              <CustomerProductPricesEditor customerId={editing.id} storeId={storeId} />
-            </>
-          ) : (
-            <form onSubmit={handleCreate} className="space-y-3">
-              {identityFields(form, setForm)}
-              <CustomerAddressFields
-                value={form}
-                onChange={(address) => setForm({ ...form, ...address })}
-              />
-              <Button type="submit" className="mt-2">Cadastrar</Button>
-            </form>
-          )}
-        </Card>
+      <FilterPanel onSearch={applyFilters} onReset={resetFilters} searching={loading}>
+        <div>
+          <Label>Nome, telefone ou documento</Label>
+          <Input
+            value={draftSearch}
+            onChange={(e) => setDraftSearch(e.target.value)}
+            placeholder="Buscar cliente"
+          />
+        </div>
+      </FilterPanel>
 
-        <Card className="overflow-hidden p-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
-            <div className="relative w-full max-w-xs">
-              <svg
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                aria-hidden
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z" />
-              </svg>
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar cliente"
-                className="pl-10"
-                aria-label="Buscar cliente"
-              />
-            </div>
-            {search ? (
-              <Button type="button" variant="secondary" className="shrink-0" onClick={() => setSearch('')}>
-                Limpar
-              </Button>
-            ) : null}
-          </div>
-          <LoadingOverlay loading={loading} label="Carregando…">
-          <Table>
-            <thead className="bg-slate-50 text-left">
-              <tr><th className="p-3">Nome</th><th className="p-3">Telefone</th><th className="p-3">Endereço</th><th className="p-3" /></tr>
-            </thead>
-            <tbody>
-              {customers.map((c) => (
-                <tr key={c.id} className="border-t border-slate-100">
-                  <td className="p-3">{c.name}</td>
-                  <td className="p-3">{c.phone ?? '-'}</td>
-                  <td className="p-3">{c.addresses[0] ? `${c.addresses[0].street}, ${c.addresses[0].city}` : '-'}</td>
-                  <td className="p-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button type="button" variant="secondary" onClick={() => setHistoryCustomer(c)}>
-                        Histórico
-                      </Button>
-                      <Button type="button" variant="secondary" onClick={() => startEdit(c)}>Editar</Button>
-                      {c.active !== false ? (
-                        <Button type="button" variant="secondary" onClick={() => handleDeactivate(c)}>
-                          Inativar
-                        </Button>
-                      ) : null}
-                      <Button type="button" variant="danger" onClick={() => handleDelete(c)}>
-                        Excluir
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {customers.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="p-6 text-center text-sm text-slate-400">
-                    Nenhum cliente encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-          </LoadingOverlay>
-          <div className="border-t border-slate-100 px-4 py-3">
-            <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} loading={loading} onPageChange={setPage} />
-          </div>
-        </Card>
+      <div className="mb-4 flex justify-end">
+        <Button type="button" onClick={openCreate} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Criar
+        </Button>
       </div>
+
+      <PaginatedSection
+        loading={loading}
+        pagination={{
+          className: 'mt-4',
+          page,
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => {
+            setPage(1);
+            setPageSize(size);
+          },
+        }}
+      >
+        <Table>
+          <thead className="bg-slate-50 text-left">
+            <tr>
+              <th className="p-3">Nome</th>
+              <th className="p-3">Telefone</th>
+              <th className="p-3 min-w-[14rem]">Endereço</th>
+              <th className="p-3 text-right">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {customers.map((c) => (
+              <tr key={c.id} className="border-t border-slate-100">
+                <td className="p-3 font-medium text-slate-800">{c.name}</td>
+                <td className="p-3">{c.phone ?? '—'}</td>
+                <td className="p-3 text-slate-600">
+                  {c.addresses[0] ? `${c.addresses[0].street}, ${c.addresses[0].city}` : '—'}
+                </td>
+                <td className="p-3">
+                  <TableActions>
+                    <TableAction tone="muted" onClick={() => setHistoryCustomer(c)}>
+                      Histórico
+                    </TableAction>
+                    <TableAction onClick={() => openEdit(c)}>Editar</TableAction>
+                    {c.active !== false ? (
+                      <TableAction tone="muted" onClick={() => handleDeactivate(c)}>
+                        Inativar
+                      </TableAction>
+                    ) : null}
+                    <TableAction tone="danger" onClick={() => handleDelete(c)}>
+                      Remover
+                    </TableAction>
+                  </TableActions>
+                </td>
+              </tr>
+            ))}
+            {customers.length === 0 && (
+              <tr>
+                <td colSpan={4} className="p-6 text-center text-slate-400">
+                  Nenhum cliente encontrado.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </PaginatedSection>
+
+      <Modal
+        open={modal === 'create'}
+        onClose={closeModal}
+        title="Novo cliente"
+        subtitle="Cadastre um cliente nesta unidade"
+        size="lg"
+      >
+        <form onSubmit={handleCreate} className="space-y-3">
+          {identityFields(form, setForm)}
+          <CustomerAddressFields
+            value={form}
+            onChange={(address) => setForm({ ...form, ...address })}
+          />
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={closeModal} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Cadastrando…' : 'Cadastrar'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={modal === 'edit' && editing != null}
+        onClose={closeModal}
+        title="Editar cliente"
+        subtitle={editing?.name}
+        size="xl"
+      >
+        <form onSubmit={handleUpdate} className="space-y-3">
+          {identityFields(editForm, setEditForm)}
+          <CustomerAddressFields
+            value={editForm}
+            onChange={(address) => setEditForm({ ...editForm, ...address })}
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={editForm.active}
+              onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })}
+            />
+            Cliente ativo (desmarque para inativar nas buscas)
+          </label>
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={closeModal} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Salvando…' : 'Salvar cliente'}
+            </Button>
+          </div>
+        </form>
+        {editing ? (
+          <CustomerProductPricesEditor customerId={editing.id} storeId={storeId} />
+        ) : null}
+      </Modal>
 
       {historyCustomer && (
         <CustomerHistoryModal

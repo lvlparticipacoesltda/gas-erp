@@ -1,9 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
+import { FilterPanel } from '@/components/filter-panel';
 import { Modal } from '@/components/modal';
+import { PaginatedSection } from '@/components/paginated-section';
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  paginateSlice,
+  totalPagesFor,
+} from '@/components/pagination';
 import { TableAction, TableActions } from '@/components/table-actions';
 import { Badge, Button, Input, Label, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
@@ -81,6 +88,10 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
   const [createError, setCreateError] = useState('');
   const [actionError, setActionError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE);
+  const [draftFilters, setDraftFilters] = useState({ search: '', status: '', active: '' });
+  const [appliedFilters, setAppliedFilters] = useState({ search: '', status: '', active: '' });
 
   const listStoreId = storeId ?? (showStoreFilter && storeFilter ? storeFilter : undefined);
 
@@ -101,6 +112,44 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
     setCreateStores(new Set(storeId ? [storeId] : []));
     load().finally(() => setReady(true));
   }, [load, storeId]);
+
+  const filteredDeliverers = useMemo(() => {
+    const term = appliedFilters.search.trim().toLowerCase();
+    return deliverers.filter((d) => {
+      if (appliedFilters.status && d.status !== appliedFilters.status) return false;
+      if (appliedFilters.active === 'true' && !d.user.active) return false;
+      if (appliedFilters.active === 'false' && d.user.active) return false;
+      if (!term) return true;
+      const haystack = [d.user.name, d.user.email, d.user.phone, ...d.stores.map((s) => s.store.name)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [deliverers, appliedFilters]);
+
+  const total = filteredDeliverers.length;
+  const totalPages = totalPagesFor(total, pageSize);
+  const pageDeliverers = paginateSlice(filteredDeliverers, Math.min(page, totalPages), pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [listStoreId]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  function applyFilters() {
+    setPage(1);
+    setAppliedFilters(draftFilters);
+  }
+
+  function resetFilters() {
+    setDraftFilters({ search: '', status: '', active: '' });
+    setPage(1);
+    setAppliedFilters({ search: '', status: '', active: '' });
+  }
 
   function openCreate() {
     setCreateError('');
@@ -209,10 +258,18 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
         </p>
       )}
 
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <FilterPanel onSearch={applyFilters} onReset={resetFilters}>
+        <div>
+          <Label>Nome ou e-mail</Label>
+          <Input
+            value={draftFilters.search}
+            onChange={(e) => setDraftFilters({ ...draftFilters, search: e.target.value })}
+            placeholder="Buscar entregador"
+          />
+        </div>
         {showStoreFilter ? (
-          <div className="min-w-[12rem]">
-            <Label>Filtrar por unidade</Label>
+          <div>
+            <Label>Unidade</Label>
             <Select value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
               <option value="">Todas as unidades</option>
               {stores.map((s) => (
@@ -222,17 +279,57 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
               ))}
             </Select>
           </div>
-        ) : (
-          <div />
-        )}
-        {canManage ? (
+        ) : null}
+        <div>
+          <Label>Status operacional</Label>
+          <Select
+            value={draftFilters.status}
+            onChange={(e) => setDraftFilters({ ...draftFilters, status: e.target.value })}
+          >
+            <option value="">Todos</option>
+            {Object.entries(DELIVERER_STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label>Acesso app</Label>
+          <Select
+            value={draftFilters.active}
+            onChange={(e) => setDraftFilters({ ...draftFilters, active: e.target.value })}
+          >
+            <option value="">Todos</option>
+            <option value="true">Ativo</option>
+            <option value="false">Inativo</option>
+          </Select>
+        </div>
+      </FilterPanel>
+
+      {canManage ? (
+        <div className="mb-4 flex justify-end">
           <Button type="button" onClick={openCreate} className="gap-1.5">
             <Plus className="h-4 w-4" />
             Criar
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
+      <PaginatedSection
+        pagination={{
+          className: 'mt-4',
+          page: Math.min(page, totalPages),
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => {
+            setPage(1);
+            setPageSize(size);
+          },
+        }}
+      >
       <Table>
         <thead className="bg-slate-50 text-left">
           <tr>
@@ -246,7 +343,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
           </tr>
         </thead>
         <tbody>
-          {deliverers.map((d) => (
+          {pageDeliverers.map((d) => (
             <tr key={d.id} className="border-t border-slate-100 align-top">
               <td className="p-3 font-medium text-slate-800">{d.user.name}</td>
               <td className="p-3 text-sm text-slate-600">{d.user.email}</td>
@@ -283,17 +380,18 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
               )}
             </tr>
           ))}
-          {deliverers.length === 0 && (
+          {pageDeliverers.length === 0 && (
             <tr>
               <td colSpan={canManage ? 7 : 6} className="p-6 text-center text-slate-400">
                 {listStoreId
                   ? 'Nenhum entregador vinculado a esta unidade.'
-                  : 'Nenhum entregador cadastrado na rede.'}
+                  : 'Nenhum entregador encontrado.'}
               </td>
             </tr>
           )}
         </tbody>
       </Table>
+      </PaginatedSection>
 
       <Modal
         open={createOpen}

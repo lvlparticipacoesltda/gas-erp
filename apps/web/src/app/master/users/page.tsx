@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
+import { FilterPanel } from '@/components/filter-panel';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Modal } from '@/components/modal';
 import { TableAction, TableActions } from '@/components/table-actions';
@@ -15,6 +16,7 @@ import {
   permissionsToPayload,
 } from '@/components/permission-checkboxes';
 import { StoreMultiSelect } from '@/components/store-multi-select';
+import { DEFAULT_TABLE_PAGE_SIZE } from '@/components/pagination';
 
 interface UserRow {
   id: string;
@@ -59,6 +61,14 @@ const emptyCreate = {
   jobTitle: '',
 };
 
+const emptyFilters = {
+  search: '',
+  role: '',
+  active: '',
+};
+
+const PANEL_ROLES = USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER');
+
 export default function MasterUsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
@@ -84,10 +94,11 @@ export default function MasterUsersPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-
-  const PAGE_SIZE = 20;
+  const [draftFilters, setDraftFilters] = useState(emptyFilters);
+  const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
 
   useEffect(() => {
     api<Store[]>('/stores', {}, getToken())
@@ -98,8 +109,15 @@ export default function MasterUsersPage() {
   async function loadUsers() {
     setLoading(true);
     try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (appliedFilters.search.trim()) params.set('search', appliedFilters.search.trim());
+      if (appliedFilters.role) params.set('role', appliedFilters.role);
+      if (appliedFilters.active) params.set('active', appliedFilters.active);
       const u = await api<PaginatedResponse<UserRow>>(
-        `/users?page=${page}&pageSize=${PAGE_SIZE}`,
+        `/users?${params}`,
         {},
         getToken(),
       );
@@ -115,8 +133,18 @@ export default function MasterUsersPage() {
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, pageSize, appliedFilters]);
 
+  function applyFilters() {
+    setPage(1);
+    setAppliedFilters(draftFilters);
+  }
+
+  function resetFilters() {
+    setDraftFilters(emptyFilters);
+    setPage(1);
+    setAppliedFilters(emptyFilters);
+  }
   function openCreate() {
     setFormError('');
     setForm(emptyCreate);
@@ -286,13 +314,50 @@ export default function MasterUsersPage() {
       <PageHeader
         title="Usuários"
         subtitle="Acesso ao painel web — papéis, lojas e telas permitidas"
-        action={
-          <Button type="button" onClick={openCreate} className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            Criar
-          </Button>
-        }
       />
+
+      <FilterPanel onSearch={applyFilters} onReset={resetFilters} searching={loading}>
+        <div>
+          <Label>Nome ou e-mail</Label>
+          <Input
+            value={draftFilters.search}
+            onChange={(e) => setDraftFilters({ ...draftFilters, search: e.target.value })}
+            placeholder="Buscar usuário"
+          />
+        </div>
+        <div>
+          <Label>Função</Label>
+          <Select
+            value={draftFilters.role}
+            onChange={(e) => setDraftFilters({ ...draftFilters, role: e.target.value })}
+          >
+            <option value="">Todas</option>
+                  {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER').map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label>Status</Label>
+          <Select
+            value={draftFilters.active}
+            onChange={(e) => setDraftFilters({ ...draftFilters, active: e.target.value })}
+          >
+            <option value="">Todos</option>
+            <option value="true">Ativo</option>
+            <option value="false">Inativo</option>
+          </Select>
+        </div>
+      </FilterPanel>
+
+      <div className="mb-4 flex justify-end">
+        <Button type="button" onClick={openCreate} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Criar
+        </Button>
+      </div>
 
       <PaginatedSection
         loading={loading}
@@ -301,8 +366,12 @@ export default function MasterUsersPage() {
           page,
           totalPages,
           total,
-          pageSize: PAGE_SIZE,
+          pageSize,
           onPageChange: setPage,
+          onPageSizeChange: (size) => {
+            setPage(1);
+            setPageSize(size);
+          },
         }}
       >
         <Table>

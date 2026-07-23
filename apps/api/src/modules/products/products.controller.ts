@@ -15,12 +15,14 @@ export class ProductsController {
     @Query('storeId') storeId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
   ) {
     return this.productsService.findAll(
       user,
       storeId,
       Number(page) || 1,
       Number(pageSize) || 20,
+      search,
     );
   }
 

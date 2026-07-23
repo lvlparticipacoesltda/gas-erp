@@ -22,9 +22,21 @@ export class ProductsService {
     } as T;
   }
 
-  async findAll(user: AuthUser, storeId?: string, page = 1, pageSize = 20) {
+  async findAll(user: AuthUser, storeId?: string, page = 1, pageSize = 20, search?: string) {
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-    const where = { organizationId: user.organizationId, active: true };
+    const term = search?.trim();
+    const where = {
+      organizationId: user.organizationId,
+      active: true,
+      ...(term
+        ? {
+            OR: [
+              { name: { contains: term, mode: 'insensitive' as const } },
+              { sku: { contains: term, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,

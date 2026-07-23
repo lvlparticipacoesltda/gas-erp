@@ -1,15 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import {
   CustomerAddressFields,
   type CustomerAddressForm,
 } from '@/components/customer-address-fields';
+import { FilterPanel } from '@/components/filter-panel';
 import { Modal } from '@/components/modal';
+import { PaginatedSection } from '@/components/paginated-section';
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  paginateSlice,
+  totalPagesFor,
+} from '@/components/pagination';
 import { TableAction, TableActions } from '@/components/table-actions';
-import { Badge, Button, Input, Label, PageHeader, Table } from '@/components/ui';
+import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { invalidateStoresCache } from '@/components/app-shell';
 import { api, getToken } from '@/lib/api';
 import { formatCnpj } from '@/lib/utils';
@@ -114,6 +121,10 @@ export default function MasterStoresPage() {
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE);
+  const [draftFilters, setDraftFilters] = useState({ search: '', active: '' });
+  const [appliedFilters, setAppliedFilters] = useState({ search: '', active: '' });
 
   async function load() {
     invalidateStoresCache();
@@ -124,6 +135,46 @@ export default function MasterStoresPage() {
     load().finally(() => setReady(true));
   }, []);
 
+  const filteredStores = useMemo(() => {
+    const term = appliedFilters.search.trim().toLowerCase();
+    return stores.filter((store) => {
+      if (appliedFilters.active === 'true' && !store.active) return false;
+      if (appliedFilters.active === 'false' && store.active) return false;
+      if (!term) return true;
+      const haystack = [
+        store.name,
+        store.code,
+        store.cnpj,
+        store.city,
+        store.state,
+        store.street,
+        store.neighborhood,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [stores, appliedFilters]);
+
+  const total = filteredStores.length;
+  const totalPages = totalPagesFor(total, pageSize);
+  const pageStores = paginateSlice(filteredStores, Math.min(page, totalPages), pageSize);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  function applyFilters() {
+    setPage(1);
+    setAppliedFilters(draftFilters);
+  }
+
+  function resetFilters() {
+    setDraftFilters({ search: '', active: '' });
+    setPage(1);
+    setAppliedFilters({ search: '', active: '' });
+  }
   function openCreate() {
     setFormError('');
     setForm(emptyCreate);
@@ -261,66 +312,101 @@ export default function MasterStoresPage() {
 
   return (
     <>
-      <PageHeader
-        title="Lojas"
-        subtitle="Gerencie as unidades da rede"
-        action={
-          <Button type="button" onClick={openCreate} className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            Criar
-          </Button>
-        }
-      />
+      <PageHeader title="Lojas" subtitle="Gerencie as unidades da rede" />
 
-      <Table>
-        <thead className="bg-slate-50 text-left">
-          <tr>
-            <th className="p-3">Nome</th>
-            <th className="p-3">Código</th>
-            <th className="p-3">CNPJ</th>
-            <th className="p-3">Cidade</th>
-            <th className="p-3 min-w-[14rem]">Endereço</th>
-            <th className="p-3">Status</th>
-            <th className="p-3 text-right">Ação</th>
-          </tr>
-        </thead>
-        <tbody>
-          {stores.map((s) => (
-            <tr key={s.id} className="border-t border-slate-100">
-              <td className="p-3 font-medium text-slate-800">{s.name}</td>
-              <td className="p-3">{s.code}</td>
-              <td className="p-3 whitespace-nowrap">{s.cnpj ? formatCnpj(s.cnpj) : '—'}</td>
-              <td className="p-3">{formatStoreCity(s)}</td>
-              <td className="p-3 text-slate-600">{formatStoreAddress(s)}</td>
-              <td className="p-3">
-                <Badge tone={s.active ? 'success' : 'danger'}>
-                  {s.active ? 'Ativa' : 'Inativa'}
-                </Badge>
-              </td>
-              <td className="p-3">
-                <TableActions>
-                  <TableAction onClick={() => openEdit(s)}>Editar</TableAction>
-                  {s.active ? (
-                    <TableAction tone="muted" onClick={() => handleDeactivate(s)}>
-                      Inativar
-                    </TableAction>
-                  ) : null}
-                  <TableAction tone="danger" onClick={() => handleDelete(s)}>
-                    Remover
-                  </TableAction>
-                </TableActions>
-              </td>
-            </tr>
-          ))}
-          {stores.length === 0 && (
+      <FilterPanel onSearch={applyFilters} onReset={resetFilters}>
+        <div>
+          <Label>Nome, código ou cidade</Label>
+          <Input
+            value={draftFilters.search}
+            onChange={(e) => setDraftFilters({ ...draftFilters, search: e.target.value })}
+            placeholder="Buscar loja"
+          />
+        </div>
+        <div>
+          <Label>Status</Label>
+          <Select
+            value={draftFilters.active}
+            onChange={(e) => setDraftFilters({ ...draftFilters, active: e.target.value })}
+          >
+            <option value="">Todos</option>
+            <option value="true">Ativa</option>
+            <option value="false">Inativa</option>
+          </Select>
+        </div>
+      </FilterPanel>
+
+      <div className="mb-4 flex justify-end">
+        <Button type="button" onClick={openCreate} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Criar
+        </Button>
+      </div>
+
+      <PaginatedSection
+        pagination={{
+          className: 'mt-4',
+          page: Math.min(page, totalPages),
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => {
+            setPage(1);
+            setPageSize(size);
+          },
+        }}
+      >
+        <Table>
+          <thead className="bg-slate-50 text-left">
             <tr>
-              <td colSpan={7} className="p-6 text-center text-slate-400">
-                Nenhuma loja cadastrada.
-              </td>
+              <th className="p-3">Nome</th>
+              <th className="p-3">Código</th>
+              <th className="p-3">CNPJ</th>
+              <th className="p-3">Cidade</th>
+              <th className="p-3 min-w-[14rem]">Endereço</th>
+              <th className="p-3">Status</th>
+              <th className="p-3 text-right">Ação</th>
             </tr>
-          )}
-        </tbody>
-      </Table>
+          </thead>
+          <tbody>
+            {pageStores.map((s) => (
+              <tr key={s.id} className="border-t border-slate-100">
+                <td className="p-3 font-medium text-slate-800">{s.name}</td>
+                <td className="p-3">{s.code}</td>
+                <td className="p-3 whitespace-nowrap">{s.cnpj ? formatCnpj(s.cnpj) : '—'}</td>
+                <td className="p-3">{formatStoreCity(s)}</td>
+                <td className="p-3 text-slate-600">{formatStoreAddress(s)}</td>
+                <td className="p-3">
+                  <Badge tone={s.active ? 'success' : 'danger'}>
+                    {s.active ? 'Ativa' : 'Inativa'}
+                  </Badge>
+                </td>
+                <td className="p-3">
+                  <TableActions>
+                    <TableAction onClick={() => openEdit(s)}>Editar</TableAction>
+                    {s.active ? (
+                      <TableAction tone="muted" onClick={() => handleDeactivate(s)}>
+                        Inativar
+                      </TableAction>
+                    ) : null}
+                    <TableAction tone="danger" onClick={() => handleDelete(s)}>
+                      Remover
+                    </TableAction>
+                  </TableActions>
+                </td>
+              </tr>
+            ))}
+            {pageStores.length === 0 && (
+              <tr>
+                <td colSpan={7} className="p-6 text-center text-slate-400">
+                  Nenhuma loja encontrada.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </PaginatedSection>
 
       <Modal
         open={modal === 'create'}

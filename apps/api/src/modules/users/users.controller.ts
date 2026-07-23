@@ -15,8 +15,15 @@ export class UsersController {
     @CurrentUser() user: AuthUser,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+    @Query('role') role?: string,
+    @Query('active') active?: string,
   ) {
-    return this.usersService.findAll(user, Number(page) || 1, Number(pageSize) || 20);
+    return this.usersService.findAll(user, Number(page) || 1, Number(pageSize) || 20, {
+      search,
+      role,
+      active,
+    });
   }
 
   @Get(':id')
