@@ -55,6 +55,11 @@ export class SchedulesController {
     return this.schedules.getTimeClockCards(user, query);
   }
 
+  @Put('time-clock/day')
+  upsertDayPunches(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.schedules.upsertTimeClockDay(user, body);
+  }
+
   @Get('time-clock')
   history(@CurrentUser() user: AuthUser, @Query() query: Record<string, string>) {
     return this.schedules.listPunches(user, query);

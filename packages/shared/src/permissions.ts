@@ -147,4 +147,13 @@ export function hasScreenPermission(
   return resolveUserPermissions(role, custom).includes(normalized);
 }
 
+/** Consulta do log/cartão de ponto (sem editar batidas). */
+export function canViewTimeClockLog(
+  role: string,
+  permissions?: string[] | null,
+): boolean {
+  if (canManageSchedules(role)) return true;
+  return hasScreenPermission(role, permissions, 'store.schedules');
+}
+
 export const userPermissionsSchema = z.array(z.enum(STORE_SCREEN_KEYS)).optional();

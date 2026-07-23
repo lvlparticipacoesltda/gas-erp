@@ -13,6 +13,7 @@ import {
   TIME_CLOCK_PHOTO_MAX_BYTES,
   canManageSchedules,
   copyScheduleSchema,
+  getBusinessDayBounds,
   haversineDistanceMeters,
   scheduleMonthQuerySchema,
   timeClockCardsQuerySchema,
@@ -21,6 +22,8 @@ import {
   timeClockPunchSchema,
   timeClockReportQuerySchema,
   upsertScheduleDaySchema,
+  upsertTimeClockDaySchema,
+  zonedTimeToUtc,
   type TimeClockDayStatus,
 } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -187,17 +190,6 @@ function assignDayPunchSlots(
   const ins = ordered.filter((p) => p.type === TimeClockPunchType.CLOCK_IN);
   const outs = ordered.filter((p) => p.type === TimeClockPunchType.CLOCK_OUT);
 
-  // Só 2 batidas (IN+OUT): ENT.1 + SAÍ.2 (jornada sem intervalo marcado).
-  if (ins.length === 1 && outs.length === 1 && ordered.length === 2) {
-    return {
-      ...empty,
-      ent1: ins[0].punchedAt,
-      sai2: outs[0].punchedAt,
-      sourceEnt1: ins[0].source,
-      sourceSai2: outs[0].source,
-    };
-  }
-
   return {
     ent1: ins[0]?.punchedAt ?? null,
     sai1: outs[0]?.punchedAt ?? null,
@@ -215,10 +207,12 @@ function workedMinutesFromSlots(slots: PunchSlotBucket): number {
     if (!start || !end) return 0;
     return Math.max(0, (end.getTime() - start.getTime()) / 60000);
   };
-  if (slots.ent1 && slots.sai2 && !slots.sai1 && !slots.ent2) {
-    return pairMinutes(slots.ent1, slots.sai2);
-  }
   return pairMinutes(slots.ent1, slots.sai1) + pairMinutes(slots.ent2, slots.sai2);
+}
+
+function parseHmParts(hm: string): { hour: number; minute: number } {
+  const [hour, minute] = hm.slice(0, 5).split(':').map(Number);
+  return { hour, minute };
 }
 
 function mostCommon<T>(values: T[]): T | null {
@@ -940,7 +934,7 @@ export class SchedulesService {
    * Cartões de ponto no formato do fechamento (4 batidas, previsto, totais simples).
    */
   async getTimeClockCards(user: AuthUser, query: unknown) {
-    this.assertCanManage(user);
+    this.assertCanViewSchedules(user);
     const params = timeClockCardsQuerySchema.parse(query);
     assertStoreAccess(user, params.storeId);
 
@@ -1145,6 +1139,97 @@ export class SchedulesService {
       month: params.month,
       cards,
     };
+  }
+
+  /**
+   * Substitui as batidas do dia (ENT.1/SAÍ.1/ENT.2/SAÍ.2) — master/gerente.
+   */
+  async upsertTimeClockDay(user: AuthUser, input: unknown) {
+    this.assertCanManage(user);
+    const data = upsertTimeClockDaySchema.parse(input);
+    assertStoreAccess(user, data.storeId);
+
+    const collaborators = await this.listCollaborators(user, data.storeId, 'all');
+    if (!collaborators.some((c) => c.id === data.userId)) {
+      throw new NotFoundException('Colaborador não encontrado nesta unidade');
+    }
+
+    const slots: Array<{ key: 'ent1' | 'sai1' | 'ent2' | 'sai2'; type: TimeClockPunchType; hm: string | null }> = [
+      { key: 'ent1', type: TimeClockPunchType.CLOCK_IN, hm: data.ent1 ?? null },
+      { key: 'sai1', type: TimeClockPunchType.CLOCK_OUT, hm: data.sai1 ?? null },
+      { key: 'ent2', type: TimeClockPunchType.CLOCK_IN, hm: data.ent2 ?? null },
+      { key: 'sai2', type: TimeClockPunchType.CLOCK_OUT, hm: data.sai2 ?? null },
+    ];
+
+    let seenEmpty = false;
+    for (const slot of slots) {
+      if (slot.hm == null) {
+        seenEmpty = true;
+        continue;
+      }
+      if (seenEmpty) {
+        throw new BadRequestException(
+          'Preencha os horários em ordem (ENT.1 → SAÍ.1 → ENT.2 → SAÍ.2), sem buracos.',
+        );
+      }
+    }
+
+    const filled = slots.filter((s): s is typeof s & { hm: string } => s.hm != null);
+    let prevMinutes = -1;
+    for (const slot of filled) {
+      const mins = parseHmToMinutes(slot.hm);
+      if (mins == null) {
+        throw new BadRequestException(`Horário inválido em ${slot.key.toUpperCase()}`);
+      }
+      if (mins <= prevMinutes) {
+        throw new BadRequestException('Os horários devem estar em ordem crescente no dia.');
+      }
+      prevMinutes = mins;
+    }
+
+    const { start, end } = getBusinessDayBounds(data.date);
+    const createData = filled.map((slot) => {
+      const { hour, minute } = parseHmParts(slot.hm);
+      return {
+        organizationId: user.organizationId,
+        storeId: data.storeId,
+        userId: data.userId,
+        type: slot.type,
+        punchedAt: zonedTimeToUtc(data.date, hour, minute, 0),
+        source: 'WEB' as const,
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+        distanceMeters: null,
+        photoBytes: null,
+      };
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.timeClockPunch.deleteMany({
+        where: {
+          organizationId: user.organizationId,
+          storeId: data.storeId,
+          userId: data.userId,
+          punchedAt: { gte: start, lt: end },
+        },
+      });
+      if (createData.length > 0) {
+        await tx.timeClockPunch.createMany({ data: createData });
+      }
+    });
+
+    const [year, month] = data.date.split('-').map(Number);
+    const cardsResult = await this.getTimeClockCards(user, {
+      storeId: data.storeId,
+      year,
+      month,
+      userId: data.userId,
+      roleFilter: 'all',
+    });
+    const card = cardsResult.cards[0] ?? null;
+    const day = card?.days.find((d) => d.date === data.date) ?? null;
+    return { card, day };
   }
 
   /** Escala do próprio entregador no app (qualquer loja vinculada). */

@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/ui';
 import { PageLoader } from '@/components/brand-loader';
 import { SchedulesPanel } from '@/components/schedules/schedules-panel';
 import { refreshStoredUser } from '@/lib/api';
-import { canManageSchedules, type AuthUser } from '@gas-erp/shared';
+import { canManageSchedules, canViewTimeClockLog, type AuthUser } from '@gas-erp/shared';
 
 export default function StoreSchedulesPage() {
   const params = useParams();
@@ -22,6 +22,7 @@ export default function StoreSchedulesPage() {
 
   const isAttendant = user.role === 'ATTENDANT';
   const canManage = canManageSchedules(user.role);
+  const canViewLog = canViewTimeClockLog(user.role, user.permissions);
 
   return (
     <>
@@ -33,7 +34,7 @@ export default function StoreSchedulesPage() {
             : 'Consulte a escala dos entregadores e bata seu ponto'
         }
         action={
-          canManage ? (
+          canViewLog ? (
             <Link
               href={`/store/${storeId}/schedules/ponto`}
               className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"

@@ -5,13 +5,18 @@ import Link from 'next/link';
 import { createRoot } from 'react-dom/client';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
-import { canManageSchedules, type AuthUser } from '@gas-erp/shared';
+import { canManageSchedules, canViewTimeClockLog, type AuthUser } from '@gas-erp/shared';
 import { api, getToken } from '@/lib/api';
 import { FilterBar, FilterField } from '@/components/filters';
 import { Button, Card, Select } from '@/components/ui';
 import { PageLoader } from '@/components/brand-loader';
 import { cn } from '@/lib/utils';
-import { TimeClockCardView, type TimeClockCard } from './time-clock-card-view';
+import {
+  TimeClockCardView,
+  type DayPunchSlots,
+  type PunchSlotKey,
+  type TimeClockCard,
+} from './time-clock-card-view';
 
 type RoleFilter = 'deliverers' | 'attendants' | 'all';
 
@@ -97,11 +102,20 @@ export function TimeClockLogPanel({
   showRoleTabs?: boolean;
   backHref: string;
 }) {
-  const canView = canManageSchedules(user.role);
+  const canView = canViewTimeClockLog(user.role, user.permissions);
+  const canEdit = canManageSchedules(user.role);
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [storeId, setStoreId] = useState(fixedStoreId ?? stores?.[0]?.id ?? '');
+  const visibleStores = useMemo(() => {
+    const list = stores ?? [];
+    if (user.role === 'ORG_MASTER' || user.role === 'PLATFORM_ADMIN') return list;
+    const allowed = new Set(user.storeIds ?? []);
+    return list.filter((s) => allowed.has(s.id));
+  }, [stores, user.role, user.storeIds]);
+  const [storeId, setStoreId] = useState(
+    fixedStoreId ?? visibleStores[0]?.id ?? stores?.[0]?.id ?? '',
+  );
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(
     showRoleTabs ? 'deliverers' : 'all',
   );
@@ -110,16 +124,19 @@ export function TimeClockLogPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (fixedStoreId) setStoreId(fixedStoreId);
   }, [fixedStoreId]);
 
   useEffect(() => {
-    if (!fixedStoreId && stores?.length && !stores.some((s) => s.id === storeId)) {
-      setStoreId(stores[0].id);
+    if (fixedStoreId) return;
+    const list = visibleStores.length ? visibleStores : stores ?? [];
+    if (list.length && !list.some((s) => s.id === storeId)) {
+      setStoreId(list[0].id);
     }
-  }, [fixedStoreId, stores, storeId]);
+  }, [fixedStoreId, visibleStores, stores, storeId]);
 
   const load = useCallback(async () => {
     if (!canView || !storeId) {
@@ -171,6 +188,7 @@ export function TimeClockLogPanel({
     try {
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
       for (let i = 0; i < cards.length; i += 1) {
+        // PDF sempre sem modo edição.
         const canvas = await renderCardToCanvas(cards[i], year, month);
         await appendCanvasPage(pdf, canvas, i === 0);
       }
@@ -186,13 +204,60 @@ export function TimeClockLogPanel({
     }
   }
 
+  async function saveDayPunches(
+    targetUserId: string,
+    date: string,
+    slot: PunchSlotKey,
+    slots: DayPunchSlots,
+  ) {
+    if (!storeId || !canEdit) return;
+    setSavingKey(`${date}:${slot}`);
+    setError(null);
+    try {
+      const res = await api<{ card: TimeClockCard | null }>(
+        '/time-clock/day',
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            storeId,
+            userId: targetUserId,
+            date,
+            ent1: slots.ent1,
+            sai1: slots.sai1,
+            ent2: slots.ent2,
+            sai2: slots.sai2,
+          }),
+        },
+        getToken(),
+      );
+      if (res.card) {
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            cards: prev.cards.map((c) =>
+              c.header.userId === targetUserId ? res.card! : c,
+            ),
+          };
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar batida');
+      throw err;
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   if (!canView) {
     return (
       <Card className="p-6 text-sm text-slate-600">
-        Apenas master ou gerente podem consultar o log de ponto.
+        Sem permissão para consultar o log de ponto.
       </Card>
     );
   }
+
+  const storeOptions = visibleStores.length ? visibleStores : stores ?? [];
 
   return (
     <div className="space-y-4">
@@ -201,7 +266,7 @@ export function TimeClockLogPanel({
           href={backHref}
           className="text-sm font-medium text-brand hover:text-brand-dark"
         >
-          ← Voltar para escala
+          ← Voltar
         </Link>
         <Button
           type="button"
@@ -213,8 +278,14 @@ export function TimeClockLogPanel({
         </Button>
       </div>
 
+      {!canEdit ? (
+        <p className="text-sm text-slate-500">
+          Visualização apenas — edição de batidas é restrita a master e gerente.
+        </p>
+      ) : null}
+
       <FilterBar>
-        {showStoreFilter && stores && stores.length > 0 ? (
+        {showStoreFilter && storeOptions.length > 0 ? (
           <FilterField label="Unidade">
             <Select
               value={storeId}
@@ -224,7 +295,7 @@ export function TimeClockLogPanel({
               }}
               className="min-w-[180px]"
             >
-              {stores.map((s) => (
+              {storeOptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
@@ -327,7 +398,19 @@ export function TimeClockLogPanel({
                   </span>
                 </div>
                 <div className="overflow-x-auto">
-                  <TimeClockCardView card={card} year={year} month={month} />
+                  <TimeClockCardView
+                    card={card}
+                    year={year}
+                    month={month}
+                    editable={canEdit}
+                    savingKey={savingKey}
+                    onPunchEdit={
+                      canEdit
+                        ? ({ date, slot, slots }) =>
+                            saveDayPunches(card.header.userId, date, slot, slots)
+                        : undefined
+                    }
+                  />
                 </div>
               </Card>
             ))

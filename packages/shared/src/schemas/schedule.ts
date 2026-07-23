@@ -134,3 +134,25 @@ export const timeClockPunchSchema = z.object({
   photoBase64: z.string().min(1).optional(),
 });
 export type TimeClockPunchInput = z.infer<typeof timeClockPunchSchema>;
+
+const optionalHmOrNull = z.preprocess((value) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  return value;
+}, z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Horário inválido (use HH:mm)')
+  .nullable()
+  .optional());
+
+/** Edição manual dos 4 slots do dia (master/gerente). */
+export const upsertTimeClockDaySchema = z.object({
+  storeId: z.string().min(1),
+  userId: z.string().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (YYYY-MM-DD)'),
+  ent1: optionalHmOrNull,
+  sai1: optionalHmOrNull,
+  ent2: optionalHmOrNull,
+  sai2: optionalHmOrNull,
+});
+export type UpsertTimeClockDayInput = z.infer<typeof upsertTimeClockDaySchema>;

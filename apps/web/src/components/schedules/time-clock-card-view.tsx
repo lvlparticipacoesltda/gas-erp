@@ -1,8 +1,10 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { TimeClockDayStatus } from '@gas-erp/shared';
 import { formatCnpj } from '@/lib/utils';
+
+export type PunchSlotKey = 'ent1' | 'sai1' | 'ent2' | 'sai2';
 
 export type TimeClockCard = {
   header: {
@@ -46,6 +48,48 @@ export type TimeClockCard = {
   };
 };
 
+export type DayPunchSlots = {
+  ent1: string | null;
+  sai1: string | null;
+  ent2: string | null;
+  sai2: string | null;
+};
+
+const SLOT_KEYS: PunchSlotKey[] = ['ent1', 'sai1', 'ent2', 'sai2'];
+
+/** Remove marcador (M) e normaliza para HH:mm ou null. */
+export function punchDisplayToHm(value?: string | null): string | null {
+  if (!value || value === '—') return null;
+  const match = value.replace(/\(M\)/gi, '').trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+}
+
+export function dayToPunchSlots(day: TimeClockCard['days'][number]): DayPunchSlots {
+  return {
+    ent1: punchDisplayToHm(day.ent1),
+    sai1: punchDisplayToHm(day.sai1),
+    ent2: punchDisplayToHm(day.ent2),
+    sai2: punchDisplayToHm(day.sai2),
+  };
+}
+
+/** Ao limpar um slot, zera os seguintes para manter a sequência válida. */
+export function applySlotEdit(
+  current: DayPunchSlots,
+  slot: PunchSlotKey,
+  value: string | null,
+): DayPunchSlots {
+  const next = { ...current, [slot]: value };
+  if (value == null) {
+    const idx = SLOT_KEYS.indexOf(slot);
+    for (let i = idx + 1; i < SLOT_KEYS.length; i += 1) {
+      next[SLOT_KEYS[i]] = null;
+    }
+  }
+  return next;
+}
+
 function formatCpf(value?: string | null) {
   if (!value) return '—';
   const d = value.replace(/\D/g, '').slice(0, 11);
@@ -88,16 +132,113 @@ function cellStyle(opts?: {
   header?: boolean;
   center?: boolean;
   nowrap?: boolean;
+  editable?: boolean;
 }): CSSProperties {
   return {
     ...cellBase,
     borderRight: opts?.lastCol ? '1px solid #222' : undefined,
     borderBottom: opts?.lastRow ? '1px solid #222' : undefined,
-    background: opts?.header ? '#efefef' : '#fff',
+    background: opts?.header ? '#efefef' : opts?.editable ? '#fffbeb' : '#fff',
     fontWeight: opts?.header ? 700 : 400,
     textAlign: opts?.center ? 'center' : 'left',
     whiteSpace: opts?.nowrap ? 'nowrap' : 'normal',
+    cursor: opts?.editable ? 'pointer' : undefined,
   };
+}
+
+function EditablePunchCell({
+  display,
+  editable,
+  busy,
+  style,
+  onSave,
+}: {
+  display: string;
+  editable: boolean;
+  busy: boolean;
+  style: CSSProperties;
+  onSave: (value: string | null) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function startEdit() {
+    if (!editable || busy) return;
+    setDraft(punchDisplayToHm(display) ?? '');
+    setEditing(true);
+  }
+
+  async function commit() {
+    if (savingRef.current) return;
+    const next = draft.trim() === '' ? null : punchDisplayToHm(draft.trim() || null);
+    if (draft.trim() && !next) {
+      // valor inválido — mantém edição
+      return;
+    }
+    const prev = punchDisplayToHm(display);
+    if (next === prev) {
+      setEditing(false);
+      return;
+    }
+    savingRef.current = true;
+    try {
+      await onSave(next);
+      setEditing(false);
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      void commit();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <td style={{ ...style, padding: 2, background: '#fff' }}>
+        <input
+          ref={inputRef}
+          type="time"
+          value={draft}
+          disabled={busy}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={onKeyDown}
+          style={{
+            width: '100%',
+            border: '1px solid #f59e0b',
+            borderRadius: 3,
+            padding: '2px 3px',
+            fontSize: 11,
+            textAlign: 'center',
+          }}
+        />
+      </td>
+    );
+  }
+
+  return (
+    <td
+      style={style}
+      onClick={startEdit}
+      title={editable ? 'Clique para editar' : undefined}
+    >
+      {display}
+    </td>
+  );
 }
 
 export function TimeClockCardView({
@@ -105,11 +246,23 @@ export function TimeClockCardView({
   year,
   month,
   className,
+  editable = false,
+  savingKey = null,
+  onPunchEdit,
 }: {
   card: TimeClockCard;
   year: number;
   month: number;
   className?: string;
+  /** Quando true, ENT/SAÍ do dia são editáveis (não usar no PDF). */
+  editable?: boolean;
+  savingKey?: string | null;
+  onPunchEdit?: (args: {
+    date: string;
+    slot: PunchSlotKey;
+    value: string | null;
+    slots: DayPunchSlots;
+  }) => Promise<void> | void;
 }) {
   const { header, horarioTrabalho, days, totals } = card;
   const cnpj = formatCnpj(header.cnpj) || '—';
@@ -255,31 +408,67 @@ export function TimeClockCardView({
         <tbody>
           {days.map((day, rowIdx) => {
             const lastRow = rowIdx === days.length - 1;
-            const cells = [
-              `${String(day.day).padStart(2, '0')} ${day.weekday}`,
-              day.previsto,
-              day.ent1 ?? '—',
-              day.sai1 ?? '—',
-              day.ent2 ?? '—',
-              day.sai2 ?? '—',
-              day.totalNormais,
-              day.statusLabel,
+            const punchDisplays: Array<{ key: PunchSlotKey; value: string }> = [
+              { key: 'ent1', value: day.ent1 ?? '—' },
+              { key: 'sai1', value: day.sai1 ?? '—' },
+              { key: 'ent2', value: day.ent2 ?? '—' },
+              { key: 'sai2', value: day.sai2 ?? '—' },
             ];
+
             return (
               <tr key={day.date}>
-                {cells.map((value, colIdx) => (
-                  <td
-                    key={`${day.date}-${colIdx}`}
+                <td
+                  style={cellStyle({
+                    nowrap: true,
+                    lastRow,
+                  })}
+                >
+                  {String(day.day).padStart(2, '0')} {day.weekday}
+                </td>
+                <td
+                  style={cellStyle({
+                    nowrap: true,
+                    lastRow,
+                  })}
+                >
+                  {day.previsto}
+                </td>
+                {punchDisplays.map(({ key, value }) => (
+                  <EditablePunchCell
+                    key={`${day.date}-${key}`}
+                    display={value}
+                    editable={editable}
+                    busy={savingKey === `${day.date}:${key}` || savingKey === day.date}
                     style={cellStyle({
-                      center: colIdx >= 2 && colIdx <= 6,
-                      nowrap: colIdx === 0 || colIdx === 1 || colIdx === 7,
-                      lastCol: colIdx === dayCols - 1,
+                      center: true,
+                      nowrap: true,
                       lastRow,
+                      editable,
                     })}
-                  >
-                    {value}
-                  </td>
+                    onSave={async (nextValue) => {
+                      if (!onPunchEdit) return;
+                      const slots = applySlotEdit(dayToPunchSlots(day), key, nextValue);
+                      await onPunchEdit({ date: day.date, slot: key, value: nextValue, slots });
+                    }}
+                  />
                 ))}
+                <td
+                  style={cellStyle({
+                    center: true,
+                    lastRow,
+                  })}
+                >
+                  {day.totalNormais}
+                </td>
+                <td
+                  style={cellStyle({
+                    nowrap: true,
+                    lastCol: true,
+                    lastRow,
+                  })}
+                >
+                  {day.statusLabel}
+                </td>
               </tr>
             );
           })}
@@ -303,7 +492,10 @@ export function TimeClockCardView({
           {' · '}
           Atrasos {totals.atrasos}
         </div>
-        <div style={{ color: '#444' }}>(M) = App móvel</div>
+        <div style={{ color: '#444' }}>
+          (M) = App móvel
+          {editable ? ' · Clique nos horários para editar' : ''}
+        </div>
       </div>
     </div>
   );
