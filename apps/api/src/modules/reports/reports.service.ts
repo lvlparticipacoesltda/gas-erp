@@ -435,14 +435,37 @@ export class ReportsService {
         : { in: [...COUNTED_SALE_STATUSES] as SaleStatus[] },
     };
     if (filters.paymentMethod) {
-      where.payments = {
-        some: {
-          OR: [
-            { method: filters.paymentMethod as PaymentMethod },
-            { storePaymentMethod: { systemCode: filters.paymentMethod } },
-          ],
-        },
-      };
+      // GDP: alinha com a visão geral — pagamento GDP, benefício marcado ou item pago com GDP.
+      // (Vendas "por produto" com taxa Gás do Povo podem ter gasDoPovoBenefit sem linha GDP.)
+      if (filters.paymentMethod === 'GDP') {
+        where.OR = [
+          {
+            payments: {
+              some: {
+                OR: [
+                  { method: 'GDP' },
+                  { storePaymentMethod: { systemCode: 'GDP' } },
+                ],
+              },
+            },
+          },
+          { gasDoPovoBenefit: true },
+          {
+            items: {
+              some: { storePaymentMethod: { systemCode: 'GDP' } },
+            },
+          },
+        ];
+      } else {
+        where.payments = {
+          some: {
+            OR: [
+              { method: filters.paymentMethod as PaymentMethod },
+              { storePaymentMethod: { systemCode: filters.paymentMethod } },
+            ],
+          },
+        };
+      }
     }
     if (filters.customerSearch?.trim()) {
       const term = filters.customerSearch.trim();
