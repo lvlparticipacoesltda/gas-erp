@@ -2,14 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { createRoot } from 'react-dom/client';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
-import {
-  TIME_CLOCK_DAY_STATUS_LABELS,
-  canManageSchedules,
-  type AuthUser,
-  type TimeClockDayStatus,
-} from '@gas-erp/shared';
+import { canManageSchedules, type AuthUser } from '@gas-erp/shared';
 import { api, getToken } from '@/lib/api';
 import { FilterBar, FilterField } from '@/components/filters';
 import { Button, Card, Select } from '@/components/ui';
@@ -31,16 +27,44 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
-async function cardElementToPdfPage(
-  pdf: jsPDF,
-  el: HTMLElement,
-  isFirstPage: boolean,
-) {
-  const canvas = await html2canvas(el, {
-    scale: 2,
-    backgroundColor: '#ffffff',
-    useCORS: true,
-  });
+async function renderCardToCanvas(
+  card: TimeClockCard,
+  year: number,
+  month: number,
+): Promise<HTMLCanvasElement> {
+  const host = document.createElement('div');
+  host.style.position = 'fixed';
+  host.style.left = '-10000px';
+  host.style.top = '0';
+  host.style.width = '794px';
+  host.style.background = '#fff';
+  host.style.zIndex = '-1';
+  document.body.appendChild(host);
+
+  const root = createRoot(host);
+  try {
+    await new Promise<void>((resolve) => {
+      root.render(<TimeClockCardView card={card} year={year} month={month} />);
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    // Garante layout completo antes do capture.
+    await new Promise((r) => setTimeout(r, 40));
+    const el = host.firstElementChild as HTMLElement | null;
+    if (!el) throw new Error('Cartão não renderizado');
+    return await html2canvas(el, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      width: 794,
+      windowWidth: 794,
+    });
+  } finally {
+    root.unmount();
+    host.remove();
+  }
+}
+
+async function appendCanvasPage(pdf: jsPDF, canvas: HTMLCanvasElement, isFirstPage: boolean) {
   const imgData = canvas.toDataURL('image/png');
   const pageW = 210;
   const pageH = 297;
@@ -85,7 +109,6 @@ export function TimeClockLogPanel({
   const [data, setData] = useState<CardsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | TimeClockDayStatus>('all');
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -127,17 +150,13 @@ export function TimeClockLogPanel({
     void load();
   }, [load]);
 
+  const cards = data?.cards ?? [];
+
   const collaborators = useMemo(() => {
-    return (data?.cards ?? [])
+    return cards
       .map((c) => [c.header.userId, c.header.userName] as const)
       .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
-  }, [data?.cards]);
-
-  const cards = useMemo(() => {
-    const list = data?.cards ?? [];
-    if (statusFilter === 'all') return list;
-    return list.filter((card) => card.days.some((d) => d.status === statusFilter));
-  }, [data?.cards, statusFilter]);
+  }, [cards]);
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
@@ -145,26 +164,19 @@ export function TimeClockLogPanel({
     setMonth(d.getMonth() + 1);
   }
 
-  async function exportPdf(userIds: string[]) {
-    if (exporting || userIds.length === 0) return;
+  async function exportPdf() {
+    if (exporting || cards.length === 0) return;
     setExporting(true);
     setError(null);
     try {
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-      let first = true;
-      for (const id of userIds) {
-        const el = document.querySelector<HTMLElement>(`[data-time-clock-card="${id}"]`);
-        if (!el) continue;
-        await cardElementToPdfPage(pdf, el, first);
-        first = false;
-      }
-      if (first) {
-        setError('Nenhum cartão disponível para exportar.');
-        return;
+      for (let i = 0; i < cards.length; i += 1) {
+        const canvas = await renderCardToCanvas(cards[i], year, month);
+        await appendCanvasPage(pdf, canvas, i === 0);
       }
       const suffix =
-        userIds.length === 1
-          ? cards.find((c) => c.header.userId === userIds[0])?.header.userName.replace(/\s+/g, '-')
+        cards.length === 1
+          ? cards[0].header.userName.replace(/\s+/g, '-')
           : 'todos';
       pdf.save(`cartao-ponto-${year}-${String(month).padStart(2, '0')}-${suffix || 'export'}.pdf`);
     } catch {
@@ -195,9 +207,9 @@ export function TimeClockLogPanel({
           type="button"
           variant="secondary"
           disabled={exporting || cards.length === 0}
-          onClick={() => void exportPdf(cards.map((c) => c.header.userId))}
+          onClick={() => void exportPdf()}
         >
-          {exporting ? 'Gerando PDF…' : 'Exportar todos'}
+          {exporting ? 'Gerando PDF…' : 'Exportar PDF'}
         </Button>
       </div>
 
@@ -279,21 +291,6 @@ export function TimeClockLogPanel({
             ))}
           </Select>
         </FilterField>
-
-        <FilterField label="Status">
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="min-w-[140px]"
-          >
-            <option value="all">Todos</option>
-            {(Object.keys(TIME_CLOCK_DAY_STATUS_LABELS) as TimeClockDayStatus[]).map((s) => (
-              <option key={s} value={s}>
-                {TIME_CLOCK_DAY_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
       </FilterBar>
 
       {error ? (
@@ -323,21 +320,11 @@ export function TimeClockLogPanel({
           ) : (
             cards.map((card) => (
               <Card key={card.header.userId} className="overflow-x-auto p-3">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {card.header.userName}
-                    <span className="ml-2 text-xs font-normal text-slate-500">
-                      {card.header.jobTitle || card.header.roleLabel}
-                    </span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={exporting}
-                    onClick={() => void exportPdf([card.header.userId])}
-                  >
-                    Exportar PDF
-                  </Button>
+                <div className="mb-3 text-sm font-semibold text-slate-900">
+                  {card.header.userName}
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    {card.header.jobTitle || card.header.roleLabel}
+                  </span>
                 </div>
                 <div className="overflow-x-auto">
                   <TimeClockCardView card={card} year={year} month={month} />
