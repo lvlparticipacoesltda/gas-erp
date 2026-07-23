@@ -954,13 +954,24 @@ export class SchedulesService {
         id: true,
         name: true,
         cnpj: true,
+        legalName: true,
         organization: { select: { name: true } },
       },
     });
     if (!store) throw new NotFoundException('Loja não encontrada');
 
-    const companyName =
-      (await this.cnpjLookup.lookupCompanyName(store.cnpj)) ?? store.organization.name;
+    let companyName = store.legalName?.trim() || null;
+    if (!companyName) {
+      const fromCnpj = await this.cnpjLookup.lookupCompanyName(store.cnpj);
+      if (fromCnpj) {
+        companyName = fromCnpj;
+        // Persiste para não depender da API externa nas próximas cargas.
+        void this.prisma.store
+          .update({ where: { id: store.id }, data: { legalName: fromCnpj } })
+          .catch(() => undefined);
+      }
+    }
+    companyName = companyName ?? store.organization.name;
 
     const collaborators = await this.listCollaborators(user, params.storeId, params.roleFilter);
     const filtered = params.userId

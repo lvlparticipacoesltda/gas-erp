@@ -10,6 +10,7 @@ import { AuthUser } from '@gas-erp/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { StorePaymentMethodsService } from './store-payment-methods.service';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
+import { CnpjLookupService } from '../../common/cnpj/cnpj-lookup.service';
 
 function buildLegacyAddress(data: {
   street?: string | null;
@@ -31,7 +32,14 @@ export class StoresService {
     private audit: AuditService,
     private paymentMethods: StorePaymentMethodsService,
     private geocoding: GeocodingService,
+    private cnpjLookup: CnpjLookupService,
   ) {}
+
+  private async resolveLegalName(cnpj?: string | null): Promise<string | null | undefined> {
+    if (cnpj === undefined) return undefined;
+    if (cnpj == null || cnpj === '') return null;
+    return (await this.cnpjLookup.lookupCompanyName(cnpj)) ?? null;
+  }
 
   findAll(user: AuthUser) {
     const where =
@@ -116,6 +124,7 @@ export class StoresService {
     const parsed = createStoreSchema.parse(input);
     const coords = await this.resolveCoords(parsed);
     const data = this.withLegacyAddress({ ...parsed, ...coords });
+    const legalName = await this.resolveLegalName(data.cnpj);
 
     const store = await this.prisma.store.create({
       data: {
@@ -123,6 +132,7 @@ export class StoresService {
         code: data.code,
         organizationId: user.organizationId,
         cnpj: data.cnpj ?? null,
+        legalName: legalName ?? null,
         address: data.address,
         street: data.street,
         number: data.number,
@@ -150,6 +160,10 @@ export class StoresService {
       longitude: existing.longitude,
     });
     const data = this.withLegacyAddress({ ...parsed, ...coords });
+    const legalName =
+      data.cnpj !== undefined
+        ? await this.resolveLegalName(data.cnpj)
+        : undefined;
 
     const store = await this.prisma.store.update({
       where: { id },
@@ -157,6 +171,7 @@ export class StoresService {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.code !== undefined ? { code: data.code } : {}),
         ...(data.cnpj !== undefined ? { cnpj: data.cnpj } : {}),
+        ...(legalName !== undefined ? { legalName } : {}),
         ...(data.address !== undefined ? { address: data.address } : {}),
         ...(data.street !== undefined ? { street: data.street } : {}),
         ...(data.number !== undefined ? { number: data.number } : {}),

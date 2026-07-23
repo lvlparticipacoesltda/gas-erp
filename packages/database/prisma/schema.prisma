@@ -158,6 +158,8 @@ model Store {
   code           String
   /** CNPJ da unidade (somente dígitos); usado no cupom/nota da venda. */
   cnpj           String?
+  /** Razão social (consulta CNPJ); usada no cartão de ponto. */
+  legalName      String?
   /** Endereço legado (texto livre); preferir campos estruturados abaixo. */
   address        String?
   street         String?
