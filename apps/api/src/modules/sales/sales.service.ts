@@ -20,6 +20,7 @@ import {
   allItemsHavePaymentMethod,
   anyItemHasPaymentMethod,
   buildPaymentAllocationsFromItems,
+  isGasDoPovoProductName,
   type DashboardDateQuery,
   resolveDashboardDateRange,
 } from '@gas-erp/shared';
@@ -1703,7 +1704,7 @@ export class SalesService {
 
   /**
    * Resolve pagamentos da venda: por produto (agregado) ou linhas livres / atalho GDP 100%.
-   * `gasDoPovoBenefit` final = há pelo menos um pagamento GDP.
+   * `gasDoPovoBenefit` final = pagamento GDP e/ou produto com nome Gás do Povo.
    */
   private async resolveSalePaymentPlan(
     storeId: string,
@@ -1761,8 +1762,18 @@ export class SalesService {
       select: { id: true },
     });
 
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const hasGdpNamedProduct = products.some((p) => isGasDoPovoProductName(p.name));
+
     const allowGdp =
       Boolean(options.gasDoPovoBenefit)
+      || hasGdpNamedProduct
       || payments.some(
         (p) =>
           p.method === 'GDP'
@@ -1776,7 +1787,11 @@ export class SalesService {
       { allowGdp },
     );
 
-    const gasDoPovoBenefit = resolvedPayments.some((p) => p.method === 'GDP');
+    const gasDoPovoBenefit =
+      Boolean(options.gasDoPovoBenefit)
+      || resolvedPayments.some((p) => p.method === 'GDP')
+      || hasGdpNamedProduct
+      || items.some((item) => gdpMethod != null && item.storePaymentMethodId === gdpMethod.id);
 
     return {
       resolvedPayments,

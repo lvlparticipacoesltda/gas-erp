@@ -24,6 +24,7 @@ export * from './sale-item-payments';
 export * from './sale-backdate';
 export * from './sale-mobile';
 export * from './sale-counting';
+export * from './gas-do-povo';
 export * from './schemas/sale-mobile';
 export * from './schemas/payment-method';
 export * from './payment-methods-catalog';
