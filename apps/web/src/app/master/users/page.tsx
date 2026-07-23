@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
-import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { Modal } from '@/components/modal';
+import { TableAction, TableActions } from '@/components/table-actions';
+import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { ROLE_LABELS, USER_ROLES, type PaginatedResponse } from '@gas-erp/shared';
 import {
@@ -59,6 +62,7 @@ const emptyCreate = {
 export default function MasterUsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+  const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [form, setForm] = useState(emptyCreate);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [editForm, setEditForm] = useState({
@@ -78,6 +82,7 @@ export default function MasterUsersPage() {
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -112,7 +117,14 @@ export default function MasterUsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  function startEdit(user: UserRow) {
+  function openCreate() {
+    setFormError('');
+    setForm(emptyCreate);
+    setEditing(null);
+    setModal('create');
+  }
+
+  function openEdit(user: UserRow) {
     setFormError('');
     setEditing(user);
     setEditForm({
@@ -129,6 +141,13 @@ export default function MasterUsersPage() {
       admittedAt: toDateInputValue(user.admittedAt),
       jobTitle: user.jobTitle ?? '',
     });
+    setModal('edit');
+  }
+
+  function closeModal() {
+    setModal(null);
+    setEditing(null);
+    setFormError('');
   }
 
   function onRoleChange(role: string, isEdit: boolean) {
@@ -147,6 +166,7 @@ export default function MasterUsersPage() {
       setFormError('Selecione ao menos uma loja para este usuário.');
       return;
     }
+    setSaving(true);
     try {
       await api(
         '/users',
@@ -164,10 +184,12 @@ export default function MasterUsersPage() {
         },
         getToken(),
       );
-      setForm(emptyCreate);
-      loadUsers();
+      closeModal();
+      await loadUsers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao cadastrar usuário');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -187,8 +209,8 @@ export default function MasterUsersPage() {
         { method: 'PATCH', body: JSON.stringify({ active: false }) },
         getToken(),
       );
-      if (editing?.id === user.id) setEditing(null);
-      loadUsers();
+      if (editing?.id === user.id) closeModal();
+      await loadUsers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao inativar usuário');
     }
@@ -205,8 +227,8 @@ export default function MasterUsersPage() {
     setFormError('');
     try {
       await api(`/users/${user.id}`, { method: 'DELETE' }, getToken());
-      if (editing?.id === user.id) setEditing(null);
-      loadUsers();
+      if (editing?.id === user.id) closeModal();
+      await loadUsers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao excluir usuário');
     }
@@ -243,12 +265,15 @@ export default function MasterUsersPage() {
       jobTitle: editForm.jobTitle || null,
     };
     if (editForm.password) payload.password = editForm.password;
+    setSaving(true);
     try {
       await api(`/users/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) }, getToken());
-      setEditing(null);
-      loadUsers();
+      closeModal();
+      await loadUsers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao salvar usuário');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -258,278 +283,310 @@ export default function MasterUsersPage() {
 
   return (
     <>
-    <PageHeader title="Usuários" subtitle="Acesso ao painel web — papéis, lojas e telas permitidas" />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <h2 className="mb-4 font-semibold">{editing ? 'Editar usuário' : 'Novo usuário'}</h2>
-          {editing ? (
-            <form onSubmit={handleUpdate} className="space-y-3">
-              <div>
-                <Label>Nome</Label>
-                <Input
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>E-mail</Label>
-                <Input
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Telefone</Label>
-                <Input
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>CPF</Label>
-                  <Input
-                    value={editForm.cpf}
-                    onChange={(e) => setEditForm({ ...editForm, cpf: e.target.value })}
-                    placeholder="Opcional"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <Label>PIS</Label>
-                  <Input
-                    value={editForm.pis}
-                    onChange={(e) => setEditForm({ ...editForm, pis: e.target.value })}
-                    placeholder="Opcional"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <Label>Data de admissão</Label>
-                  <Input
-                    type="date"
-                    value={editForm.admittedAt}
-                    onChange={(e) => setEditForm({ ...editForm, admittedAt: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Cargo</Label>
-                  <Input
-                    value={editForm.jobTitle}
-                    onChange={(e) => setEditForm({ ...editForm, jobTitle: e.target.value })}
-                    placeholder="Opcional"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Nova senha</Label>
-                <Input
-                  type="password"
-                  value={editForm.password}
-                  onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                  placeholder="Deixe em branco para manter"
-                  minLength={6}
-                />
-              </div>
-              <div>
-                <Label>Papel</Label>
-                <Select
-                  value={editForm.role}
-                  onChange={(e) => onRoleChange(e.target.value, true)}
-                >
-                  {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER').map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              {needsStoreAssignment(editForm.role) ? (
-                <StoreMultiSelect
-                  stores={stores}
-                  selected={editForm.storeIds}
-                  onChange={(storeIds) => setEditForm({ ...editForm, storeIds })}
-                  required
-                />
-              ) : (
-                <p className="text-sm text-slate-500">
-                  Usuários Master têm acesso a todas as lojas da rede automaticamente.
-                </p>
-              )}
-              <PermissionCheckboxes
-                role={editForm.role}
-                selected={editForm.permissions}
-                onChange={(permissions) => setEditForm({ ...editForm, permissions })}
-              />
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={editForm.active}
-                  onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })}
-                />
-                Usuário ativo (desmarque para inativar o acesso ao sistema)
-              </label>
-              <div className="flex gap-2">
-                <Button type="submit">Salvar</Button>
-                <Button type="button" variant="secondary" onClick={() => { setEditing(null); setFormError(''); }}>
-                  Cancelar
-                </Button>
-              </div>
-              {formError && <p className="text-sm text-red-600">{formError}</p>}
-            </form>
-          ) : (
-            <form onSubmit={handleCreate} className="space-y-3">
-              <div>
-                <Label>Nome</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-              </div>
-              <div>
-                <Label>E-mail</Label>
-                <Input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Senha</Label>
-                <Input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>CPF</Label>
-                  <Input
-                    value={form.cpf}
-                    onChange={(e) => setForm({ ...form, cpf: e.target.value })}
-                    placeholder="Opcional"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <Label>PIS</Label>
-                  <Input
-                    value={form.pis}
-                    onChange={(e) => setForm({ ...form, pis: e.target.value })}
-                    placeholder="Opcional"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <Label>Data de admissão</Label>
-                  <Input
-                    type="date"
-                    value={form.admittedAt}
-                    onChange={(e) => setForm({ ...form, admittedAt: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Cargo</Label>
-                  <Input
-                    value={form.jobTitle}
-                    onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
-                    placeholder="Opcional"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Papel</Label>
-                <Select value={form.role} onChange={(e) => onRoleChange(e.target.value, false)}>
-                  {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER').map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              {needsStoreAssignment(form.role) ? (
-                <StoreMultiSelect
-                  stores={stores}
-                  selected={form.storeIds}
-                  onChange={(storeIds) => setForm({ ...form, storeIds })}
-                  required
-                />
-              ) : (
-                <p className="text-sm text-slate-500">
-                  Usuários Master têm acesso a todas as lojas da rede automaticamente.
-                </p>
-              )}
-              <PermissionCheckboxes
-                role={form.role}
-                selected={form.permissions.length ? form.permissions : effectivePermissions(form.role, [])}
-                onChange={(permissions) => setForm({ ...form, permissions })}
-              />
-              <Button type="submit">Cadastrar</Button>
-              {formError && <p className="text-sm text-red-600">{formError}</p>}
-            </form>
-          )}
-        </Card>
-        <PaginatedSection
-          loading={loading}
-          pagination={{
-            className: 'mt-4',
-            page,
-            totalPages,
-            total,
-            pageSize: PAGE_SIZE,
-            onPageChange: setPage,
-          }}
-        >
+      <PageHeader
+        title="Usuários"
+        subtitle="Acesso ao painel web — papéis, lojas e telas permitidas"
+        action={
+          <Button type="button" onClick={openCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Criar
+          </Button>
+        }
+      />
+
+      <PaginatedSection
+        loading={loading}
+        pagination={{
+          className: 'mt-4',
+          page,
+          totalPages,
+          total,
+          pageSize: PAGE_SIZE,
+          onPageChange: setPage,
+        }}
+      >
         <Table>
           <thead className="bg-slate-50 text-left">
             <tr>
               <th className="p-3">Nome</th>
+              <th className="p-3">E-mail</th>
               <th className="p-3">Papel</th>
-              <th className="p-3">Lojas</th>
+              <th className="p-3 min-w-[12rem]">Lojas</th>
+              <th className="p-3">Cargo</th>
               <th className="p-3">Status</th>
-              <th className="p-3" />
+              <th className="p-3 text-right">Ação</th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id} className="border-t border-slate-100">
-                <td className="p-3">
-                  {u.name}
-                  <div className="text-xs text-slate-500">{u.email}</div>
-                </td>
+                <td className="p-3 font-medium text-slate-800">{u.name}</td>
+                <td className="p-3 text-slate-600">{u.email}</td>
                 <td className="p-3">{ROLE_LABELS[u.role]}</td>
                 <td className="p-3 text-slate-600">
                   {!needsStoreAssignment(u.role)
                     ? 'Todas'
                     : u.userStores.map((us) => us.store.name).join(', ') || '—'}
                 </td>
+                <td className="p-3 text-slate-600">{u.jobTitle || '—'}</td>
                 <td className="p-3">
                   <Badge tone={u.active ? 'success' : 'danger'}>{u.active ? 'Ativo' : 'Inativo'}</Badge>
                 </td>
-                <td className="p-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" onClick={() => startEdit(u)}>
-                      Editar
-                    </Button>
+                <td className="p-3">
+                  <TableActions>
+                    <TableAction onClick={() => openEdit(u)}>Editar</TableAction>
                     {u.active ? (
-                      <Button type="button" variant="secondary" onClick={() => handleDeactivate(u)}>
+                      <TableAction tone="muted" onClick={() => handleDeactivate(u)}>
                         Inativar
-                      </Button>
+                      </TableAction>
                     ) : null}
-                    <Button type="button" variant="danger" onClick={() => handleDelete(u)}>
-                      Excluir
-                    </Button>
-                  </div>
+                    <TableAction tone="danger" onClick={() => handleDelete(u)}>
+                      Remover
+                    </TableAction>
+                  </TableActions>
                 </td>
               </tr>
             ))}
+            {users.length === 0 && (
+              <tr>
+                <td colSpan={7} className="p-6 text-center text-slate-400">
+                  Nenhum usuário cadastrado.
+                </td>
+              </tr>
+            )}
           </tbody>
         </Table>
-        </PaginatedSection>
-      </div>
+      </PaginatedSection>
+
+      <Modal
+        open={modal === 'create'}
+        onClose={closeModal}
+        title="Novo usuário"
+        subtitle="Acesso ao painel web"
+        size="xl"
+      >
+        <form onSubmit={handleCreate} className="space-y-3">
+          <div>
+            <Label>Nome</Label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          </div>
+          <div>
+            <Label>E-mail</Label>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              required
+            />
+          </div>
+          <div>
+            <Label>Senha</Label>
+            <Input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              required
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>CPF</Label>
+              <Input
+                value={form.cpf}
+                onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+                placeholder="Opcional"
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <Label>PIS</Label>
+              <Input
+                value={form.pis}
+                onChange={(e) => setForm({ ...form, pis: e.target.value })}
+                placeholder="Opcional"
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <Label>Data de admissão</Label>
+              <Input
+                type="date"
+                value={form.admittedAt}
+                onChange={(e) => setForm({ ...form, admittedAt: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Cargo</Label>
+              <Input
+                value={form.jobTitle}
+                onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
+                placeholder="Opcional"
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Papel</Label>
+            <Select value={form.role} onChange={(e) => onRoleChange(e.target.value, false)}>
+              {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER').map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {needsStoreAssignment(form.role) ? (
+            <StoreMultiSelect
+              stores={stores}
+              selected={form.storeIds}
+              onChange={(storeIds) => setForm({ ...form, storeIds })}
+              required
+            />
+          ) : (
+            <p className="text-sm text-slate-500">
+              Usuários Master têm acesso a todas as lojas da rede automaticamente.
+            </p>
+          )}
+          <PermissionCheckboxes
+            role={form.role}
+            selected={form.permissions.length ? form.permissions : effectivePermissions(form.role, [])}
+            onChange={(permissions) => setForm({ ...form, permissions })}
+          />
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={closeModal} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Cadastrando…' : 'Cadastrar'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={modal === 'edit' && editing != null}
+        onClose={closeModal}
+        title="Editar usuário"
+        subtitle={editing?.name}
+        size="xl"
+      >
+        <form onSubmit={handleUpdate} className="space-y-3">
+          <div>
+            <Label>Nome</Label>
+            <Input
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              required
+            />
+          </div>
+          <div>
+            <Label>E-mail</Label>
+            <Input
+              type="email"
+              value={editForm.email}
+              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              required
+            />
+          </div>
+          <div>
+            <Label>Telefone</Label>
+            <Input
+              value={editForm.phone}
+              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>CPF</Label>
+              <Input
+                value={editForm.cpf}
+                onChange={(e) => setEditForm({ ...editForm, cpf: e.target.value })}
+                placeholder="Opcional"
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <Label>PIS</Label>
+              <Input
+                value={editForm.pis}
+                onChange={(e) => setEditForm({ ...editForm, pis: e.target.value })}
+                placeholder="Opcional"
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <Label>Data de admissão</Label>
+              <Input
+                type="date"
+                value={editForm.admittedAt}
+                onChange={(e) => setEditForm({ ...editForm, admittedAt: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Cargo</Label>
+              <Input
+                value={editForm.jobTitle}
+                onChange={(e) => setEditForm({ ...editForm, jobTitle: e.target.value })}
+                placeholder="Opcional"
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Nova senha</Label>
+            <Input
+              type="password"
+              value={editForm.password}
+              onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+              placeholder="Deixe em branco para manter"
+              minLength={6}
+            />
+          </div>
+          <div>
+            <Label>Papel</Label>
+            <Select value={editForm.role} onChange={(e) => onRoleChange(e.target.value, true)}>
+              {USER_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' && r !== 'DELIVERER').map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {needsStoreAssignment(editForm.role) ? (
+            <StoreMultiSelect
+              stores={stores}
+              selected={editForm.storeIds}
+              onChange={(storeIds) => setEditForm({ ...editForm, storeIds })}
+              required
+            />
+          ) : (
+            <p className="text-sm text-slate-500">
+              Usuários Master têm acesso a todas as lojas da rede automaticamente.
+            </p>
+          )}
+          <PermissionCheckboxes
+            role={editForm.role}
+            selected={editForm.permissions}
+            onChange={(permissions) => setEditForm({ ...editForm, permissions })}
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={editForm.active}
+              onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })}
+            />
+            Usuário ativo (desmarque para inativar o acesso ao sistema)
+          </label>
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={closeModal} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Salvando…' : 'Salvar'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }

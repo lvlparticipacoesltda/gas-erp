@@ -1,8 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
-import { Badge, Button, Card, Input, Label, Select, Table } from '@/components/ui';
+import { Modal } from '@/components/modal';
+import { TableAction, TableActions } from '@/components/table-actions';
+import { Badge, Button, Input, Label, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { canManageDeliverers, DELIVERER_STATUS_LABELS, type AuthUser } from '@gas-erp/shared';
 
@@ -70,6 +73,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [storeFilter, setStoreFilter] = useState('');
   const [editing, setEditing] = useState<DelivererRow | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
@@ -97,6 +101,18 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
     setCreateStores(new Set(storeId ? [storeId] : []));
     load().finally(() => setReady(true));
   }, [load, storeId]);
+
+  function openCreate() {
+    setCreateError('');
+    setCreateForm(emptyCreateForm);
+    setCreateStores(new Set(storeId ? [storeId] : []));
+    setCreateOpen(true);
+  }
+
+  function closeCreate() {
+    setCreateOpen(false);
+    setCreateError('');
+  }
 
   function toggleCreateStore(id: string) {
     setCreateStores((prev) => {
@@ -131,8 +147,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
         },
         getToken(),
       );
-      setCreateForm(emptyCreateForm);
-      setCreateStores(new Set(storeId ? [storeId] : []));
+      closeCreate();
       await load();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Não foi possível cadastrar o entregador.');
@@ -193,219 +208,219 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
           {actionError}
         </p>
       )}
-      <div className={canManage ? 'grid gap-6 lg:grid-cols-2' : ''}>
-        {canManage && (
-          <Card>
-            <h2 className="mb-1 font-semibold">Novo entregador</h2>
-            <p className="mb-4 text-sm text-slate-500">
-              Acesso somente pelo aplicativo móvel — não usa o painel web.
-            </p>
-            {createError && (
-              <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {createError}
-              </p>
-            )}
-            <form onSubmit={handleCreate} className="space-y-3">
-              <div>
-                <Label>Nome</Label>
-                <Input
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>E-mail</Label>
-                <Input
-                  type="email"
-                  value={createForm.email}
-                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Telefone</Label>
-                <Input
-                  value={createForm.phone}
-                  onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
-                  placeholder="Opcional"
-                />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>CPF</Label>
-                  <Input
-                    value={createForm.cpf}
-                    onChange={(e) => setCreateForm({ ...createForm, cpf: e.target.value })}
-                    placeholder="Opcional"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <Label>PIS</Label>
-                  <Input
-                    value={createForm.pis}
-                    onChange={(e) => setCreateForm({ ...createForm, pis: e.target.value })}
-                    placeholder="Opcional"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <Label>Data de admissão</Label>
-                  <Input
-                    type="date"
-                    value={createForm.admittedAt}
-                    onChange={(e) => setCreateForm({ ...createForm, admittedAt: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Cargo</Label>
-                  <Input
-                    value={createForm.jobTitle}
-                    onChange={(e) => setCreateForm({ ...createForm, jobTitle: e.target.value })}
-                    placeholder="Opcional"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Senha inicial</Label>
-                <Input
-                  type="password"
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                  minLength={6}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Status inicial</Label>
-                <Select
-                  value={createForm.status}
-                  onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
-                >
-                  {Object.entries(DELIVERER_STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label>Unidades atendidas</Label>
-                <div className="mt-1 max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                  {stores.map((s) => (
-                    <label
-                      key={s.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={createStores.has(s.id)}
-                        onChange={() => toggleCreateStore(s.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-brand"
-                      />
-                      {s.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <Button type="submit" disabled={creating}>
-                {creating ? 'Cadastrando…' : 'Cadastrar entregador'}
-              </Button>
-            </form>
-          </Card>
-        )}
 
-        <div className={canManage ? '' : 'col-span-full'}>
-          {showStoreFilter && (
-            <div className="mb-4 flex flex-wrap items-end gap-3">
-              <div className="min-w-[12rem]">
-                <Label>Filtrar por unidade</Label>
-                <Select value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
-                  <option value="">Todas as unidades</option>
-                  {stores.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-          )}
-
-          <Table>
-            <thead className="bg-slate-50 text-left">
-              <tr>
-                <th className="p-3">Nome</th>
-                <th className="p-3">E-mail</th>
-                <th className="p-3">Telefone</th>
-                <th className="p-3">Acesso app</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Unidades</th>
-                {canManage && <th className="p-3 text-right">Ações</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {deliverers.map((d) => (
-                <tr key={d.id} className="border-t border-slate-100 align-top">
-                  <td className="p-3 font-medium text-slate-800">{d.user.name}</td>
-                  <td className="p-3 text-sm text-slate-600">{d.user.email}</td>
-                  <td className="p-3">{d.user.phone ?? '—'}</td>
-                  <td className="p-3">
-                    <Badge tone={d.user.active ? 'success' : 'danger'}>
-                      {d.user.active ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </td>
-                  <td className="p-3">
-                    <Badge tone={STATUS_TONE[d.status] ?? 'default'}>
-                      {DELIVERER_STATUS_LABELS[d.status] ?? d.status}
-                    </Badge>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {d.stores.length === 0 ? (
-                        <span className="text-slate-400">Nenhuma</span>
-                      ) : (
-                        d.stores.map((s) => (
-                          <Badge key={s.storeId} tone="default">
-                            {s.store.name}
-                          </Badge>
-                        ))
-                      )}
-                    </div>
-                  </td>
-                  {canManage && (
-                    <td className="p-3 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="secondary" onClick={() => setEditing(d)}>
-                          Editar
-                        </Button>
-                        {d.user.active ? (
-                          <Button variant="secondary" onClick={() => handleDeactivate(d)}>
-                            Inativar
-                          </Button>
-                        ) : null}
-                        <Button variant="danger" onClick={() => handleDelete(d)}>
-                          Excluir
-                        </Button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        {showStoreFilter ? (
+          <div className="min-w-[12rem]">
+            <Label>Filtrar por unidade</Label>
+            <Select value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
+              <option value="">Todas as unidades</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
               ))}
-              {deliverers.length === 0 && (
-                <tr>
-                  <td colSpan={canManage ? 7 : 6} className="p-6 text-center text-slate-400">
-                    {listStoreId
-                      ? 'Nenhum entregador vinculado a esta unidade.'
-                      : 'Nenhum entregador cadastrado na rede.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-        </div>
+            </Select>
+          </div>
+        ) : (
+          <div />
+        )}
+        {canManage ? (
+          <Button type="button" onClick={openCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Criar
+          </Button>
+        ) : null}
       </div>
+
+      <Table>
+        <thead className="bg-slate-50 text-left">
+          <tr>
+            <th className="p-3">Nome</th>
+            <th className="p-3">E-mail</th>
+            <th className="p-3">Telefone</th>
+            <th className="p-3">Acesso app</th>
+            <th className="p-3">Status</th>
+            <th className="p-3 min-w-[12rem]">Unidades</th>
+            {canManage && <th className="p-3 text-right">Ação</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {deliverers.map((d) => (
+            <tr key={d.id} className="border-t border-slate-100 align-top">
+              <td className="p-3 font-medium text-slate-800">{d.user.name}</td>
+              <td className="p-3 text-sm text-slate-600">{d.user.email}</td>
+              <td className="p-3">{d.user.phone ?? '—'}</td>
+              <td className="p-3">
+                <Badge tone={d.user.active ? 'success' : 'danger'}>
+                  {d.user.active ? 'Ativo' : 'Inativo'}
+                </Badge>
+              </td>
+              <td className="p-3">
+                <Badge tone={STATUS_TONE[d.status] ?? 'default'}>
+                  {DELIVERER_STATUS_LABELS[d.status] ?? d.status}
+                </Badge>
+              </td>
+              <td className="p-3 text-slate-600">
+                {d.stores.length === 0
+                  ? '—'
+                  : d.stores.map((s) => s.store.name).join(', ')}
+              </td>
+              {canManage && (
+                <td className="p-3">
+                  <TableActions>
+                    <TableAction onClick={() => setEditing(d)}>Editar</TableAction>
+                    {d.user.active ? (
+                      <TableAction tone="muted" onClick={() => handleDeactivate(d)}>
+                        Inativar
+                      </TableAction>
+                    ) : null}
+                    <TableAction tone="danger" onClick={() => handleDelete(d)}>
+                      Remover
+                    </TableAction>
+                  </TableActions>
+                </td>
+              )}
+            </tr>
+          ))}
+          {deliverers.length === 0 && (
+            <tr>
+              <td colSpan={canManage ? 7 : 6} className="p-6 text-center text-slate-400">
+                {listStoreId
+                  ? 'Nenhum entregador vinculado a esta unidade.'
+                  : 'Nenhum entregador cadastrado na rede.'}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </Table>
+
+      <Modal
+        open={createOpen}
+        onClose={closeCreate}
+        title="Novo entregador"
+        subtitle="Acesso somente pelo aplicativo móvel — não usa o painel web."
+        size="lg"
+      >
+        <form onSubmit={handleCreate} className="space-y-3">
+          {createError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {createError}
+            </p>
+          ) : null}
+          <div>
+            <Label>Nome</Label>
+            <Input
+              value={createForm.name}
+              onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+              required
+            />
+          </div>
+          <div>
+            <Label>E-mail</Label>
+            <Input
+              type="email"
+              value={createForm.email}
+              onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+              required
+            />
+          </div>
+          <div>
+            <Label>Telefone</Label>
+            <Input
+              value={createForm.phone}
+              onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+              placeholder="Opcional"
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>CPF</Label>
+              <Input
+                value={createForm.cpf}
+                onChange={(e) => setCreateForm({ ...createForm, cpf: e.target.value })}
+                placeholder="Opcional"
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <Label>PIS</Label>
+              <Input
+                value={createForm.pis}
+                onChange={(e) => setCreateForm({ ...createForm, pis: e.target.value })}
+                placeholder="Opcional"
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <Label>Data de admissão</Label>
+              <Input
+                type="date"
+                value={createForm.admittedAt}
+                onChange={(e) => setCreateForm({ ...createForm, admittedAt: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Cargo</Label>
+              <Input
+                value={createForm.jobTitle}
+                onChange={(e) => setCreateForm({ ...createForm, jobTitle: e.target.value })}
+                placeholder="Opcional"
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Senha inicial</Label>
+            <Input
+              type="password"
+              value={createForm.password}
+              onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+              minLength={6}
+              required
+            />
+          </div>
+          <div>
+            <Label>Status inicial</Label>
+            <Select
+              value={createForm.status}
+              onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
+            >
+              {Object.entries(DELIVERER_STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Unidades atendidas</Label>
+            <div className="mt-1 max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 p-2">
+              {stores.map((s) => (
+                <label
+                  key={s.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={createStores.has(s.id)}
+                    onChange={() => toggleCreateStore(s.id)}
+                    className="h-4 w-4 rounded border-slate-300 text-brand"
+                  />
+                  {s.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={closeCreate} disabled={creating}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? 'Cadastrando…' : 'Cadastrar'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {editing && (
         <EditDelivererModal
@@ -460,7 +475,8 @@ function EditDelivererModal({
     });
   }
 
-  async function save() {
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
     if (selected.size === 0) {
       setError('Selecione ao menos uma unidade.');
       return;
@@ -534,60 +550,61 @@ function EditDelivererModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-bold text-slate-900">Editar entregador</h2>
-        <p className="mt-1 text-sm text-slate-500">Credenciais para o aplicativo móvel do entregador.</p>
-
-        <div className="mt-4 space-y-3">
+    <Modal
+      open
+      onClose={onClose}
+      title="Editar entregador"
+      subtitle="Credenciais para o aplicativo móvel do entregador."
+      size="lg"
+    >
+      <form onSubmit={save} className="space-y-3">
+        <div>
+          <Label>Nome</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
+        <div>
+          <Label>E-mail</Label>
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+        <div>
+          <Label>Telefone</Label>
+          <Input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Opcional"
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label>Nome</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            <Label>CPF</Label>
+            <Input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Opcional" inputMode="numeric" />
           </div>
           <div>
-            <Label>E-mail</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Label>PIS</Label>
+            <Input value={pis} onChange={(e) => setPis(e.target.value)} placeholder="Opcional" inputMode="numeric" />
           </div>
           <div>
-            <Label>Telefone</Label>
-            <Input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Opcional"
-            />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>CPF</Label>
-              <Input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Opcional" inputMode="numeric" />
-            </div>
-            <div>
-              <Label>PIS</Label>
-              <Input value={pis} onChange={(e) => setPis(e.target.value)} placeholder="Opcional" inputMode="numeric" />
-            </div>
-            <div>
-              <Label>Data de admissão</Label>
-              <Input type="date" value={admittedAt} onChange={(e) => setAdmittedAt(e.target.value)} />
-            </div>
-            <div>
-              <Label>Cargo</Label>
-              <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="Opcional" />
-            </div>
+            <Label>Data de admissão</Label>
+            <Input type="date" value={admittedAt} onChange={(e) => setAdmittedAt(e.target.value)} />
           </div>
           <div>
-            <Label>Nova senha</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={6}
-              placeholder="Deixe em branco para manter a atual"
-              autoComplete="new-password"
-            />
+            <Label>Cargo</Label>
+            <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="Opcional" />
           </div>
         </div>
+        <div>
+          <Label>Nova senha</Label>
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={6}
+            placeholder="Deixe em branco para manter a atual"
+            autoComplete="new-password"
+          />
+        </div>
 
-        <div className="mt-4">
+        <div>
           <Label>Unidades atendidas</Label>
           <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 p-2">
             {stores.map((s) => (
@@ -610,7 +627,7 @@ function EditDelivererModal({
           </div>
         </div>
 
-        <div className="mt-4">
+        <div>
           <Label>Status operacional</Label>
           <Select value={status} onChange={(e) => setStatus(e.target.value)} disabled={!active}>
             {Object.entries(DELIVERER_STATUS_LABELS).map(([value, label]) => (
@@ -621,7 +638,7 @@ function EditDelivererModal({
           </Select>
         </div>
 
-        <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
             checked={active}
@@ -631,17 +648,17 @@ function EditDelivererModal({
           Entregador ativo (pode usar o aplicativo)
         </label>
 
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={saving}>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={save} disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar'}
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Salvando…' : 'Salvar'}
           </Button>
         </div>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }
