@@ -524,7 +524,7 @@ export class DashboardService {
         }
       }
 
-      const saleGdpRevenue = sale.payments.reduce((sum, payment) => {
+      const gdpPaymentRevenue = sale.payments.reduce((sum, payment) => {
         const isGdpPayment =
           payment.method === 'GDP' ||
           (payment.storePaymentMethodId != null &&
@@ -539,9 +539,18 @@ export class DashboardService {
         return isGdpItem && isGlp(item.product.productType) ? sum + item.quantity : sum;
       }, 0);
 
+      const glpItemsRevenue = sale.items.reduce(
+        (sum, item) =>
+          isGlp(item.product.productType) ? sum + toNumber(item.total) : sum,
+        0,
+      );
+
       const saleIsGdp =
-        sale.gasDoPovoBenefit || saleGdpRevenue > 0 || itemGdpQty > 0;
+        sale.gasDoPovoBenefit || gdpPaymentRevenue > 0 || itemGdpQty > 0;
       const saleGdpQty = itemGdpQty > 0 ? itemGdpQty : saleIsGdp ? saleGlpQty : 0;
+      // Sem linha GDP (ex.: venda por produto com taxa Gás do Povo): usa o valor dos itens GLP.
+      const saleGdpRevenue =
+        gdpPaymentRevenue > 0 ? gdpPaymentRevenue : saleIsGdp ? glpItemsRevenue : 0;
 
       gdpQuantity += saleGdpQty;
       gdpRevenue += saleGdpRevenue;
