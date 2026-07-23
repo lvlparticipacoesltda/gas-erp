@@ -381,7 +381,6 @@ export default function MasterUsersPage() {
               <th className="p-3">E-mail</th>
               <th className="p-3">Papel</th>
               <th className="p-3 min-w-[12rem]">Lojas</th>
-              <th className="p-3">Cargo</th>
               <th className="p-3">Status</th>
               <th className="p-3 text-right">Ação</th>
             </tr>
@@ -397,7 +396,6 @@ export default function MasterUsersPage() {
                     ? 'Todas'
                     : u.userStores.map((us) => us.store.name).join(', ') || '—'}
                 </td>
-                <td className="p-3 text-slate-600">{u.jobTitle || '—'}</td>
                 <td className="p-3">
                   <Badge tone={u.active ? 'success' : 'danger'}>{u.active ? 'Ativo' : 'Inativo'}</Badge>
                 </td>
@@ -418,7 +416,7 @@ export default function MasterUsersPage() {
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-slate-400">
+                <td colSpan={6} className="p-6 text-center text-slate-400">
                   Nenhum usuário cadastrado.
                 </td>
               </tr>
