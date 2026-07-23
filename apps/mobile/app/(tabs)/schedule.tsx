@@ -25,7 +25,11 @@ import { useAuth } from '@/lib/auth';
 import {
   fetchMySchedule,
   fetchMyTimeClock,
+  mapPunchesToSlots,
+  nextPunchSlot,
   punchTimeClock,
+  PUNCH_SLOT_LABELS,
+  type PunchSlotKey,
   type ScheduleEntryDto,
   type TimeClockMe,
 } from '@/lib/schedules';
@@ -178,6 +182,21 @@ export default function ScheduleScreen() {
     Boolean(photoBase64 || photoUri) &&
     distanceM != null &&
     distanceM <= TIME_CLOCK_GEOFENCE_METERS;
+
+  const punchSlots = useMemo(() => {
+    if (!punch) {
+      return { ent1: null, sai1: null, ent2: null, sai2: null } as Record<
+        PunchSlotKey,
+        string | null
+      >;
+    }
+    return mapPunchesToSlots(punch.punches);
+  }, [punch]);
+
+  const activePunchSlot = useMemo(
+    () => (punch ? nextPunchSlot(punch.punches) : 'ent1'),
+    [punch],
+  );
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
@@ -404,12 +423,32 @@ export default function ScheduleScreen() {
           <Text style={styles.hint}>
             Disponível a até {TIME_CLOCK_GEOFENCE_METERS} m da unidade. Foto obrigatória.
           </Text>
+
+          <View style={styles.slotsGrid}>
+            {(['ent1', 'sai1', 'ent2', 'sai2'] as PunchSlotKey[]).map((key) => {
+              const time = punchSlots[key];
+              const isNext = activePunchSlot === key && !time;
+              return (
+                <View
+                  key={key}
+                  style={[styles.slotCell, isNext && styles.slotCellNext]}
+                >
+                  <Text style={[styles.slotLabel, isNext && styles.slotLabelNext]}>
+                    {PUNCH_SLOT_LABELS[key]}
+                  </Text>
+                  <Text style={[styles.slotTime, time ? styles.slotTimeFilled : null]}>
+                    {time ?? '--:--'}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+
           {punch ? (
             <Text style={styles.punchStatus}>
               Próximo: {punch.nextType === 'CLOCK_IN' ? 'Entrada' : 'Saída'}
-              {punch.punches.length
-                ? ` · ${punch.punches.length} registro(s) hoje`
-                : ' · nenhum registro hoje'}
+              {' · '}
+              {PUNCH_SLOT_LABELS[activePunchSlot]}
             </Text>
           ) : null}
           {distanceM != null ? (
@@ -626,6 +665,46 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.textMuted },
   punchStatus: { fontSize: 13, color: colors.text, fontWeight: '600' },
   punchActions: { flexDirection: 'row', gap: spacing.sm },
+  slotsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  slotCell: {
+    width: '47%',
+    flexGrow: 1,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    gap: 2,
+  },
+  slotCellNext: {
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+    backgroundColor: colors.surface,
+  },
+  slotLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textFaint,
+    letterSpacing: 0.3,
+  },
+  slotLabelNext: {
+    color: colors.primary,
+  },
+  slotTime: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+  slotTimeFilled: {
+    color: colors.text,
+  },
   secondaryBtn: {
     flex: 1,
     borderWidth: 1,

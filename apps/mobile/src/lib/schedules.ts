@@ -75,3 +75,49 @@ export function punchTimeClock(input: {
     },
   });
 }
+
+export type PunchSlotKey = 'ent1' | 'sai1' | 'ent2' | 'sai2';
+
+export const PUNCH_SLOT_LABELS: Record<PunchSlotKey, string> = {
+  ent1: 'ENT.1',
+  sai1: 'SAÍ.1',
+  ent2: 'ENT.2',
+  sai2: 'SAÍ.2',
+};
+
+/** Mapeia batidas do dia para os 4 slots do cartão (1º IN, 1º OUT, 2º IN, 2º OUT). */
+export function mapPunchesToSlots(
+  punches: TimeClockMe['punches'],
+): Record<PunchSlotKey, string | null> {
+  const ordered = [...punches].sort(
+    (a, b) => new Date(a.punchedAt).getTime() - new Date(b.punchedAt).getTime(),
+  );
+  const ins = ordered.filter((p) => p.type === 'CLOCK_IN');
+  const outs = ordered.filter((p) => p.type === 'CLOCK_OUT');
+
+  const fmt = (iso?: string) => {
+    if (!iso) return null;
+    return new Date(iso).toLocaleTimeString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  };
+
+  return {
+    ent1: fmt(ins[0]?.punchedAt),
+    sai1: fmt(outs[0]?.punchedAt),
+    ent2: fmt(ins[1]?.punchedAt),
+    sai2: fmt(outs[1]?.punchedAt),
+  };
+}
+
+/** Qual slot será preenchido na próxima batida. */
+export function nextPunchSlot(punches: TimeClockMe['punches']): PunchSlotKey {
+  const slots = mapPunchesToSlots(punches);
+  if (!slots.ent1) return 'ent1';
+  if (!slots.sai1) return 'sai1';
+  if (!slots.ent2) return 'ent2';
+  return 'sai2';
+}
