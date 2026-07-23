@@ -29,6 +29,7 @@ import {
 } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertScreenPermission, assertStoreAccess } from '../../common/guards';
+import { CnpjLookupService } from '../../common/cnpj/cnpj-lookup.service';
 
 const BR_TZ = 'America/Sao_Paulo';
 /** Tolerância (minutos) após o horário de entrada da escala antes de marcar atraso. */
@@ -256,7 +257,10 @@ const collaboratorSelect = {
 
 @Injectable()
 export class SchedulesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cnpjLookup: CnpjLookupService,
+  ) {}
 
   private assertCanViewSchedules(user: AuthUser) {
     if (canManageSchedules(user.role)) return;
@@ -955,6 +959,9 @@ export class SchedulesService {
     });
     if (!store) throw new NotFoundException('Loja não encontrada');
 
+    const companyName =
+      (await this.cnpjLookup.lookupCompanyName(store.cnpj)) ?? store.organization.name;
+
     const collaborators = await this.listCollaborators(user, params.storeId, params.roleFilter);
     const filtered = params.userId
       ? collaborators.filter((c) => c.id === params.userId)
@@ -967,7 +974,7 @@ export class SchedulesService {
           id: store.id,
           name: store.name,
           cnpj: store.cnpj,
-          organizationName: store.organization.name,
+          organizationName: companyName,
         },
         year: params.year,
         month: params.month,
@@ -1110,7 +1117,7 @@ export class SchedulesService {
 
         return {
           header: {
-            companyName: store.organization.name,
+            companyName,
             cnpj: store.cnpj,
             storeName: store.name,
             userId: collab.id,
@@ -1139,7 +1146,7 @@ export class SchedulesService {
         id: store.id,
         name: store.name,
         cnpj: store.cnpj,
-        organizationName: store.organization.name,
+        organizationName: companyName,
       },
       year: params.year,
       month: params.month,
