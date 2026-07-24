@@ -207,6 +207,9 @@ export default function ScheduleScreen() {
   async function refreshDistance() {
     if (storeLat == null || storeLng == null) {
       setDistanceM(null);
+      setError(
+        'A unidade do ponto não tem coordenadas cadastradas. Peça para atualizar o endereço da loja no painel.',
+      );
       return null;
     }
     const { status } = await Location.requestForegroundPermissionsAsync();

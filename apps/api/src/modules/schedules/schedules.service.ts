@@ -22,6 +22,7 @@ import {
   timeClockMeQuerySchema,
   timeClockPunchSchema,
   timeClockReportQuerySchema,
+  todayDateKey,
   upsertScheduleDaySchema,
   upsertTimeClockDaySchema,
   zonedTimeToUtc,
@@ -336,7 +337,27 @@ export class SchedulesService {
 
   async getMonthGrid(user: AuthUser, query: unknown) {
     const params = scheduleMonthQuerySchema.parse(query);
-    assertStoreAccess(user, params.storeId);
+    if (user.role === 'DELIVERER') {
+      // App: permite a unidade da escala de hoje mesmo se o JWT ainda não listar a loja.
+      if (!user.storeIds.includes(params.storeId)) {
+        const todayKey = todayDateKey(BR_TZ);
+        const todayEntry = await this.prisma.workScheduleEntry.findUnique({
+          where: {
+            organizationId_userId_date: {
+              organizationId: user.organizationId,
+              userId: user.id,
+              date: parseDateOnly(todayKey),
+            },
+          },
+          select: { storeId: true },
+        });
+        if (todayEntry?.storeId !== params.storeId) {
+          throw new ForbiddenException('Sem acesso a esta loja');
+        }
+      }
+    } else {
+      assertStoreAccess(user, params.storeId);
+    }
     this.assertCanViewSchedules(user);
 
     const store = await this.prisma.store.findFirst({
@@ -656,12 +677,28 @@ export class SchedulesService {
 
   async getMyPunches(user: AuthUser, query: unknown) {
     const params = timeClockMeQuerySchema.parse(query);
-    assertStoreAccess(user, params.storeId);
+    if (user.role === 'DELIVERER' && !user.storeIds.includes(params.storeId)) {
+      const todayKey = todayDateKey(BR_TZ);
+      const todayEntry = await this.prisma.workScheduleEntry.findUnique({
+        where: {
+          organizationId_userId_date: {
+            organizationId: user.organizationId,
+            userId: user.id,
+            date: parseDateOnly(todayKey),
+          },
+        },
+        select: { storeId: true },
+      });
+      if (todayEntry?.storeId !== params.storeId) {
+        throw new ForbiddenException('Sem acesso a esta loja');
+      }
+    } else {
+      assertStoreAccess(user, params.storeId);
+    }
 
-    const dateStr = params.date ?? new Date().toISOString().slice(0, 10);
-    const dayStart = parseDateOnly(dateStr);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    const dateStr = params.date ?? todayDateKey(BR_TZ);
+    const { start: dayStart, end: dayEnd } = getBusinessDayBounds(dateStr, BR_TZ);
+    const scheduleDate = parseDateOnly(dateStr);
 
     const punches = await this.prisma.timeClockPunch.findMany({
       where: {
@@ -699,7 +736,7 @@ export class SchedulesService {
         organizationId_userId_date: {
           organizationId: user.organizationId,
           userId: user.id,
-          date: dayStart,
+          date: scheduleDate,
         },
       },
     });
@@ -712,6 +749,7 @@ export class SchedulesService {
       schedule: schedule
         ? {
             id: schedule.id,
+            storeId: schedule.storeId,
             dayType: schedule.dayType,
             startTime: schedule.startTime,
             endTime: schedule.endTime,
@@ -726,7 +764,24 @@ export class SchedulesService {
 
   async punch(user: AuthUser, input: unknown) {
     const data = timeClockPunchSchema.parse(input);
-    assertStoreAccess(user, data.storeId);
+    if (user.role === 'DELIVERER' && data.source === 'MOBILE' && !user.storeIds.includes(data.storeId)) {
+      const todayKey = todayDateKey(BR_TZ);
+      const todayEntry = await this.prisma.workScheduleEntry.findUnique({
+        where: {
+          organizationId_userId_date: {
+            organizationId: user.organizationId,
+            userId: user.id,
+            date: parseDateOnly(todayKey),
+          },
+        },
+        select: { storeId: true },
+      });
+      if (todayEntry?.storeId !== data.storeId) {
+        throw new ForbiddenException('Sem acesso a esta loja');
+      }
+    } else {
+      assertStoreAccess(user, data.storeId);
+    }
 
     if (data.source === 'WEB') {
       if (user.role === 'DELIVERER') {
@@ -752,11 +807,9 @@ export class SchedulesService {
     });
     if (!store) throw new NotFoundException('Loja não encontrada');
 
-    // Valida alternância IN/OUT no dia (timezone UTC date — suficiente para BR business day).
-    const today = new Date().toISOString().slice(0, 10);
-    const dayStart = parseDateOnly(today);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    // Alternância IN/OUT no dia operacional (America/Sao_Paulo).
+    const todayKey = todayDateKey(BR_TZ);
+    const { start: dayStart, end: dayEnd } = getBusinessDayBounds(todayKey, BR_TZ);
 
     const last = await this.prisma.timeClockPunch.findFirst({
       where: {
@@ -1336,7 +1389,7 @@ export class SchedulesService {
     return { card, day };
   }
 
-  /** Escala do próprio colaborador no app — entries por pessoa; store = unidade atual. */
+  /** Escala do próprio colaborador no app — entries por pessoa; store = unidade do dia (ponto). */
   async getMyMonth(user: AuthUser, query: unknown) {
     if (user.role !== 'DELIVERER' && !canManageSchedules(user.role) && user.role !== 'ATTENDANT') {
       throw new ForbiddenException('Sem permissão');
@@ -1351,11 +1404,32 @@ export class SchedulesService {
     let storeId = (query as { storeId?: string }).storeId;
     if (!storeId) {
       if (user.role === 'DELIVERER') {
-        const deliverer = await this.prisma.deliverer.findUnique({
-          where: { userId: user.id },
-          include: { stores: { take: 1, orderBy: { createdAt: 'asc' } } },
+        // Unidade de referência do ponto = escala de hoje (quando houver trabalho).
+        const todayKey = todayDateKey(BR_TZ);
+        const todayEntry = await this.prisma.workScheduleEntry.findUnique({
+          where: {
+            organizationId_userId_date: {
+              organizationId: user.organizationId,
+              userId: user.id,
+              date: parseDateOnly(todayKey),
+            },
+          },
+          select: { storeId: true, dayType: true },
         });
-        storeId = deliverer?.availableStoreId ?? deliverer?.stores[0]?.storeId;
+
+        if (
+          todayEntry?.storeId
+          && todayEntry.dayType !== ScheduleDayType.DAY_OFF
+        ) {
+          // Prefere a unidade da escala de hoje (geofence do ponto).
+          storeId = todayEntry.storeId;
+        } else {
+          const deliverer = await this.prisma.deliverer.findUnique({
+            where: { userId: user.id },
+            include: { stores: { take: 1, orderBy: { createdAt: 'asc' } } },
+          });
+          storeId = deliverer?.availableStoreId ?? deliverer?.stores[0]?.storeId;
+        }
       } else {
         storeId = user.storeIds[0];
       }
