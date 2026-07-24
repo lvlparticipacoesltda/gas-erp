@@ -46,7 +46,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sand via-white to-sand p-4">
+    <div className="flex min-h-screen flex-col bg-gradient-to-br from-sand via-white to-sand">
+      <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <div className="mb-6">
           <Logo tagline="Painel de gestão" />
@@ -77,6 +78,11 @@ export default function LoginPage() {
           </Link>
         </p>
       </Card>
+      </div>
+      <footer className="px-4 py-6 text-center text-xs text-slate-500">
+        <p>THL Gás do Povo — Rede Gás Litoral</p>
+        <p className="mt-1">CNPJ 62.512.525/0001-63</p>
+      </footer>
     </div>
   );
 }

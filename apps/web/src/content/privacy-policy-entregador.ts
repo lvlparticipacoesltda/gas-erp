@@ -1,7 +1,7 @@
 /** Texto da política de privacidade do app THLGDP Entregador (Play Store). */
 export const PRIVACY_POLICY_ENTREGADOR = {
   title: 'Política de Privacidade — App THLGDP Entregador',
-  updatedAt: '09/07/2026',
+  updatedAt: '24/07/2026',
   /** Nome exato do app na Google Play / App Store. */
   appName: 'THLGDP Entregador',
   /** Nome exato da conta desenvolvedor na Google Play Console. */
@@ -9,6 +9,7 @@ export const PRIVACY_POLICY_ENTREGADOR = {
   androidPackage: 'com.gaserp.entregador',
   iosBundleId: 'com.gaserp.entregador',
   controller: 'THL Gás do Povo — Rede Gás Litoral',
+  controllerCnpj: '62.512.525/0001-63',
   contactEmail: 'contato@thlgasdopovo.com.br',
   website: 'https://thlgasdopovo.com.br',
   sections: [

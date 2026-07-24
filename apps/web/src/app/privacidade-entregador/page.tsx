@@ -32,6 +32,9 @@ export default function PrivacidadeEntregadorPage() {
           {policy.controller}
         </p>
         <p className="mt-2">
+          <span className="font-semibold text-slate-900">CNPJ:</span> {policy.controllerCnpj}
+        </p>
+        <p className="mt-2">
           <span className="font-semibold text-slate-900">Contato:</span>{' '}
           <a href={`mailto:${policy.contactEmail}`} className="text-brand hover:underline">
             {policy.contactEmail}
