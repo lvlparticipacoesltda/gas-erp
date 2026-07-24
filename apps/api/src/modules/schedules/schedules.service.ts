@@ -242,6 +242,7 @@ type CollabRow = {
   pis: string | null;
   admittedAt: Date | null;
   jobTitle: string | null;
+  stores: Array<{ id: string; name: string }>;
 };
 
 const collaboratorSelect = {
@@ -253,7 +254,56 @@ const collaboratorSelect = {
   pis: true,
   admittedAt: true,
   jobTitle: true,
+  userStores: {
+    select: { store: { select: { id: true, name: true } } },
+  },
+  deliverer: {
+    select: {
+      stores: {
+        select: { store: { select: { id: true, name: true } } },
+      },
+    },
+  },
 } as const;
+
+function mapCollaboratorStores(
+  row: {
+    userStores: Array<{ store: { id: string; name: string } }>;
+    deliverer: { stores: Array<{ store: { id: string; name: string } }> } | null;
+  },
+): Array<{ id: string; name: string }> {
+  const byId = new Map<string, { id: string; name: string }>();
+  for (const us of row.userStores) byId.set(us.store.id, us.store);
+  for (const ds of row.deliverer?.stores ?? []) byId.set(ds.store.id, ds.store);
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+function toCollabRow(
+  row: {
+    id: string;
+    name: string;
+    role: UserRole;
+    email: string;
+    cpf: string | null;
+    pis: string | null;
+    admittedAt: Date | null;
+    jobTitle: string | null;
+    userStores: Array<{ store: { id: string; name: string } }>;
+    deliverer: { stores: Array<{ store: { id: string; name: string } }> } | null;
+  },
+): CollabRow {
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    email: row.email,
+    cpf: row.cpf,
+    pis: row.pis,
+    admittedAt: row.admittedAt,
+    jobTitle: row.jobTitle,
+    stores: mapCollaboratorStores(row),
+  };
+}
 
 @Injectable()
 export class SchedulesService {
@@ -304,6 +354,7 @@ export class SchedulesService {
         date: { gte: start, lt: end },
         userId: { in: collaborators.map((c) => c.id) },
       },
+      include: { store: { select: { id: true, name: true } } },
       orderBy: [{ userId: 'asc' }, { date: 'asc' }],
     });
 
@@ -320,7 +371,11 @@ export class SchedulesService {
       month: params.month,
       daysInMonth: daysInMonth(params.year, params.month),
       collaborators: collaborators.map((c) => ({
-        ...c,
+        id: c.id,
+        name: c.name,
+        role: c.role,
+        email: c.email,
+        stores: c.stores,
         entries: (byUser.get(c.id) ?? []).map((e) => ({
           id: e.id,
           date: formatDateOnly(e.date),
@@ -330,6 +385,8 @@ export class SchedulesService {
           breakStart: e.breakStart,
           breakEnd: e.breakEnd,
           notes: e.notes,
+          storeId: e.storeId,
+          storeName: e.store.name,
         })),
       })),
     };
@@ -366,7 +423,9 @@ export class SchedulesService {
       if (self && wantAttendants && !rows.some((r) => r.id === self.id)) {
         rows.push(self);
       }
-      return rows.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      return rows
+        .map(toCollabRow)
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     }
 
     // Entregador (app): só a própria escala.
@@ -375,10 +434,10 @@ export class SchedulesService {
         where: { id: user.id },
         select: collaboratorSelect,
       });
-      return self ? [self] : [];
+      return self ? [toCollabRow(self)] : [];
     }
 
-    const rows: CollabRow[] = [];
+    const rows: Array<Parameters<typeof toCollabRow>[0]> = [];
 
     if (wantDeliverers) {
       const deliverers = await this.prisma.user.findMany({
@@ -408,7 +467,7 @@ export class SchedulesService {
       rows.push(...attendants);
     }
 
-    return rows;
+    return rows.map(toCollabRow);
   }
 
   async upsertDay(user: AuthUser, input: unknown) {

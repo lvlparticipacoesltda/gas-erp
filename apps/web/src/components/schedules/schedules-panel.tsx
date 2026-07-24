@@ -24,6 +24,8 @@ interface ScheduleEntry {
   breakStart: string | null;
   breakEnd: string | null;
   notes: string | null;
+  storeId?: string;
+  storeName?: string;
 }
 
 interface CollaboratorRow {
@@ -31,6 +33,7 @@ interface CollaboratorRow {
   name: string;
   role: string;
   email: string;
+  stores?: Array<{ id: string; name: string }>;
   entries: ScheduleEntry[];
 }
 
@@ -109,10 +112,12 @@ export function SchedulesPanel({
     userName: string;
     date: string;
     entry?: ScheduleEntry;
+    storeOptions: Array<{ id: string; name: string }>;
   } | null>(null);
 
   const [form, setForm] = useState({
     dayType: 'WORK' as ScheduleDayType,
+    dayStoreId: '',
     startTime: '08:00',
     endTime: '17:00',
     breakEnabled: true,
@@ -211,9 +216,28 @@ export function SchedulesPanel({
   function openCell(collab: CollaboratorRow, day: number) {
     const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const entry = collab.entries.find((e) => e.date === date);
-    setSelected({ userId: collab.id, userName: collab.name, date, entry });
+    const storeOptions =
+      collab.stores && collab.stores.length > 0
+        ? collab.stores
+        : stores?.length
+          ? stores
+          : storeId
+            ? [{ id: storeId, name: grid?.store.name ?? 'Unidade' }]
+            : [];
+    const dayStoreId =
+      entry?.storeId
+      ?? (storeOptions.some((s) => s.id === storeId) ? storeId : storeOptions[0]?.id)
+      ?? storeId;
+    setSelected({
+      userId: collab.id,
+      userName: collab.name,
+      date,
+      entry,
+      storeOptions,
+    });
     setForm({
       dayType: entry?.dayType ?? 'WORK',
+      dayStoreId,
       startTime: entry?.startTime?.slice(0, 5) ?? '08:00',
       endTime: entry?.endTime?.slice(0, 5) ?? '17:00',
       breakEnabled: Boolean(entry?.breakStart && entry?.breakEnd),
@@ -224,7 +248,7 @@ export function SchedulesPanel({
   }
 
   async function saveDay() {
-    if (!selected || !canEdit || !storeId) return;
+    if (!selected || !canEdit || !form.dayStoreId) return;
     setSaving(true);
     setError(null);
     try {
@@ -233,7 +257,7 @@ export function SchedulesPanel({
         {
           method: 'PUT',
           body: JSON.stringify({
-            storeId,
+            storeId: form.dayStoreId,
             userId: selected.userId,
             date: selected.date,
             dayType: form.dayType,
@@ -544,6 +568,27 @@ export function SchedulesPanel({
               </p>
             </div>
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div>
+                <Label>Unidade do dia</Label>
+                <Select
+                  value={form.dayStoreId}
+                  disabled={!canEdit || selected.storeOptions.length === 0}
+                  onChange={(e) => setForm((f) => ({ ...f, dayStoreId: e.target.value }))}
+                >
+                  {selected.storeOptions.length === 0 ? (
+                    <option value="">Nenhuma unidade vinculada</option>
+                  ) : (
+                    selected.storeOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))
+                  )}
+                </Select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Unidade em que o colaborador deve trabalhar / bater ponto neste dia.
+                </p>
+              </div>
               <div>
                 <Label>Tipo de dia</Label>
                 <div className="mt-1 flex flex-wrap gap-2">

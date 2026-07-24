@@ -408,6 +408,11 @@ export default function ScheduleScreen() {
                   {nextCommitment.startTime?.slice(0, 5)} às{' '}
                   {nextCommitment.endTime?.slice(0, 5)}
                 </Text>
+                {nextCommitment.storeName ? (
+                  <Text style={styles.nextStore}>Unidade: {nextCommitment.storeName}</Text>
+                ) : storeName ? (
+                  <Text style={styles.nextStore}>Unidade: {storeName}</Text>
+                ) : null}
               </View>
               <View style={[styles.nextBadge, { backgroundColor: nextBadgeColors.bg }]}>
                 <Text style={[styles.nextBadgeText, { color: nextBadgeColors.text }]}>
@@ -500,8 +505,10 @@ export default function ScheduleScreen() {
             </Text>
             {selectedEntry ? (
               <>
-                {storeName ? (
-                  <Text style={styles.modalLine}>Unidade: {storeName}</Text>
+                {selectedEntry.storeName || storeName ? (
+                  <Text style={styles.modalLine}>
+                    Unidade: {selectedEntry.storeName ?? storeName}
+                  </Text>
                 ) : null}
                 <Text style={styles.badge}>
                   {SCHEDULE_DAY_TYPE_LABELS[selectedEntry.dayType]}
@@ -664,6 +671,7 @@ const styles = StyleSheet.create({
   nextTextBlock: { flex: 1, gap: 2 },
   nextDate: { fontSize: 14, fontWeight: '700', color: colors.text },
   nextHours: { fontSize: 13, color: colors.textMuted },
+  nextStore: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   nextBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,

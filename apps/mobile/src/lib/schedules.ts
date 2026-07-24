@@ -10,6 +10,8 @@ export interface ScheduleEntryDto {
   breakStart: string | null;
   breakEnd: string | null;
   notes: string | null;
+  storeId?: string;
+  storeName?: string;
 }
 
 export interface MyScheduleMonth {
