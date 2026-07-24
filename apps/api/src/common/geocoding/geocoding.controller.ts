@@ -9,6 +9,7 @@ export class GeocodingController {
 
   @Post('address')
   geocodeAddress(@Body() body: unknown) {
-    return this.geocoding.geocodeAddress(body);
+    // Endpoint genérico: no modo stores_only não usa Google (só cadastro de loja).
+    return this.geocoding.geocodeAddress(body, { purpose: 'other' });
   }
 }

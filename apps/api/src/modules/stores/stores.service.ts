@@ -80,14 +80,17 @@ export class StoresService {
     }
 
     try {
-      const geo = await this.geocoding.geocodeAddress({
-        street,
-        number: data.number,
-        neighborhood: data.neighborhood,
-        city,
-        state,
-        zipCode: data.zipCode,
-      });
+      const geo = await this.geocoding.geocodeAddress(
+        {
+          street,
+          number: data.number,
+          neighborhood: data.neighborhood,
+          city,
+          state,
+          zipCode: data.zipCode,
+        },
+        { purpose: 'store' },
+      );
       if (geo) {
         return { latitude: geo.latitude, longitude: geo.longitude };
       }

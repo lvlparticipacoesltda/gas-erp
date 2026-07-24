@@ -143,13 +143,16 @@ export class DeliveriesService {
     if (!sale.deliveryStreet?.trim() || !sale.deliveryCity?.trim() || !sale.deliveryState?.trim()) {
       return null;
     }
-    const result = await this.geocoding.geocodeAddress({
-      street: sale.deliveryStreet,
-      number: sale.deliveryNumber ?? undefined,
-      neighborhood: sale.deliveryNeighborhood ?? undefined,
-      city: sale.deliveryCity,
-      state: sale.deliveryState,
-    });
+    const result = await this.geocoding.geocodeAddress(
+      {
+        street: sale.deliveryStreet,
+        number: sale.deliveryNumber ?? undefined,
+        neighborhood: sale.deliveryNeighborhood ?? undefined,
+        city: sale.deliveryCity,
+        state: sale.deliveryState,
+      },
+      { purpose: 'delivery' },
+    );
     if (!result) return null;
 
     // Best-effort: falha ao gravar não impede a resposta (cache em memória cobre).
@@ -608,6 +611,18 @@ export class DeliveriesService {
     });
 
     void this.push.notifyNewDelivery(delivererId, deliveryId).catch(() => undefined);
+
+    // Garante pin preciso antes do entregador abrir a entrega (vendas antigas sem coords).
+    await this.resolveDestination({
+      id: delivery.saleId,
+      deliveryStreet: delivery.sale.deliveryStreet,
+      deliveryNumber: delivery.sale.deliveryNumber,
+      deliveryNeighborhood: delivery.sale.deliveryNeighborhood,
+      deliveryCity: delivery.sale.deliveryCity,
+      deliveryState: delivery.sale.deliveryState,
+      deliveryLatitude: delivery.sale.deliveryLatitude,
+      deliveryLongitude: delivery.sale.deliveryLongitude,
+    }).catch(() => undefined);
 
     try {
       this.realtime.notifyStoreChange(

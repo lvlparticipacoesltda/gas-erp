@@ -124,13 +124,16 @@ export class DeliverersService {
     if (lat != null && lng != null) {
       destination = { latitude: lat, longitude: lng };
     } else if (params.deliveryStreet && params.deliveryCity && params.deliveryState) {
-      const geo = await this.geocoding.geocodeAddress({
-        street: params.deliveryStreet,
-        number: params.deliveryNumber,
-        neighborhood: params.deliveryNeighborhood,
-        city: params.deliveryCity,
-        state: params.deliveryState,
-      });
+      const geo = await this.geocoding.geocodeAddress(
+        {
+          street: params.deliveryStreet,
+          number: params.deliveryNumber,
+          neighborhood: params.deliveryNeighborhood,
+          city: params.deliveryCity,
+          state: params.deliveryState,
+        },
+        { purpose: 'suggest' },
+      );
       if (geo) {
         lat = geo.latitude;
         lng = geo.longitude;
@@ -601,13 +604,44 @@ export class DeliverersService {
         `address="${destAddress ?? '—'}"`,
     );
 
-    return this.routing.getRoute({
+    const route = await this.routing.getRoute({
       originLat,
       originLng,
       destLat: destLat ?? undefined,
       destLng: destLng ?? undefined,
       destAddress,
     });
+
+    // Directions resolve o endereço com precisão de número; Nominatim às vezes
+    // pina só o centroide da rua (~centenas de m). Alinha lat/lng da loja ao destino.
+    const resolved = route.destination;
+    if (resolved && destAddress) {
+      const drift =
+        destLat != null && destLng != null
+          ? haversineDistanceMeters(
+              destLat,
+              destLng,
+              resolved.latitude,
+              resolved.longitude,
+            )
+          : Number.POSITIVE_INFINITY;
+      if (drift > 150) {
+        await this.prisma.store.update({
+          where: { id: storeId },
+          data: {
+            latitude: resolved.latitude,
+            longitude: resolved.longitude,
+          },
+        });
+        this.logger.warn(
+          `Store ${storeId} coords corrigidas via Directions: ` +
+            `antes=${destLat != null ? `(${destLat},${destLng})` : 'null'} ` +
+            `depois=(${resolved.latitude},${resolved.longitude}) drift=${Math.round(drift)}m`,
+        );
+      }
+    }
+
+    return route;
   }
 
   async updateMyPosition(user: AuthUser, input: unknown) {

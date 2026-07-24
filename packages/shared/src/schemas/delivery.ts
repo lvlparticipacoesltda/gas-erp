@@ -49,6 +49,8 @@ export const deliveryRouteResponseSchema = z.object({
   durationSeconds: z.number(),
   bounds: deliveryRouteBoundsSchema,
   steps: z.array(deliveryRouteStepSchema).optional(),
+  /** Destino resolvido pelo Directions (útil para alinhar lat/lng da loja ao endereço). */
+  destination: deliveryDestinationSchema.optional(),
 });
 
 export type DeliveryDestination = z.infer<typeof deliveryDestinationSchema>;

@@ -125,6 +125,8 @@ async function nominatimGeocode(input: {
 
     if (rows.length === 0) continue;
 
+    // Com número informado: só aceita hit com o mesmo número.
+    // Aceitar o centroide da rua (~centenas de metros errado) quebra o geofence do ponto.
     let hit = rows[0];
     if (wanted) {
       const exact = rows.find((r) => digits(r.address?.house_number) === wanted);
@@ -135,7 +137,7 @@ async function nominatimGeocode(input: {
           return m != null && digits(m[1]) === wanted;
         });
         if (inDisplay) hit = inDisplay;
-        // Sem número exato: ainda usa o melhor hit da rua (melhor que null para mapa/ponto).
+        else continue;
       }
     }
 

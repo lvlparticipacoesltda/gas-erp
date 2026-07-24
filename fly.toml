@@ -15,8 +15,9 @@ primary_region = 'gru'
 
 [env]
   NODE_ENV = 'production'
-  # Geocoding Google desligado — Nominatim (grátis) apenas. Directions usa outra API.
-  GOOGLE_GEOCODING_ENABLED = 'false'
+  # Google Geocoding: lojas + venda + entrega (1x). Suggest/poll = Nominatim.
+  # Valores: false | stores_only | ops | true (tudo — evitar).
+  GOOGLE_GEOCODING_ENABLED = 'ops'
   PORT = '8080'
 
 [http_service]

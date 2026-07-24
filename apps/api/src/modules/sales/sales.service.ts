@@ -70,9 +70,9 @@ export class SalesService {
 
   /**
    * Geocodifica o endereço de entrega e persiste as coordenadas na venda.
-   * Fire-and-forget: não bloqueia nem falha a criação da venda.
+   * Aguarda a resolução (Google no modo ops) para o entregador já receber o pin certo.
    */
-  private geocodeSaleDestination(
+  private async geocodeSaleDestination(
     saleId: string,
     address: {
       deliveryStreet?: string | null;
@@ -81,7 +81,7 @@ export class SalesService {
       deliveryCity?: string | null;
       deliveryState?: string | null;
     },
-  ): void {
+  ): Promise<void> {
     if (
       !address.deliveryStreet?.trim()
       || !address.deliveryCity?.trim()
@@ -89,24 +89,25 @@ export class SalesService {
     ) {
       return;
     }
-    void this.geocoding
-      .geocodeAddress({
-        street: address.deliveryStreet,
-        number: address.deliveryNumber ?? undefined,
-        neighborhood: address.deliveryNeighborhood ?? undefined,
-        city: address.deliveryCity,
-        state: address.deliveryState,
-      })
-      .then((result) => {
-        if (!result) return;
-        return this.prisma.sale.update({
-          where: { id: saleId },
-          data: { deliveryLatitude: result.latitude, deliveryLongitude: result.longitude },
-        });
-      })
-      .catch(() => {
-        // Sem coordenadas agora: o backfill acontece na primeira leitura da entrega.
+    try {
+      const result = await this.geocoding.geocodeAddress(
+        {
+          street: address.deliveryStreet,
+          number: address.deliveryNumber ?? undefined,
+          neighborhood: address.deliveryNeighborhood ?? undefined,
+          city: address.deliveryCity,
+          state: address.deliveryState,
+        },
+        { purpose: 'sale' },
+      );
+      if (!result) return;
+      await this.prisma.sale.update({
+        where: { id: saleId },
+        data: { deliveryLatitude: result.latitude, deliveryLongitude: result.longitude },
       });
+    } catch {
+      // Sem coordenadas agora: o backfill acontece na primeira leitura / alocação da entrega.
+    }
   }
 
   private notifyStoreRealtime(
@@ -424,7 +425,7 @@ export class SalesService {
     });
 
     if (!isPickup) {
-      this.geocodeSaleDestination(created.id, data);
+      await this.geocodeSaleDestination(created.id, data);
     }
 
     let newDelivery: { id: string; delivererId: string | null } | null = null;
@@ -585,7 +586,7 @@ export class SalesService {
     });
 
     if (!isPickup) {
-      this.geocodeSaleDestination(sale.id, data);
+      await this.geocodeSaleDestination(sale.id, data);
     }
 
     try {

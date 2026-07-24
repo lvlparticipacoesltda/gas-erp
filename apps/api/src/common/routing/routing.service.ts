@@ -124,6 +124,7 @@ export class RoutingService {
         legs: Array<{
           distance: { value: number };
           duration: { value: number };
+          end_location?: { lat: number; lng: number };
           steps?: Array<{
             html_instructions?: string;
             maneuver?: string;
@@ -156,6 +157,8 @@ export class RoutingService {
       },
     }));
 
+    const end = leg.end_location ?? leg.steps?.[leg.steps.length - 1]?.end_location;
+
     return {
       encodedPolyline: route.overview_polyline.points,
       distanceMeters: leg.distance.value,
@@ -171,6 +174,9 @@ export class RoutingService {
         },
       },
       steps: steps.length > 0 ? steps : undefined,
+      destination: end
+        ? { latitude: end.lat, longitude: end.lng }
+        : undefined,
     };
   }
 

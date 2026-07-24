@@ -23,13 +23,22 @@ interface NominatimHit {
   };
 }
 
+/** Quem pediu o geocode — controla se o Google pode ser usado no modo stores_only. */
+export type GeocodePurpose = 'store' | 'sale' | 'delivery' | 'suggest' | 'other';
+
+export type GeocodeOptions = {
+  purpose?: GeocodePurpose;
+};
+
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 /** Falhas (ZERO_RESULTS etc.) também são cacheadas, com TTL menor — o endereço pode ser corrigido. */
 const NEGATIVE_CACHE_TTL_MS = 60 * 60 * 1000;
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 /** Bump quando a lógica de match muda — invalida cache em memória de pins errados. */
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
+
+type GoogleGeocodeMode = 'off' | 'stores' | 'ops' | 'all';
 
 @Injectable()
 export class GeocodingService {
@@ -40,6 +49,26 @@ export class GeocodingService {
 
   constructor(private config: ConfigService) {}
 
+  private googleMode(): GoogleGeocodeMode {
+    const raw = (this.config.get<string>('GOOGLE_GEOCODING_ENABLED') ?? '').trim().toLowerCase();
+    if (raw === 'true' || raw === '1' || raw === 'all') return 'all';
+    // Lojas + venda + entrega (1x por endereço). Sem Google em suggest/poll genérico.
+    if (raw === 'ops' || raw === 'operational' || raw === 'sales') return 'ops';
+    if (raw === 'stores' || raw === 'stores_only') return 'stores';
+    return 'off';
+  }
+
+  private allowGoogle(purpose: GeocodePurpose): boolean {
+    const mode = this.googleMode();
+    if (mode === 'off') return false;
+    if (mode === 'all') return true;
+    if (mode === 'ops') {
+      return purpose === 'store' || purpose === 'sale' || purpose === 'delivery';
+    }
+    return purpose === 'store';
+  }
+
+  /** Cache só pelo endereço — sale e delivery compartilham o mesmo pin. */
   private cacheKey(input: GeocodeAddressQuery): string {
     return [
       CACHE_VERSION,
@@ -126,12 +155,6 @@ export class GeocodingService {
     query: string,
     wantedNumber: string,
   ): Promise<GeocodeResult | null> {
-    const enabled = this.config.get<string>('GOOGLE_GEOCODING_ENABLED');
-    // Default OFF: evita cobrança inesperada. Só liga com GOOGLE_GEOCODING_ENABLED=true.
-    if (enabled !== 'true' && enabled !== '1') {
-      return null;
-    }
-
     const apiKey = this.config.get<string>('GOOGLE_MAPS_DIRECTIONS_API_KEY');
     if (!apiKey?.trim()) return null;
 
@@ -232,8 +255,12 @@ export class GeocodingService {
     };
   }
 
-  async geocodeAddress(input: unknown): Promise<GeocodeResult | null> {
+  async geocodeAddress(
+    input: unknown,
+    options: GeocodeOptions = {},
+  ): Promise<GeocodeResult | null> {
     const data = geocodeAddressQuerySchema.parse(input);
+    const purpose = options.purpose ?? 'other';
     const key = this.cacheKey(data);
     const cached = this.cache.get(key);
     if (cached && cached.expiresAt > Date.now()) {
@@ -243,7 +270,7 @@ export class GeocodingService {
     const pending = this.inFlight.get(key);
     if (pending) return pending;
 
-    const promise = this.resolveAddress(data, key).finally(() => {
+    const promise = this.resolveAddress(data, key, purpose).finally(() => {
       this.inFlight.delete(key);
     });
     this.inFlight.set(key, promise);
@@ -253,23 +280,41 @@ export class GeocodingService {
   private async resolveAddress(
     data: GeocodeAddressQuery,
     key: string,
+    purpose: GeocodePurpose,
   ): Promise<GeocodeResult | null> {
     const query = this.buildFreeQuery(data);
     const wantedNumber = this.normalizeHouseNumber(data.number);
+    const googleOk = this.allowGoogle(purpose);
+    /** Finalidades operacionais: precisão do número (Google primeiro). */
+    const preferGoogle =
+      googleOk && (purpose === 'store' || purpose === 'sale' || purpose === 'delivery');
 
     try {
-      // Nominatim (grátis) primeiro — Google só se GOOGLE_GEOCODING_ENABLED=true.
+      if (preferGoogle) {
+        const fromGoogle = await this.geocodeWithGoogle(query, wantedNumber);
+        if (fromGoogle) {
+          this.cache.set(key, { result: fromGoogle, expiresAt: Date.now() + CACHE_TTL_MS });
+          this.logger.log(
+            `Geocode Google (${purpose}) OK: "${query}" → ${fromGoogle.displayName ?? '—'}`,
+          );
+          return fromGoogle;
+        }
+      }
+
       const fromNominatim = await this.geocodeWithNominatim(data);
       if (fromNominatim) {
         this.cache.set(key, { result: fromNominatim, expiresAt: Date.now() + CACHE_TTL_MS });
         return fromNominatim;
       }
 
-      const fromGoogle = await this.geocodeWithGoogle(query, wantedNumber);
-      if (fromGoogle) {
-        this.cache.set(key, { result: fromGoogle, expiresAt: Date.now() + CACHE_TTL_MS });
-        this.logger.log(`Geocode Google OK: "${query}" → ${fromGoogle.displayName ?? '—'}`);
-        return fromGoogle;
+      // Fallback Google se Nominatim falhou e o modo permite (ex.: purpose store sem prefer).
+      if (googleOk && !preferGoogle) {
+        const fromGoogle = await this.geocodeWithGoogle(query, wantedNumber);
+        if (fromGoogle) {
+          this.cache.set(key, { result: fromGoogle, expiresAt: Date.now() + CACHE_TTL_MS });
+          this.logger.log(`Geocode Google OK: "${query}" → ${fromGoogle.displayName ?? '—'}`);
+          return fromGoogle;
+        }
       }
 
       // Cache negativo: sem ele, endereços não localizáveis eram re-consultados
