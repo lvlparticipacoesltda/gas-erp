@@ -16,6 +16,7 @@
     "import:sts-customers": "dotenv -e ../../.env -- tsx scripts/import-santos-customers.ts",
     "import:pgsmb-customers": "dotenv -e ../../.env -- tsx scripts/import-pg-samambaia-customers.ts",
     "import:pgpr-customers": "dotenv -e ../../.env -- tsx scripts/import-pg-princesa-customers.ts",
+    "backfill:coords": "dotenv -e ../../.env -- tsx scripts/backfill-delivery-coords.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "build": "tsc"
   },

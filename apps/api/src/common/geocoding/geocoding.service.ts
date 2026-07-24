@@ -126,6 +126,12 @@ export class GeocodingService {
     query: string,
     wantedNumber: string,
   ): Promise<GeocodeResult | null> {
+    const enabled = this.config.get<string>('GOOGLE_GEOCODING_ENABLED');
+    // Default OFF: evita cobrança inesperada. Só liga com GOOGLE_GEOCODING_ENABLED=true.
+    if (enabled !== 'true' && enabled !== '1') {
+      return null;
+    }
+
     const apiKey = this.config.get<string>('GOOGLE_MAPS_DIRECTIONS_API_KEY');
     if (!apiKey?.trim()) return null;
 
@@ -252,7 +258,7 @@ export class GeocodingService {
     const wantedNumber = this.normalizeHouseNumber(data.number);
 
     try {
-      // Nominatim (grátis) primeiro — Google só como fallback (custo por request).
+      // Nominatim (grátis) primeiro — Google só se GOOGLE_GEOCODING_ENABLED=true.
       const fromNominatim = await this.geocodeWithNominatim(data);
       if (fromNominatim) {
         this.cache.set(key, { result: fromNominatim, expiresAt: Date.now() + CACHE_TTL_MS });
