@@ -300,7 +300,6 @@ export class SchedulesService {
 
     const entries = await this.prisma.workScheduleEntry.findMany({
       where: {
-        storeId: params.storeId,
         organizationId: user.organizationId,
         date: { gte: start, lt: end },
         userId: { in: collaborators.map((c) => c.id) },
@@ -431,8 +430,8 @@ export class SchedulesService {
 
     return this.prisma.workScheduleEntry.upsert({
       where: {
-        storeId_userId_date: {
-          storeId: data.storeId,
+        organizationId_userId_date: {
+          organizationId: user.organizationId,
           userId: data.userId,
           date,
         },
@@ -452,6 +451,7 @@ export class SchedulesService {
         updatedById: user.id,
       },
       update: {
+        storeId: data.storeId,
         dayType,
         startTime: isOff ? null : data.startTime ?? null,
         endTime: isOff ? null : data.endTime ?? null,
@@ -469,7 +469,7 @@ export class SchedulesService {
       where: { id, organizationId: user.organizationId },
     });
     if (!entry) throw new NotFoundException('Dia da escala não encontrado');
-    assertStoreAccess(user, entry.storeId);
+    await this.assertCanEditCollaboratorSchedule(user, entry.userId);
     await this.prisma.workScheduleEntry.delete({ where: { id } });
     return { ok: true };
   }
@@ -483,10 +483,15 @@ export class SchedulesService {
     const targetDays = daysInMonth(data.targetYear, data.targetMonth);
 
     const where: Prisma.WorkScheduleEntryWhereInput = {
-      storeId: data.storeId,
       organizationId: user.organizationId,
       date: { gte: source.start, lt: source.end },
-      ...(data.sourceUserId ? { userId: data.sourceUserId } : {}),
+      ...(data.sourceUserId
+        ? { userId: data.sourceUserId }
+        : {
+            userId: {
+              in: (await this.listCollaborators(user, data.storeId, 'all')).map((c) => c.id),
+            },
+          }),
     };
 
     const sourceEntries = await this.prisma.workScheduleEntry.findMany({ where });
@@ -510,8 +515,8 @@ export class SchedulesService {
 
       await this.prisma.workScheduleEntry.upsert({
         where: {
-          storeId_userId_date: {
-            storeId: data.storeId,
+          organizationId_userId_date: {
+            organizationId: user.organizationId,
             userId,
             date: targetDate,
           },
@@ -531,6 +536,7 @@ export class SchedulesService {
           updatedById: user.id,
         },
         update: {
+          storeId: data.storeId,
           dayType: entry.dayType,
           startTime: entry.startTime,
           endTime: entry.endTime,
@@ -544,6 +550,23 @@ export class SchedulesService {
     }
 
     return { copied };
+  }
+
+  private async assertCanEditCollaboratorSchedule(user: AuthUser, targetUserId: string) {
+    if (user.role === 'ORG_MASTER' || user.role === 'PLATFORM_ADMIN') return;
+    const storeIds = user.storeIds ?? [];
+    if (storeIds.length === 0) {
+      throw new ForbiddenException('Sem permissão para editar esta escala');
+    }
+    for (const storeId of storeIds) {
+      try {
+        await this.assertUserBelongsToStore(targetUserId, storeId, user.organizationId);
+        return;
+      } catch {
+        // tenta próxima unidade
+      }
+    }
+    throw new ForbiddenException('Colaborador não pertence às suas unidades');
   }
 
   private async assertUserBelongsToStore(
@@ -614,8 +637,8 @@ export class SchedulesService {
 
     const schedule = await this.prisma.workScheduleEntry.findUnique({
       where: {
-        storeId_userId_date: {
-          storeId: params.storeId,
+        organizationId_userId_date: {
+          organizationId: user.organizationId,
           userId: user.id,
           date: dayStart,
         },
@@ -829,7 +852,6 @@ export class SchedulesService {
       this.prisma.workScheduleEntry.findMany({
         where: {
           organizationId: user.organizationId,
-          storeId: params.storeId,
           userId: { in: userIds },
           date: { gte: start, lt: end },
         },
@@ -1004,7 +1026,6 @@ export class SchedulesService {
       this.prisma.workScheduleEntry.findMany({
         where: {
           organizationId: user.organizationId,
-          storeId: params.storeId,
           userId: { in: userIds },
           date: { gte: start, lt: end },
         },
@@ -1256,7 +1277,7 @@ export class SchedulesService {
     return { card, day };
   }
 
-  /** Escala do próprio entregador no app (qualquer loja vinculada). */
+  /** Escala do próprio colaborador no app — entries por pessoa; store = unidade atual. */
   async getMyMonth(user: AuthUser, query: unknown) {
     if (user.role !== 'DELIVERER' && !canManageSchedules(user.role) && user.role !== 'ATTENDANT') {
       throw new ForbiddenException('Sem permissão');

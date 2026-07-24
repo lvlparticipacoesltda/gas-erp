@@ -500,6 +500,9 @@ export default function ScheduleScreen() {
             </Text>
             {selectedEntry ? (
               <>
+                {storeName ? (
+                  <Text style={styles.modalLine}>Unidade: {storeName}</Text>
+                ) : null}
                 <Text style={styles.badge}>
                   {SCHEDULE_DAY_TYPE_LABELS[selectedEntry.dayType]}
                 </Text>
@@ -524,7 +527,12 @@ export default function ScheduleScreen() {
                 ) : null}
               </>
             ) : (
-              <Text style={styles.modalLine}>Sem escala cadastrada neste dia.</Text>
+              <>
+                {storeName ? (
+                  <Text style={styles.modalLine}>Unidade: {storeName}</Text>
+                ) : null}
+                <Text style={styles.modalLine}>Sem escala cadastrada neste dia.</Text>
+              </>
             )}
             <Pressable style={styles.primaryBtn} onPress={() => setSelectedDate(null)}>
               <Text style={styles.primaryBtnText}>Entendi</Text>

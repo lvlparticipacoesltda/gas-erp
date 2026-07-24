@@ -852,7 +852,8 @@ model PurchaseInvoicePayment {
   @@index([invoiceId])
 }
 
-/** Dia planejado na escala de um colaborador (atendente ou entregador) em uma unidade. */
+/** Dia planejado na escala de um colaborador (atendente ou entregador).
+ *  A escala é do colaborador (única por org+user+date); storeId é a unidade de referência. */
 model WorkScheduleEntry {
   id             String          @id @default(cuid())
   organizationId String
@@ -877,7 +878,7 @@ model WorkScheduleEntry {
   createdBy    User?        @relation("WorkScheduleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy    User?        @relation("WorkScheduleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  @@unique([storeId, userId, date])
+  @@unique([organizationId, userId, date])
   @@index([organizationId, storeId, date])
   @@index([userId, date])
 }
