@@ -13,11 +13,12 @@ import { Modal } from '@/components/modal';
 import { PaginatedSection } from '@/components/paginated-section';
 import { DEFAULT_TABLE_PAGE_SIZE, Pagination } from '@/components/pagination';
 import { TableAction, TableActions } from '@/components/table-actions';
-import { Badge, Button, Input, Label, PageHeader, Table } from '@/components/ui';
+import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
 import {
+  CUSTOMER_CATEGORY_FILTER_NONE,
   getSaleDisplayStatus,
   getSaleDelivererName,
   PAYMENT_METHOD_LABELS,
@@ -42,7 +43,15 @@ interface Customer {
   phone?: string;
   document?: string;
   active?: boolean;
+  categoryId?: string | null;
+  category?: { id: string; name: string } | null;
   addresses: CustomerAddress[];
+}
+
+interface CustomerCategoryOption {
+  id: string;
+  name: string;
+  description?: string | null;
 }
 
 interface CustomerSale {
@@ -83,6 +92,7 @@ interface CustomerForm extends CustomerAddressForm {
   phone: string;
   document: string;
   active: boolean;
+  categoryId: string;
 }
 
 const emptyForm: CustomerForm = {
@@ -90,6 +100,7 @@ const emptyForm: CustomerForm = {
   phone: '',
   document: '',
   active: true,
+  categoryId: '',
   zipCode: '',
   street: '',
   number: '',
@@ -253,6 +264,9 @@ export default function CustomersPage() {
   const [total, setTotal] = useState(0);
   const [draftSearch, setDraftSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
+  const [draftCategoryId, setDraftCategoryId] = useState('');
+  const [appliedCategoryId, setAppliedCategoryId] = useState('');
+  const [categories, setCategories] = useState<CustomerCategoryOption[]>([]);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -263,6 +277,11 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  async function loadCategories() {
+    const rows = await api<CustomerCategoryOption[]>('/customers/categories', {}, getToken());
+    setCategories(rows);
+  }
+
   async function load() {
     setLoading(true);
     try {
@@ -272,6 +291,7 @@ export default function CustomersPage() {
         pageSize: String(pageSize),
       });
       if (appliedSearch.trim()) params.set('search', appliedSearch.trim());
+      if (appliedCategoryId) params.set('categoryId', appliedCategoryId);
       const res = await api<PaginatedResponse<Customer>>(
         `/customers?${params}`,
         {},
@@ -287,19 +307,27 @@ export default function CustomersPage() {
   }
 
   useEffect(() => {
+    void loadCategories().catch(() => setCategories([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, page, pageSize, appliedSearch]);
+  }, [storeId, page, pageSize, appliedSearch, appliedCategoryId]);
 
   function applyFilters() {
     setPage(1);
     setAppliedSearch(draftSearch);
+    setAppliedCategoryId(draftCategoryId);
   }
 
   function resetFilters() {
     setDraftSearch('');
+    setDraftCategoryId('');
     setPage(1);
     setAppliedSearch('');
+    setAppliedCategoryId('');
   }
 
   function openCreate() {
@@ -318,6 +346,7 @@ export default function CustomersPage() {
       phone: customer.phone ?? '',
       document: customer.document ?? '',
       active: customer.active ?? true,
+      categoryId: customer.categoryId ?? customer.category?.id ?? '',
       ...addressFromCustomer(addr),
     });
     setModal('edit');
@@ -341,6 +370,7 @@ export default function CustomersPage() {
           name: form.name,
           phone: form.phone,
           document: form.document,
+          categoryId: form.categoryId || null,
           addresses: [buildAddressPayload(form)],
         }),
       }, getToken());
@@ -415,6 +445,7 @@ export default function CustomersPage() {
           phone: editForm.phone,
           document: editForm.document,
           active: editForm.active,
+          categoryId: editForm.categoryId || null,
           addresses: [buildAddressPayload(editForm)],
         }),
       }, getToken());
@@ -444,6 +475,20 @@ export default function CustomersPage() {
             <Input value={value.document} onChange={(e) => onChange({ ...value, document: e.target.value })} />
           </div>
         </div>
+        <div>
+          <Label>Categoria</Label>
+          <Select
+            value={value.categoryId}
+            onChange={(e) => onChange({ ...value, categoryId: e.target.value })}
+          >
+            <option value="">Sem categoria</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </Select>
+        </div>
       </>
     );
   }
@@ -464,6 +509,21 @@ export default function CustomersPage() {
             onChange={(e) => setDraftSearch(e.target.value)}
             placeholder="Buscar cliente"
           />
+        </div>
+        <div>
+          <Label>Categoria</Label>
+          <Select
+            value={draftCategoryId}
+            onChange={(e) => setDraftCategoryId(e.target.value)}
+          >
+            <option value="">Todas</option>
+            <option value={CUSTOMER_CATEGORY_FILTER_NONE}>Sem categoria</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </Select>
         </div>
       </FilterPanel>
 
@@ -494,6 +554,7 @@ export default function CustomersPage() {
             <tr>
               <th className="p-3">Nome</th>
               <th className="p-3">Telefone</th>
+              <th className="p-3">Categoria</th>
               <th className="p-3 min-w-[14rem]">Endereço</th>
               <th className="p-3 text-right">Ação</th>
             </tr>
@@ -503,6 +564,13 @@ export default function CustomersPage() {
               <tr key={c.id} className="border-t border-slate-100">
                 <td className="p-3 font-medium text-slate-800">{c.name}</td>
                 <td className="p-3">{c.phone ?? '—'}</td>
+                <td className="p-3">
+                  {c.category?.name ? (
+                    <Badge>{c.category.name}</Badge>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
                 <td className="p-3 text-slate-600">
                   {c.addresses[0] ? `${c.addresses[0].street}, ${c.addresses[0].city}` : '—'}
                 </td>
@@ -526,7 +594,7 @@ export default function CustomersPage() {
             ))}
             {customers.length === 0 && (
               <tr>
-                <td colSpan={4} className="p-6 text-center text-slate-400">
+                <td colSpan={5} className="p-6 text-center text-slate-400">
                   Nenhum cliente encontrado.
                 </td>
               </tr>

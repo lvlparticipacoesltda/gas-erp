@@ -135,11 +135,16 @@ async function main() {
     create: { delivererId: deliverer.id, storeId: stores[0].id },
   });
 
-  const category = await prisma.customerCategory.upsert({
-    where: { organizationId_name: { organizationId: org.id, name: 'Residencial' } },
-    update: {},
-    create: { organizationId: org.id, name: 'Residencial' },
-  });
+  const categories = await Promise.all(
+    (['P13', 'P20', 'P45'] as const).map((name) =>
+      prisma.customerCategory.upsert({
+        where: { organizationId_name: { organizationId: org.id, name } },
+        update: { active: true },
+        create: { organizationId: org.id, name },
+      }),
+    ),
+  );
+  const category = categories[0];
 
   const customer = await prisma.customer.upsert({
     where: { id: 'seed-customer-1' },

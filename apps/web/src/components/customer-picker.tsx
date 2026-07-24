@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Button, Input, Label } from '@/components/ui';
+import { Button, Input, Label, Select } from '@/components/ui';
 import {
   CustomerAddressFields,
   customerAddressPayload,
@@ -23,6 +23,8 @@ export interface SaleCustomer {
   phone?: string;
   addresses: CustomerAddress[];
 }
+
+type CategoryOption = { id: string; name: string };
 
 export type CustomerPickerValue =
   | { kind: 'none' }
@@ -100,6 +102,8 @@ function QuickCustomerRegister({
 }) {
   const [name, setName] = useState(defaultName ?? '');
   const [phone, setPhone] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [address, setAddress] = useState(emptyQuickAddress);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -107,6 +111,20 @@ function QuickCustomerRegister({
   useEffect(() => {
     setName(defaultName ?? '');
   }, [defaultName]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<CategoryOption[]>('/customers/categories', {}, getToken())
+      .then((rows) => {
+        if (!cancelled) setCategories(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -121,6 +139,7 @@ function QuickCustomerRegister({
             storeId,
             name: name.trim(),
             phone: phone.trim() || undefined,
+            categoryId: categoryId || undefined,
             addresses: [customerAddressPayload(address)],
           }),
         },
@@ -144,6 +163,17 @@ function QuickCustomerRegister({
       <div>
         <Label>Telefone</Label>
         <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Opcional" />
+      </div>
+      <div>
+        <Label>Categoria (opcional)</Label>
+        <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">Sem categoria</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
+          ))}
+        </Select>
       </div>
       <CustomerAddressFields value={address} onChange={setAddress} />
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

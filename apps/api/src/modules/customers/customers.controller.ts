@@ -14,10 +14,24 @@ export class CustomersController {
     @CurrentUser() user: AuthUser,
     @Query('storeId') storeId: string,
     @Query('search') search?: string,
+    @Query('categoryId') categoryId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.customersService.findAll(user, storeId, search, Number(page) || 1, Number(pageSize) || 20);
+    return this.customersService.findAll(
+      user,
+      storeId,
+      search,
+      Number(page) || 1,
+      Number(pageSize) || 20,
+      categoryId,
+    );
+  }
+
+  /** Lista categorias canônicas (P13/P20/P45); deve vir antes de :id. */
+  @Get('categories')
+  listCategories(@CurrentUser() user: AuthUser) {
+    return this.customersService.listCategories(user);
   }
 
   @Get(':id/product-prices/map')

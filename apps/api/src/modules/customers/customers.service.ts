@@ -1,7 +1,15 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
-import { customerAddressSchema, createCustomerSchema, updateCustomerSchema, upsertCustomerProductPriceSchema, phoneSearchTerms } from '@gas-erp/shared';
+import {
+  customerAddressSchema,
+  createCustomerSchema,
+  updateCustomerSchema,
+  upsertCustomerProductPriceSchema,
+  phoneSearchTerms,
+  CUSTOMER_CATEGORY_FILTER_NONE,
+  CUSTOMER_CATEGORY_NAMES,
+} from '@gas-erp/shared';
 import { AuthUser, toNumber } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
@@ -9,6 +17,42 @@ import { paginate, paginatedResult } from '../../common/utils/pagination';
 @Injectable()
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
+
+  /** Garante P13/P20/P45 ativas na organização (idempotente). */
+  async ensureOrgCustomerCategories(organizationId: string) {
+    await Promise.all(
+      CUSTOMER_CATEGORY_NAMES.map((name) =>
+        this.prisma.customerCategory.upsert({
+          where: { organizationId_name: { organizationId, name } },
+          update: { active: true },
+          create: { organizationId, name },
+        }),
+      ),
+    );
+  }
+
+  async listCategories(user: AuthUser) {
+    await this.ensureOrgCustomerCategories(user.organizationId);
+    return this.prisma.customerCategory.findMany({
+      where: {
+        organizationId: user.organizationId,
+        active: true,
+        name: { in: [...CUSTOMER_CATEGORY_NAMES] },
+      },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, description: true },
+    });
+  }
+
+  private async assertCategoryInOrg(organizationId: string, categoryId: string | null | undefined) {
+    if (categoryId == null || categoryId === '') return null;
+    const cat = await this.prisma.customerCategory.findFirst({
+      where: { id: categoryId, organizationId, active: true },
+      select: { id: true },
+    });
+    if (!cat) throw new BadRequestException('Categoria de cliente inválida.');
+    return cat.id;
+  }
 
   private async getCustomerInOrg(user: AuthUser, id: string, storeId?: string) {
     const customer = await this.prisma.customer.findFirst({
@@ -23,15 +67,31 @@ export class CustomersService {
     return customer;
   }
 
-  async findAll(user: AuthUser, storeId: string, search?: string, page = 1, pageSize = 20) {
+  async findAll(
+    user: AuthUser,
+    storeId: string,
+    search?: string,
+    page = 1,
+    pageSize = 20,
+    categoryId?: string,
+  ) {
     if (!storeId) throw new BadRequestException('storeId é obrigatório');
     assertStoreAccess(user, storeId);
 
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
+
+    let categoryFilter: { categoryId: string | null } | Record<string, never> = {};
+    if (categoryId === CUSTOMER_CATEGORY_FILTER_NONE) {
+      categoryFilter = { categoryId: null };
+    } else if (categoryId?.trim()) {
+      categoryFilter = { categoryId: categoryId.trim() };
+    }
+
     const where = {
       organizationId: user.organizationId,
       storeId,
       active: true,
+      ...categoryFilter,
       ...(search
         ? {
             OR: [
@@ -106,6 +166,8 @@ export class CustomersService {
     });
     if (!store) throw new BadRequestException('Loja não encontrada');
 
+    const categoryId = await this.assertCategoryInOrg(user.organizationId, data.categoryId);
+
     return this.prisma.customer.create({
       data: {
         organizationId: user.organizationId,
@@ -115,7 +177,7 @@ export class CustomersService {
         phone: data.phone,
         document: data.document,
         notes: data.notes,
-        categoryId: data.categoryId,
+        categoryId,
         addresses: data.addresses?.length
           ? { create: data.addresses }
           : undefined,
@@ -131,6 +193,14 @@ export class CustomersService {
     const data = updateCustomerSchema.parse(input);
     const { addresses, ...customerData } = data;
 
+    let nextCategoryId: string | null | undefined = undefined;
+    if (customerData.categoryId !== undefined) {
+      nextCategoryId = await this.assertCategoryInOrg(
+        user.organizationId,
+        customerData.categoryId,
+      );
+    }
+
     await this.prisma.customer.update({
       where: { id: customer.id },
       data: {
@@ -139,7 +209,7 @@ export class CustomersService {
         ...(customerData.phone !== undefined ? { phone: customerData.phone } : {}),
         ...(customerData.document !== undefined ? { document: customerData.document } : {}),
         ...(customerData.notes !== undefined ? { notes: customerData.notes } : {}),
-        ...(customerData.categoryId !== undefined ? { categoryId: customerData.categoryId } : {}),
+        ...(nextCategoryId !== undefined ? { categoryId: nextCategoryId } : {}),
         ...(customerData.active !== undefined ? { active: customerData.active } : {}),
       },
     });

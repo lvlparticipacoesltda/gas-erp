@@ -60,6 +60,22 @@ export const PURCHASE_PAYMENT_CATEGORIES = [
 
 export const DEFAULT_PURCHASE_PAYMENT_CATEGORY = 'Despesas com Fornecedores';
 
+/**
+ * Categorias canônicas de cliente (tipo de botijão preferido).
+ * Persistidas em `CustomerCategory.name` (únicas por organização).
+ */
+export const CUSTOMER_CATEGORY_NAMES = ['P13', 'P20', 'P45'] as const;
+export type CustomerCategoryName = (typeof CUSTOMER_CATEGORY_NAMES)[number];
+
+export const CUSTOMER_CATEGORY_LABELS: Record<CustomerCategoryName, string> = {
+  P13: 'P13',
+  P20: 'P20',
+  P45: 'P45',
+};
+
+/** Query `categoryId=none` → clientes sem categoria (para categorização manual). */
+export const CUSTOMER_CATEGORY_FILTER_NONE = 'none';
+
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'Dinheiro',
   PIX: 'PIX',

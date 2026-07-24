@@ -24,12 +24,13 @@ export const createCustomerSchema = z.object({
     .transform((value) => normalizePhoneForStorage(value)),
   document: z.string().optional(),
   notes: z.string().optional(),
-  categoryId: z.string().optional(),
+  categoryId: z.string().optional().nullable(),
   addresses: z.array(customerAddressSchema).optional(),
 });
 
 export const updateCustomerSchema = createCustomerSchema.partial().extend({
   active: z.boolean().optional(),
+  categoryId: z.string().optional().nullable(),
 });
 
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
