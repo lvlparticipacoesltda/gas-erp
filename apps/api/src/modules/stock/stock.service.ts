@@ -15,7 +15,9 @@ import { paginate, paginatedResult } from '../../common/utils/pagination';
 type DbClient = PrismaService | Prisma.TransactionClient;
 
 /** Motivo padrão da baixa de estoque por venda (usado para idempotência e estorno). */
-const SALE_STOCK_OUT_REASON = 'Ref. à venda de mercadorias.';
+export const SALE_STOCK_OUT_REASON = 'Ref. à venda de mercadorias.';
+/** Motivo do estorno ao cancelar venda que já havia baixado estoque. */
+export const SALE_STOCK_CANCEL_RESTORE_REASON = 'Ref. ao cancelamento de venda de mercadorias.';
 
 @Injectable()
 export class StockService {
@@ -338,7 +340,7 @@ export class StockService {
         userId,
         type: StockMovementType.IN,
         quantity,
-        reason: 'Ref. ao cancelamento de venda de mercadorias.',
+        reason: SALE_STOCK_CANCEL_RESTORE_REASON,
         referenceId: saleId,
       },
     });

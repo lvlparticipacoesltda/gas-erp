@@ -21,6 +21,10 @@ import {
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { resolveDashboardDateRange } from '../../common/utils/business-day';
+import {
+  SALE_STOCK_CANCEL_RESTORE_REASON,
+  SALE_STOCK_OUT_REASON,
+} from '../stock/stock.service';
 
 type DashboardPayload = {
   date: string;
@@ -462,6 +466,7 @@ export class DashboardService {
           type: true,
           quantity: true,
           createdAt: true,
+          reason: true,
           product: { select: { id: true, name: true, sku: true, productType: true } },
         },
       }),
@@ -716,6 +721,10 @@ export class DashboardService {
         sinceStartOut: number;
         periodIn: number;
         periodOut: number;
+        /** Baixas de venda no período (antes de netear cancelamentos). */
+        periodSaleOut: number;
+        /** Estornos de cancelamento de venda no período. */
+        periodSaleCancelIn: number;
       };
       const byProduct = new Map<string, Acc>();
       const ensure = (
@@ -733,6 +742,8 @@ export class DashboardService {
             sinceStartOut: 0,
             periodIn: 0,
             periodOut: 0,
+            periodSaleOut: 0,
+            periodSaleCancelIn: 0,
           };
           byProduct.set(id, acc);
         }
@@ -757,16 +768,29 @@ export class DashboardService {
         const inPeriod = movement.createdAt >= start && movement.createdAt < end;
         if (movement.type === 'IN') {
           acc.sinceStartIn += movement.quantity;
-          if (inPeriod) acc.periodIn += movement.quantity;
+          if (inPeriod) {
+            acc.periodIn += movement.quantity;
+            if (movement.reason === SALE_STOCK_CANCEL_RESTORE_REASON) {
+              acc.periodSaleCancelIn += movement.quantity;
+            }
+          }
         } else {
           acc.sinceStartOut += movement.quantity;
-          if (inPeriod) acc.periodOut += movement.quantity;
+          if (inPeriod) {
+            acc.periodOut += movement.quantity;
+            if (movement.reason === SALE_STOCK_OUT_REASON) {
+              acc.periodSaleOut += movement.quantity;
+            }
+          }
         }
       }
 
       return Array.from(byProduct.entries()).map(([productId, acc]) => {
         const opening = acc.current - acc.sinceStartIn + acc.sinceStartOut;
-        const out = acc.periodOut;
+        // Saídas exibidas: neteia estorno de cancelamento contra baixa de venda.
+        // Outras saídas (transferência, ajuste) permanecem.
+        const cancelledAgainstSales = Math.min(acc.periodSaleOut, acc.periodSaleCancelIn);
+        const out = acc.periodOut - cancelledAgainstSales;
         const closing = opening + acc.periodIn - acc.periodOut;
         const sold = soldByProductId.get(productId);
         return {
