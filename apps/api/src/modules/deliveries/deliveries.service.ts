@@ -5,6 +5,7 @@ import {
   assignDeliveryDelivererSchema,
   deliveryRouteQuerySchema,
   deliveryTrackingSchema,
+  getBusinessDayBounds,
   isDelivererAssignableForSale,
   updateDeliveryStatusSchema,
 } from '@gas-erp/shared';
@@ -20,11 +21,10 @@ import { PushService } from '../../common/push/push.service';
 const STORE_STAFF_ROLES = new Set(['ORG_MASTER', 'STORE_MANAGER', 'ATTENDANT', 'FINANCE']);
 
 /**
- * Histórico do app: só entregas a partir desta data (quando passamos a persistir
- * coordenadas). Antes disso o histórico gerava re-geocoding em massa.
- * 2026-07-22 00:00 BRT = 03:00 UTC.
+ * Histórico do app: só corridas a partir deste dia (America/Sao_Paulo).
+ * Evita reabrir entregas antigas sem coords que geravam geocoding em massa.
  */
-const DELIVERER_HISTORY_SINCE = new Date('2026-07-22T03:00:00.000Z');
+const DELIVERER_HISTORY_SINCE = getBusinessDayBounds('2026-07-24').start;
 
 type DeliveryWithSale = {
   status: DeliveryStatus;

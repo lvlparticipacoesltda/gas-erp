@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -74,8 +73,6 @@ export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
   const [trackingPoints, setTrackingPoints] = useState<TrackingPoint[]>([]);
   const [trackingLoading, setTrackingLoading] = useState(true);
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [fallbackDestination, setFallbackDestination] = useState<DeliveryDestination | null>(null);
-  const [geocodingDestination, setGeocodingDestination] = useState(false);
 
   const display = getDeliveryDisplayStatus({
     status: delivery.status,
@@ -83,7 +80,7 @@ export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
   });
   const address = deliveryAddress(delivery);
   const timing = timingLabel(delivery);
-  const mapDestination = delivery.destination ?? fallbackDestination;
+  const mapDestination = delivery.destination ?? null;
 
   const initialRegion = useMemo(
     () => (mapDestination ? regionForCoordinate(mapDestination) : DEFAULT_REGION),
@@ -124,31 +121,7 @@ export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
   }, [delivery.id]);
 
   useEffect(() => {
-    setFallbackDestination(null);
-    if (delivery.destination || !address.trim()) return;
-
-    let cancelled = false;
-    setGeocodingDestination(true);
-    void Location.geocodeAsync(address)
-      .then((results) => {
-        if (cancelled || !results[0]) return;
-        setFallbackDestination({
-          latitude: results[0].latitude,
-          longitude: results[0].longitude,
-        });
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setGeocodingDestination(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [delivery.id, delivery.destination, address]);
-
-  useEffect(() => {
-    if (!mapRef.current || trackingLoading || geocodingDestination) return;
+    if (!mapRef.current || trackingLoading) return;
 
     const coords = [...routeCoords];
     if (mapDestination) {
@@ -165,7 +138,7 @@ export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
       edgePadding: { top: 48, right: 48, bottom: 48, left: 48 },
       animated: true,
     });
-  }, [routeCoords, mapDestination, trackingLoading, geocodingDestination]);
+  }, [routeCoords, mapDestination, trackingLoading]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -208,22 +181,19 @@ export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
           ) : null}
         </MapView>
 
-        {trackingLoading || geocodingDestination ? (
+        {trackingLoading ? (
           <View style={styles.mapOverlay}>
-            <Loading
-              label={
-                geocodingDestination && !trackingLoading
-                  ? 'Localizando destino...'
-                  : 'Carregando percurso...'
-              }
-            />
+            <Loading label="Carregando percurso..." />
           </View>
         ) : null}
 
-        {!trackingLoading && !geocodingDestination && routeCoords.length === 0 ? (
+        {!trackingLoading && routeCoords.length === 0 ? (
           <View style={styles.mapNotice} pointerEvents="none">
             <Text style={styles.mapNoticeText}>
-              {trackingError ?? 'Percurso não registrado'}
+              {trackingError
+                ?? (!mapDestination
+                  ? 'Percurso e destino não registrados'
+                  : 'Percurso não registrado')}
             </Text>
           </View>
         ) : null}

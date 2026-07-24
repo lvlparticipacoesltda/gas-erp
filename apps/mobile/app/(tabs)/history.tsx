@@ -18,7 +18,6 @@ const PERIOD_OPTIONS: { key: HistoryPeriod; label: string }[] = [
   { key: 'today', label: 'Hoje' },
   { key: '7d', label: '7 dias' },
   { key: '30d', label: '30 dias' },
-  { key: 'all', label: 'Todos' },
 ];
 
 const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
@@ -55,7 +54,7 @@ export default function HistoryScreen() {
         <Text style={styles.title}>Histórico de rotas</Text>
         <Text style={styles.subtitle}>
           {historyDeliveries.length} corrida{historyDeliveries.length === 1 ? '' : 's'}
-          {period !== 'all' ? ` · ${periodLabel}` : ''}
+          {` · ${periodLabel}`}
         </Text>
       </View>
 
