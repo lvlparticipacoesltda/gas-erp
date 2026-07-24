@@ -399,25 +399,32 @@ export default function ScheduleScreen() {
           <View style={styles.nextSection}>
             <Text style={styles.sectionTitle}>Próximo compromisso</Text>
             <View style={styles.nextCard}>
-              <Ionicons name="calendar-outline" size={22} color={colors.success} />
-              <View style={styles.nextTextBlock}>
-                <Text style={styles.nextDate}>
-                  {formatCommitmentDate(nextCommitment.date)}
-                </Text>
-                <Text style={styles.nextHours}>
-                  {nextCommitment.startTime?.slice(0, 5)} às{' '}
-                  {nextCommitment.endTime?.slice(0, 5)}
-                </Text>
-                {nextCommitment.storeName ? (
-                  <Text style={styles.nextStore}>Unidade: {nextCommitment.storeName}</Text>
-                ) : storeName ? (
-                  <Text style={styles.nextStore}>Unidade: {storeName}</Text>
-                ) : null}
+              <View style={styles.nextUnitBanner}>
+                <View style={styles.nextUnitIcon}>
+                  <Ionicons name="location" size={16} color={colors.primary} />
+                </View>
+                <View style={styles.nextUnitTextBlock}>
+                  <Text style={styles.nextUnitLabel}>Unidade do dia</Text>
+                  <Text style={styles.nextUnitName}>
+                    {nextCommitment.storeName ?? storeName ?? '—'}
+                  </Text>
+                </View>
               </View>
-              <View style={[styles.nextBadge, { backgroundColor: nextBadgeColors.bg }]}>
-                <Text style={[styles.nextBadgeText, { color: nextBadgeColors.text }]}>
-                  {SCHEDULE_DAY_TYPE_LABELS[nextCommitment.dayType]}
-                </Text>
+              <View style={styles.nextMetaRow}>
+                <View style={styles.nextTextBlock}>
+                  <Text style={styles.nextDate}>
+                    {formatCommitmentDate(nextCommitment.date)}
+                  </Text>
+                  <Text style={styles.nextHours}>
+                    {nextCommitment.startTime?.slice(0, 5)} às{' '}
+                    {nextCommitment.endTime?.slice(0, 5)}
+                  </Text>
+                </View>
+                <View style={[styles.nextBadge, { backgroundColor: nextBadgeColors.bg }]}>
+                  <Text style={[styles.nextBadgeText, { color: nextBadgeColors.text }]}>
+                    {SCHEDULE_DAY_TYPE_LABELS[nextCommitment.dayType]}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
@@ -425,6 +432,15 @@ export default function ScheduleScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Bater ponto</Text>
+          {storeName ? (
+            <View style={styles.punchUnitBanner}>
+              <Ionicons name="business-outline" size={16} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.punchUnitLabel}>Ponto nesta unidade</Text>
+                <Text style={styles.punchUnitName}>{storeName}</Text>
+              </View>
+            </View>
+          ) : null}
           <Text style={styles.hint}>
             Disponível a até {TIME_CLOCK_GEOFENCE_METERS} m da unidade. Foto obrigatória.
           </Text>
@@ -490,7 +506,12 @@ export default function ScheduleScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={!!selectedDate} animationType="slide" transparent>
+      <Modal
+        visible={!!selectedDate}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedDate(null)}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>
@@ -503,22 +524,48 @@ export default function ScheduleScreen() {
                   })
                 : ''}
             </Text>
+            {selectedEntry &&
+            selectedEntry.dayType !== 'DAY_OFF' &&
+            (selectedEntry.storeName || storeName) ? (
+              <View style={styles.modalUnitBanner}>
+                <Ionicons name="location" size={16} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalUnitLabel}>Unidade do dia</Text>
+                  <Text style={styles.modalUnitName}>
+                    {selectedEntry.storeName ?? storeName}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
             {selectedEntry ? (
               <>
-                {selectedEntry.storeName || storeName ? (
-                  <Text style={styles.modalLine}>
-                    Unidade: {selectedEntry.storeName ?? storeName}
-                  </Text>
-                ) : null}
-                <Text style={styles.badge}>
-                  {SCHEDULE_DAY_TYPE_LABELS[selectedEntry.dayType]}
-                </Text>
                 {selectedEntry.dayType !== 'DAY_OFF' ? (
                   <>
-                    <Text style={styles.modalLine}>
-                      Entrada {selectedEntry.startTime?.slice(0, 5)} · Saída{' '}
-                      {selectedEntry.endTime?.slice(0, 5)}
-                    </Text>
+                    <View style={styles.modalMetaRow}>
+                      <Text style={styles.modalLineFlex}>
+                        Entrada {selectedEntry.startTime?.slice(0, 5)} · Saída{' '}
+                        {selectedEntry.endTime?.slice(0, 5)}
+                      </Text>
+                      <View
+                        style={[
+                          styles.badge,
+                          selectedEntry.dayType === 'HALF_DAY'
+                            ? styles.badgeHalf
+                            : styles.badgeWork,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.badgeText,
+                            selectedEntry.dayType === 'HALF_DAY'
+                              ? styles.badgeTextHalf
+                              : styles.badgeTextWork,
+                          ]}
+                        >
+                          {SCHEDULE_DAY_TYPE_LABELS[selectedEntry.dayType]}
+                        </Text>
+                      </View>
+                    </View>
                     {selectedEntry.breakStart && selectedEntry.breakEnd ? (
                       <Text style={styles.modalLine}>
                         Intervalo {selectedEntry.breakStart.slice(0, 5)} –{' '}
@@ -527,19 +574,21 @@ export default function ScheduleScreen() {
                     ) : null}
                   </>
                 ) : (
-                  <Text style={styles.modalLine}>Dia de folga</Text>
+                  <View style={styles.modalMetaRow}>
+                    <Text style={styles.modalLineFlex}>Dia de folga</Text>
+                    <View style={[styles.badge, styles.badgeOff]}>
+                      <Text style={[styles.badgeText, styles.badgeTextOff]}>
+                        {SCHEDULE_DAY_TYPE_LABELS[selectedEntry.dayType]}
+                      </Text>
+                    </View>
+                  </View>
                 )}
                 {selectedEntry.notes ? (
                   <Text style={styles.modalNotes}>{selectedEntry.notes}</Text>
                 ) : null}
               </>
             ) : (
-              <>
-                {storeName ? (
-                  <Text style={styles.modalLine}>Unidade: {storeName}</Text>
-                ) : null}
-                <Text style={styles.modalLine}>Sem escala cadastrada neste dia.</Text>
-              </>
+              <Text style={styles.modalLine}>Sem escala cadastrada neste dia.</Text>
             )}
             <Pressable style={styles.primaryBtn} onPress={() => setSelectedDate(null)}>
               <Text style={styles.primaryBtnText}>Entendi</Text>
@@ -661,23 +710,81 @@ const styles = StyleSheet.create({
   nextCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: spacing.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+    gap: spacing.md,
+  },
+  nextUnitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.infoBg,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#F0D5C4',
+  },
+  nextUnitIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextUnitTextBlock: { flex: 1, gap: 1 },
+  nextUnitLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  nextUnitName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  nextMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
   nextTextBlock: { flex: 1, gap: 2 },
   nextDate: { fontSize: 14, fontWeight: '700', color: colors.text },
   nextHours: { fontSize: 13, color: colors.textMuted },
-  nextStore: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   nextBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: radius.pill,
   },
   nextBadgeText: { fontSize: 12, fontWeight: '600' },
+  punchUnitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.infoBg,
+    borderRadius: radius.sm,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#F0D5C4',
+  },
+  punchUnitLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  punchUnitName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
   hint: { fontSize: 12, color: colors.textMuted },
   punchStatus: { fontSize: 13, color: colors.text, fontWeight: '600' },
   punchActions: { flexDirection: 'row', gap: spacing.sm },
@@ -763,17 +870,48 @@ const styles = StyleSheet.create({
     color: colors.text,
     textTransform: 'capitalize',
   },
+  modalUnitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.infoBg,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#F0D5C4',
+    marginTop: spacing.xs,
+  },
+  modalUnitLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  modalUnitName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  modalLine: { fontSize: 14, color: colors.textMuted },
+  modalLineFlex: { flex: 1, fontSize: 14, color: colors.textMuted },
   badge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.successBg,
-    color: colors.successText,
-    overflow: 'hidden',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: radius.sm,
-    fontSize: 12,
-    fontWeight: '600',
   },
-  modalLine: { fontSize: 14, color: colors.textMuted },
+  badgeWork: { backgroundColor: colors.successBg },
+  badgeHalf: { backgroundColor: colors.warningBg },
+  badgeOff: { backgroundColor: colors.surfaceAlt },
+  badgeText: { fontSize: 12, fontWeight: '600' },
+  badgeTextWork: { color: colors.successText },
+  badgeTextHalf: { color: colors.warningText },
+  badgeTextOff: { color: colors.textMuted },
   modalNotes: { fontSize: 13, color: colors.text, marginTop: 4 },
 });
