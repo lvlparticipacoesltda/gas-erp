@@ -25,7 +25,7 @@ export function LegalPage({ title, updatedAt, children }: LegalPageProps) {
       </main>
       <footer className="border-t border-slate-200/80 py-6 text-center text-xs text-slate-500">
         <p>THL Gás do Povo — Rede Gás Litoral</p>
-        <p className="mt-1">CNPJ 62.512.525/0001-63</p>
+        <p className="mt-1">CNPJ 52.168.152/0001-00</p>
       </footer>
     </div>
   );

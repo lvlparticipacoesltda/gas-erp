@@ -9,7 +9,7 @@ export const PRIVACY_POLICY_ENTREGADOR = {
   androidPackage: 'com.gaserp.entregador',
   iosBundleId: 'com.gaserp.entregador',
   controller: 'THL Gás do Povo — Rede Gás Litoral',
-  controllerCnpj: '62.512.525/0001-63',
+  controllerCnpj: '52.168.152/0001-00',
   contactEmail: 'contato@thlgasdopovo.com.br',
   website: 'https://thlgasdopovo.com.br',
   sections: [
