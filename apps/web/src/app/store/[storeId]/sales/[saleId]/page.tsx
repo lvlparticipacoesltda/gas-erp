@@ -562,14 +562,17 @@ export default function SaleDetailPage() {
 
             <h3 className="mb-2 mt-6 font-medium">Itens</h3>
             <ul className="space-y-1 text-sm">
-              {sale.items.map((item, i) => (
-                <li key={i}>
-                  {item.quantity}x {item.product.name} — {formatCurrency(item.unitPrice)}
-                  {item.storePaymentMethod?.label ? (
-                    <span className="text-slate-500"> · {item.storePaymentMethod.label}</span>
-                  ) : null}
-                </li>
-              ))}
+              {sale.items.flatMap((item, itemIndex) => {
+                const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+                return Array.from({ length: qty }, (_, unitIndex) => (
+                  <li key={`${itemIndex}-${unitIndex}`}>
+                    1x {item.product.name} — {formatCurrency(item.unitPrice)}
+                    {item.storePaymentMethod?.label ? (
+                      <span className="text-slate-500"> · {item.storePaymentMethod.label}</span>
+                    ) : null}
+                  </li>
+                ));
+              })}
             </ul>
 
             <h3 className="mb-2 mt-4 font-medium">Pagamentos</h3>
