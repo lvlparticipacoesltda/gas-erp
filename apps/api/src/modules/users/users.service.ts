@@ -217,14 +217,29 @@ export class UsersService {
     user: AuthUser,
     page = 1,
     pageSize = 20,
-    filters: { active?: string; search?: string; userId?: string } = {},
+    filters: {
+      active?: string;
+      search?: string;
+      userId?: string;
+      /** staff = painel (não entregador) | deliverer | all/vazio */
+      audience?: string;
+    } = {},
   ) {
     const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
     const search = filters.search?.trim();
+    const audience = filters.audience?.trim().toLowerCase();
+    const roleFilter =
+      audience === 'deliverer' || audience === 'entregador'
+        ? { role: 'DELIVERER' as const }
+        : audience === 'staff' || audience === 'attendant' || audience === 'atendente'
+          ? { role: { not: 'DELIVERER' as const } }
+          : {};
+
     const where = {
       user: {
         organizationId: user.organizationId,
         ...(filters.userId ? { id: filters.userId } : {}),
+        ...roleFilter,
         ...(search
           ? {
               OR: [

@@ -8,7 +8,7 @@ import { TableAction, TableActions } from '@/components/table-actions';
 import { Badge, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { DEFAULT_TABLE_PAGE_SIZE } from '@/components/pagination';
 import { api, getToken } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import { ROLE_LABELS, type PaginatedResponse } from '@gas-erp/shared';
 
 interface SessionRow {
@@ -28,9 +28,11 @@ interface SessionRow {
   durationSeconds: number;
 }
 
+/** Padrão: atendentes (painel), sem entregadores. */
 const emptyFilters = {
   search: '',
   active: 'true',
+  audience: 'staff',
 };
 
 const CLIENT_LABELS: Record<string, string> = {
@@ -45,6 +47,9 @@ const REVOKE_LABELS: Record<string, string> = {
   password_reset: 'Reset de senha',
 };
 
+const cell = 'border-r border-slate-200 px-3 py-2.5 align-top last:border-r-0';
+const headCell = cn(cell, 'whitespace-nowrap bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600');
+
 function formatDuration(seconds: number) {
   if (seconds < 60) return `${seconds}s`;
   const mins = Math.floor(seconds / 60);
@@ -57,10 +62,17 @@ function formatDuration(seconds: number) {
   return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
 }
 
-function shortUserAgent(ua: string | null) {
+function agentLabel(ua: string | null, client: string | null) {
   if (!ua) return '—';
-  if (ua.length <= 72) return ua;
-  return `${ua.slice(0, 72)}…`;
+  const lower = ua.toLowerCase();
+  if (lower.includes('okhttp') || client === 'mobile') return 'App Android';
+  if (lower.includes('iphone') || lower.includes('ipad')) return 'App iOS / Safari';
+  if (lower.includes('edg/')) return 'Edge';
+  if (lower.includes('chrome/') && !lower.includes('edg/')) return 'Chrome';
+  if (lower.includes('firefox/')) return 'Firefox';
+  if (lower.includes('safari/') && !lower.includes('chrome/')) return 'Safari';
+  if (ua.length <= 40) return ua;
+  return `${ua.slice(0, 40)}…`;
 }
 
 export default function MasterSessionsPage() {
@@ -85,6 +97,7 @@ export default function MasterSessionsPage() {
       });
       if (appliedFilters.search.trim()) params.set('search', appliedFilters.search.trim());
       if (appliedFilters.active) params.set('active', appliedFilters.active);
+      if (appliedFilters.audience) params.set('audience', appliedFilters.audience);
       const res = await api<PaginatedResponse<SessionRow>>(
         `/users/sessions?${params}`,
         {},
@@ -148,6 +161,17 @@ export default function MasterSessionsPage() {
           />
         </div>
         <div>
+          <Label>Perfil</Label>
+          <Select
+            value={draftFilters.audience}
+            onChange={(e) => setDraftFilters((f) => ({ ...f, audience: e.target.value }))}
+          >
+            <option value="staff">Atendentes</option>
+            <option value="deliverer">Entregadores</option>
+            <option value="">Todos</option>
+          </Select>
+        </div>
+        <div>
           <Label>Status</Label>
           <Select
             value={draftFilters.active}
@@ -179,63 +203,78 @@ export default function MasterSessionsPage() {
       >
         <Table>
           <thead>
-            <tr>
-              <th>Usuário</th>
-              <th>Status</th>
-              <th>Cliente</th>
-              <th>IP / origem</th>
-              <th>Login</th>
-              <th>Última atividade</th>
-              <th>Duração</th>
-              <th>Agente</th>
-              <th />
+            <tr className="border-b border-slate-300">
+              <th className={cn(headCell, 'min-w-[12rem]')}>Usuário</th>
+              <th className={headCell}>Status</th>
+              <th className={headCell}>Cliente</th>
+              <th className={cn(headCell, 'min-w-[10rem]')}>IP / origem</th>
+              <th className={headCell}>Login</th>
+              <th className={headCell}>Última atividade</th>
+              <th className={headCell}>Duração</th>
+              <th className={cn(headCell, 'min-w-[7rem]')}>Agente</th>
+              <th className={cn(headCell, 'text-right')}>Ação</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
                   Nenhuma sessão encontrada.
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id}>
-                  <td>
+                <tr key={row.id} className="border-b border-slate-200 odd:bg-white even:bg-slate-50/60">
+                  <td className={cn(cell, 'min-w-[12rem]')}>
                     <div className="font-medium text-slate-900">{row.userName}</div>
-                    <div className="text-xs text-slate-500">{row.userEmail}</div>
-                    <div className="text-xs text-slate-400">
+                    <div className="mt-0.5 break-all text-xs text-slate-500">{row.userEmail}</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
                       {ROLE_LABELS[row.userRole as keyof typeof ROLE_LABELS] ?? row.userRole}
                     </div>
                   </td>
-                  <td>
+                  <td className={cn(cell, 'whitespace-nowrap')}>
                     {row.active ? (
                       <Badge tone="success">Ativa</Badge>
                     ) : (
                       <div className="space-y-1">
                         <Badge>Encerrada</Badge>
                         {row.revokeReason ? (
-                          <div className="text-xs text-slate-500">
+                          <div className="max-w-[8rem] text-xs leading-snug text-slate-500">
                             {REVOKE_LABELS[row.revokeReason] ?? row.revokeReason}
                           </div>
                         ) : null}
                       </div>
                     )}
                   </td>
-                  <td>{CLIENT_LABELS[row.client ?? ''] ?? row.client ?? '—'}</td>
-                  <td className="font-mono text-xs">{row.ipAddress ?? '—'}</td>
-                  <td className="whitespace-nowrap text-sm">{formatDateTime(row.createdAt)}</td>
-                  <td className="whitespace-nowrap text-sm">{formatDateTime(row.lastSeenAt)}</td>
-                  <td className="whitespace-nowrap text-sm">{formatDuration(row.durationSeconds)}</td>
-                  <td className="max-w-[14rem] truncate text-xs text-slate-500" title={row.userAgent ?? undefined}>
-                    {shortUserAgent(row.userAgent)}
+                  <td className={cn(cell, 'whitespace-nowrap text-slate-700')}>
+                    {CLIENT_LABELS[row.client ?? ''] ?? row.client ?? '—'}
                   </td>
-                  <td>
+                  <td className={cn(cell, 'max-w-[11rem] break-all font-mono text-xs leading-snug text-slate-700')}>
+                    {row.ipAddress ?? '—'}
+                  </td>
+                  <td className={cn(cell, 'whitespace-nowrap text-slate-700')}>
+                    {formatDateTime(row.createdAt)}
+                  </td>
+                  <td className={cn(cell, 'whitespace-nowrap text-slate-700')}>
+                    {formatDateTime(row.lastSeenAt)}
+                  </td>
+                  <td className={cn(cell, 'whitespace-nowrap font-medium text-slate-800')}>
+                    {formatDuration(row.durationSeconds)}
+                  </td>
+                  <td
+                    className={cn(cell, 'max-w-[8rem] text-xs text-slate-600')}
+                    title={row.userAgent ?? undefined}
+                  >
+                    {agentLabel(row.userAgent, row.client)}
+                  </td>
+                  <td className={cn(cell, 'whitespace-nowrap text-right')}>
                     {row.active ? (
                       <TableActions>
                         <TableAction onClick={() => void revoke(row)}>Encerrar</TableAction>
                       </TableActions>
-                    ) : null}
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))

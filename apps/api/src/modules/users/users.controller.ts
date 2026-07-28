@@ -34,11 +34,14 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('active') active?: string,
     @Query('userId') userId?: string,
+    /** staff = não entregador | deliverer = entregador | (vazio) = todos */
+    @Query('audience') audience?: string,
   ) {
     return this.usersService.listSessions(user, Number(page) || 1, Number(pageSize) || 20, {
       search,
       active,
       userId,
+      audience,
     });
   }
 
