@@ -13,10 +13,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import {
   SCHEDULE_DAY_TYPE_LABELS,
   TIME_CLOCK_GEOFENCE_METERS,
+  TIME_CLOCK_PHOTO_MAX_BYTES,
   haversineDistanceMeters,
   type ScheduleDayType,
 } from '@gas-erp/shared';
@@ -212,22 +214,57 @@ export default function ScheduleScreen() {
       );
       return null;
     }
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      setError('Permissão de localização necessária para bater o ponto.');
+    try {
+      const servicesOn = await Location.hasServicesEnabledAsync();
+      if (!servicesOn) {
+        setError(
+          'Localização desligada no aparelho. Ative o GPS (no emulador: Extended Controls → Location e defina um ponto).',
+        );
+        return null;
+      }
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Permissão de localização necessária para bater o ponto.');
+        return null;
+      }
+
+      let pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      }).catch(() => null);
+
+      // Emulador / GPS frio: tenta última posição conhecida.
+      if (!pos) {
+        pos = await Location.getLastKnownPositionAsync({
+          maxAge: 5 * 60_000,
+          requiredAccuracy: 500,
+        });
+      }
+
+      if (!pos) {
+        setError(
+          'GPS indisponível no momento. No emulador Android, abra os três pontinhos → Location, escolha um ponto perto da unidade e toque em Set Location.',
+        );
+        return null;
+      }
+
+      const dist = haversineDistanceMeters(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        storeLat,
+        storeLng,
+      );
+      setDistanceM(dist);
+      setError(null);
+      return { pos, dist };
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : '';
+      const friendly = /unavailable|location services|timed out|TIMEOUT/i.test(raw)
+        ? 'GPS indisponível. No emulador: Extended Controls (⋯) → Location → defina coordenadas perto da loja → Set Location.'
+        : raw || 'Não foi possível obter a localização.';
+      setError(friendly);
       return null;
     }
-    const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
-    const dist = haversineDistanceMeters(
-      pos.coords.latitude,
-      pos.coords.longitude,
-      storeLat,
-      storeLng,
-    );
-    setDistanceM(dist);
-    return { pos, dist };
   }
 
   async function takePhoto() {
@@ -237,15 +274,39 @@ export default function ScheduleScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.4,
-      base64: true,
+      quality: 0.5,
+      base64: false,
       allowsEditing: false,
       exif: false,
     });
     if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    setPhotoUri(asset.uri);
-    setPhotoBase64(asset.base64 ?? null);
+
+    try {
+      // Reduz resolução/tamanho — JSON com base64 grande gerava "request entity too large".
+      const compressed = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 960 } }],
+        {
+          compress: 0.45,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        },
+      );
+      if (!compressed.base64) {
+        setError('Não foi possível processar a foto. Tente novamente.');
+        return;
+      }
+      const approxBytes = Math.ceil((compressed.base64.length * 3) / 4);
+      if (approxBytes > TIME_CLOCK_PHOTO_MAX_BYTES) {
+        setError('Foto ainda grande demais. Tire outra mais próxima / com menos luz forte.');
+        return;
+      }
+      setPhotoUri(compressed.uri);
+      setPhotoBase64(compressed.base64);
+      setError(null);
+    } catch {
+      setError('Falha ao comprimir a foto. Tente novamente.');
+    }
   }
 
   async function submitPunch() {

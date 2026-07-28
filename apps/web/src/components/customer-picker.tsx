@@ -21,6 +21,8 @@ export interface SaleCustomer {
   id: string;
   name: string;
   phone?: string;
+  categoryId?: string | null;
+  category?: { id: string; name: string } | null;
   addresses: CustomerAddress[];
 }
 
@@ -33,6 +35,30 @@ export type CustomerPickerValue =
 
 const MIN_SEARCH = 2;
 const DEBOUNCE_MS = 300;
+
+function addressFormFromCustomer(customer: SaleCustomer): CustomerAddressForm {
+  const addr = customer.addresses[0];
+  return {
+    zipCode: addr?.zipCode ?? '',
+    street: addr?.street ?? '',
+    number: addr?.number ?? '',
+    complement: addr?.complement ?? '',
+    neighborhood: addr?.neighborhood ?? '',
+    city: addr?.city ?? '',
+    state: addr?.state ?? 'SP',
+  };
+}
+
+function toSaleCustomer(raw: SaleCustomer & { sales?: unknown }): SaleCustomer {
+  return {
+    id: raw.id,
+    name: raw.name,
+    phone: raw.phone,
+    categoryId: raw.categoryId ?? raw.category?.id ?? null,
+    category: raw.category ?? null,
+    addresses: raw.addresses ?? [],
+  };
+}
 
 function highlightMatch(text: string, query: string): ReactNode {
   const q = query.trim();
@@ -195,6 +221,109 @@ function QuickCustomerRegister({
   );
 }
 
+function EditCustomerForm({
+  storeId,
+  customer,
+  onSaved,
+  onCancel,
+}: {
+  storeId: string;
+  customer: SaleCustomer;
+  onSaved: (customer: SaleCustomer) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(customer.name);
+  const [phone, setPhone] = useState(customer.phone ?? '');
+  const [categoryId, setCategoryId] = useState(
+    customer.categoryId ?? customer.category?.id ?? '',
+  );
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [address, setAddress] = useState(() => addressFormFromCustomer(customer));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<CategoryOption[]>('/customers/categories', {}, getToken())
+      .then((rows) => {
+        if (!cancelled) setCategories(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      const updated = await api<SaleCustomer & { sales?: unknown }>(
+        `/customers/${customer.id}?storeId=${encodeURIComponent(storeId)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: name.trim(),
+            phone: phone.trim() || undefined,
+            categoryId: categoryId || null,
+            addresses: [customerAddressPayload(address)],
+          }),
+        },
+        getToken(),
+      );
+      onSaved(toSaleCustomer(updated));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar cliente');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="ui-panel-enter space-y-3">
+      <p className="text-sm font-semibold text-slate-900">Editar cliente</p>
+      <div>
+        <Label>Nome</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} required />
+      </div>
+      <div>
+        <Label>Telefone</Label>
+        <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Opcional" />
+      </div>
+      <div>
+        <Label>Categoria (opcional)</Label>
+        <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">Sem categoria</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <CustomerAddressFields value={address} onChange={setAddress} />
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      <div className="flex gap-2 pt-1">
+        <Button type="submit" disabled={saving} className="transition-transform active:scale-[0.98]">
+          {saving ? 'Salvando…' : 'Salvar alterações'}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onCancel}
+          disabled={saving}
+          className="transition-colors hover:border-slate-300 hover:bg-slate-100 active:scale-[0.98]"
+        >
+          Cancelar
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function CustomerPicker({
   storeId,
   value,
@@ -215,6 +344,7 @@ export function CustomerPicker({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), DEBOUNCE_MS);
@@ -269,6 +399,7 @@ export function CustomerPicker({
       setResults([]);
       setOpen(false);
       setRegisterOpen(false);
+      setEditOpen(false);
     },
     [onChange],
   );
@@ -277,6 +408,7 @@ export function CustomerPicker({
     onChange({ kind: 'anonymous' });
     setSearch('');
     setOpen(false);
+    setEditOpen(false);
   }, [onChange]);
 
   const clearSelection = useCallback(() => {
@@ -284,6 +416,7 @@ export function CustomerPicker({
     setSearch('');
     setResults([]);
     setRegisterOpen(false);
+    setEditOpen(false);
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [onChange]);
 
@@ -327,6 +460,22 @@ export function CustomerPicker({
   if (value.kind === 'customer') {
     const { customer } = value;
     const phone = formatPhoneDisplay(customer.phone);
+
+    if (editOpen) {
+      return (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-md ring-1 ring-slate-100">
+          <EditCustomerForm
+            storeId={storeId}
+            customer={customer}
+            onSaved={(updated) => {
+              selectCustomer(updated);
+            }}
+            onCancel={() => setEditOpen(false)}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="ui-panel-enter rounded-xl border border-brand/30 bg-brand-muted/40 p-4">
         <div className="flex items-start gap-3">
@@ -336,13 +485,22 @@ export function CustomerPicker({
             {phone ? <p className="mt-0.5 text-sm text-slate-600">{phone}</p> : null}
             <p className="mt-1 text-sm text-slate-500">{formatAddressShort(customer.addresses[0])}</p>
           </div>
-          <button
-            type="button"
-            onClick={clearSelection}
-            className="shrink-0 text-sm font-medium text-brand hover:underline"
-          >
-            Trocar
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-start">
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="text-sm font-medium text-brand hover:underline"
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="text-sm font-medium text-slate-500 hover:text-brand hover:underline"
+            >
+              Trocar
+            </button>
+          </div>
         </div>
       </div>
     );

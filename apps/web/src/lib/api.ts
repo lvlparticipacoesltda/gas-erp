@@ -1,9 +1,19 @@
 import type { AuthUser } from '@gas-erp/shared';
-import { parseApiError } from './errors';
+import { SESSION_SUPERSEDED_CODE } from '@gas-erp/shared';
+import { parseApiError, extractApiErrorCode } from './errors';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
 let refreshUserRequest: Promise<AuthUser | null> | null = null;
+
+function handleSessionSuperseded(message: string) {
+  if (typeof window === 'undefined') return;
+  clearAuth();
+  const params = new URLSearchParams({ reason: 'session', message });
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.assign(`/login?${params.toString()}`);
+  }
+}
 
 export async function api<T>(
   path: string,
@@ -19,7 +29,12 @@ export async function api<T>(
   const res = await fetch(`${API_URL}${path}`, { ...options, headers, cache: 'no-store' });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(parseApiError(err, res.statusText));
+    const code = extractApiErrorCode(err);
+    const message = parseApiError(err, res.statusText);
+    if (res.status === 401 && code === SESSION_SUPERSEDED_CODE) {
+      handleSessionSuperseded(message);
+    }
+    throw new Error(message);
   }
   return res.json();
 }

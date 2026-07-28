@@ -1,3 +1,17 @@
+import { SESSION_SUPERSEDED_CODE } from '@gas-erp/shared';
+
+export function extractApiErrorCode(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const data = payload as Record<string, unknown>;
+  if (typeof data.code === 'string') return data.code;
+  const raw = data.message;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const nested = raw as Record<string, unknown>;
+    if (typeof nested.code === 'string') return nested.code;
+  }
+  return null;
+}
+
 export function parseApiError(payload: unknown, fallback = 'Erro na requisição'): string {
   if (!payload || typeof payload !== 'object') return fallback;
   const data = payload as Record<string, unknown>;
@@ -5,7 +19,16 @@ export function parseApiError(payload: unknown, fallback = 'Erro na requisição
 
   let message = fallback;
   if (typeof raw === 'string') message = raw;
-  else if (Array.isArray(raw)) message = raw.filter((m) => typeof m === 'string').join('. ');
+  else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const nested = raw as Record<string, unknown>;
+    if (typeof nested.message === 'string') message = nested.message;
+  } else if (Array.isArray(raw)) {
+    message = raw.filter((m) => typeof m === 'string').join('. ');
+  }
+
+  if (extractApiErrorCode(payload) === SESSION_SUPERSEDED_CODE) {
+    return message || 'Sua conta foi acessada de outro lugar. Faça login novamente.';
+  }
 
   return mapKnownErrors(message);
 }

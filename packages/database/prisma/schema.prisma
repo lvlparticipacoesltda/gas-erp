@@ -260,9 +260,28 @@ model User {
   workSchedulesCreated WorkScheduleEntry[] @relation("WorkScheduleCreatedBy")
   workSchedulesUpdated WorkScheduleEntry[] @relation("WorkScheduleUpdatedBy")
   timeClockPunches    TimeClockPunch[]
+  sessions            UserSession[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
+}
+
+/** Sessão de login (JWT sid). Uma ativa por usuário; novo login revoga as anteriores. */
+model UserSession {
+  id           String    @id @default(cuid())
+  userId       String
+  client       String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  revokedAt    DateTime?
+  revokeReason String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([revokedAt, lastSeenAt])
 }
 
 model UserStore {

@@ -4,12 +4,14 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthUser, resolveUserPermissions } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuthService } from './auth.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     config: ConfigService,
     private prisma: PrismaService,
+    private auth: AuthService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
@@ -33,6 +35,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Sessão inválida ou usuário inativo. Faça login novamente.');
     }
 
+    await this.auth.assertActiveSession(user.id, payload.sessionId);
+
     return {
       id: user.id,
       email: user.email,
@@ -41,6 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       organizationId: user.organizationId,
       storeIds: user.userStores.map((us) => us.storeId),
       permissions: resolveUserPermissions(user.role, user.permissions),
+      sessionId: payload.sessionId,
     };
   }
 }

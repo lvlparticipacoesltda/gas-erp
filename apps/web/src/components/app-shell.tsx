@@ -114,8 +114,19 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
   }, [router, mode, storeIdFromPath]);
 
   function logout() {
+    const token = getToken();
     clearAuth();
     clearAppShellCache();
+    if (token) {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
+      void fetch(`${apiUrl}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      }).catch(() => undefined);
+    }
     router.replace('/login');
   }
 
@@ -151,6 +162,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     { href: '/master/dashboard', label: 'Visão geral' },
     { href: '/master/stores', label: 'Lojas' },
     { href: '/master/users', label: 'Usuários' },
+    { href: '/master/sessions', label: 'Sessões' },
     { href: '/master/deliverers', label: 'Entregadores' },
     { href: '/master/deliverers/map', label: 'Mapa de entregadores' },
     { href: '/master/schedules', label: 'Escalas de trabalho' },

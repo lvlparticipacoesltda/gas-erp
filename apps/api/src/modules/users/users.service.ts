@@ -180,4 +180,97 @@ export class UsersService {
     await this.audit.log(user, 'DELETE', 'User', id);
     return { ok: true };
   }
+
+  private mapSession(row: {
+    id: string;
+    client: string | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+    createdAt: Date;
+    lastSeenAt: Date;
+    revokedAt: Date | null;
+    revokeReason: string | null;
+    user: { id: string; name: string; email: string; role: string };
+  }) {
+    const now = Date.now();
+    const end = row.revokedAt?.getTime() ?? now;
+    return {
+      id: row.id,
+      userId: row.user.id,
+      userName: row.user.name,
+      userEmail: row.user.email,
+      userRole: row.user.role,
+      client: row.client,
+      ipAddress: row.ipAddress,
+      userAgent: row.userAgent,
+      createdAt: row.createdAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+      revokeReason: row.revokeReason,
+      active: row.revokedAt == null,
+      durationSeconds: Math.max(0, Math.floor((end - row.createdAt.getTime()) / 1000)),
+    };
+  }
+
+  /** Sessões da organização (master). */
+  async listSessions(
+    user: AuthUser,
+    page = 1,
+    pageSize = 20,
+    filters: { active?: string; search?: string; userId?: string } = {},
+  ) {
+    const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
+    const search = filters.search?.trim();
+    const where = {
+      user: {
+        organizationId: user.organizationId,
+        ...(filters.userId ? { id: filters.userId } : {}),
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' as const } },
+                { email: { contains: search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      },
+      ...(filters.active === 'true'
+        ? { revokedAt: null }
+        : filters.active === 'false'
+          ? { revokedAt: { not: null } }
+          : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.userSession.findMany({
+        where,
+        skip,
+        take,
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+        orderBy: [{ revokedAt: 'asc' }, { lastSeenAt: 'desc' }],
+      }),
+      this.prisma.userSession.count({ where }),
+    ]);
+
+    return paginatedResult(rows.map((r) => this.mapSession(r)), total, p, ps);
+  }
+
+  async revokeSession(user: AuthUser, sessionId: string) {
+    const session = await this.prisma.userSession.findFirst({
+      where: {
+        id: sessionId,
+        user: { organizationId: user.organizationId },
+      },
+    });
+    if (!session) throw new NotFoundException('Sessão não encontrada');
+    if (session.revokedAt) return { ok: true, alreadyRevoked: true };
+
+    await this.prisma.userSession.update({
+      where: { id: sessionId },
+      data: { revokedAt: new Date(), revokeReason: 'revoked_by_admin' },
+    });
+    return { ok: true };
+  }
 }

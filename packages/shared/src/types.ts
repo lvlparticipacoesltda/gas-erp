@@ -6,7 +6,12 @@ export interface AuthUser {
   organizationId: string;
   storeIds: string[];
   permissions?: string[];
+  /** ID da UserSession (JWT sid). Ausente = token legado inválido. */
+  sessionId?: string;
 }
+
+/** Código de erro quando outro login revogou esta sessão. */
+export const SESSION_SUPERSEDED_CODE = 'SESSION_SUPERSEDED';
 
 export interface PaginatedResponse<T> {
   data: T[];

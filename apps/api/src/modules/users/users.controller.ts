@@ -26,6 +26,27 @@ export class UsersController {
     });
   }
 
+  @Get('sessions')
+  listSessions(
+    @CurrentUser() user: AuthUser,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+    @Query('active') active?: string,
+    @Query('userId') userId?: string,
+  ) {
+    return this.usersService.listSessions(user, Number(page) || 1, Number(pageSize) || 20, {
+      search,
+      active,
+      userId,
+    });
+  }
+
+  @Delete('sessions/:sessionId')
+  revokeSession(@CurrentUser() user: AuthUser, @Param('sessionId') sessionId: string) {
+    return this.usersService.revokeSession(user, sessionId);
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.usersService.findOne(user, id);

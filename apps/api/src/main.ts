@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import {
   PrismaExceptionFilter,
@@ -6,6 +7,9 @@ import {
 } from './common/filters/prisma-exception.filter';
 import { ZodExceptionFilter } from './common/filters/zod-exception.filter';
 import { RequestTimingInterceptor } from './common/interceptors/request-timing.interceptor';
+
+/** JSON body: foto de ponto em base64 (~400 KB binário ≈ 550 KB no JSON). */
+const JSON_BODY_LIMIT = '2mb';
 
 function parseAllowedOrigins(): string[] {
   const raw = process.env.WEB_URL?.trim();
@@ -20,7 +24,8 @@ function parseAllowedOrigins(): string[] {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
   const allowedOrigins = parseAllowedOrigins();
 
   app.enableCors({

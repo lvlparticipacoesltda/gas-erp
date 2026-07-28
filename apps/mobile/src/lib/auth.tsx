@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Alert } from 'react-native';
+import { SESSION_SUPERSEDED_CODE } from '@gas-erp/shared';
 import { api, ApiError, setUnauthorizedHandler } from './api';
 import { clearSession, getStoredOrganization, getStoredUser, getToken, saveSession } from './storage';
 import { clearPushTokenOnServer, syncPushWithRetries } from './notifications';
@@ -68,13 +70,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await stopAllTracking().catch(() => undefined);
+    const token = await getToken();
+    if (token) {
+      // auth: false evita loop no handler de 401 (sessão já revogada).
+      await api('/auth/logout', { method: 'POST', token, auth: false }).catch(() => undefined);
+    }
     await clearPushTokenOnServer();
     await clearSession();
     setState({ token: null, user: null, organization: null, initializing: false });
   }, []);
 
   useEffect(() => {
-    setUnauthorizedHandler(() => {
+    setUnauthorizedHandler((error) => {
+      if (error.code === SESSION_SUPERSEDED_CODE) {
+        Alert.alert(
+          'Sessão encerrada',
+          error.message || 'Sua conta foi acessada de outro lugar. Faça login novamente.',
+        );
+      }
       void logout();
     });
     return () => setUnauthorizedHandler(null);

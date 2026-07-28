@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../common/mail/mail.service';
 import {
   AuthUser,
+  SESSION_SUPERSEDED_CODE,
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
@@ -23,6 +24,13 @@ import {
 const FORGOT_PASSWORD_MESSAGE =
   'Se o e-mail estiver cadastrado, você receberá instruções para redefinir a senha em breve.';
 
+const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
+export type LoginRequestMeta = {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -31,7 +39,7 @@ export class AuthService {
     private mail: MailService,
   ) {}
 
-  async login(input: unknown) {
+  async login(input: unknown, meta: LoginRequestMeta = {}) {
     const { email, password, client } = loginSchema.parse(input);
     const user = await this.prisma.user.findFirst({
       where: { email, active: true },
@@ -48,6 +56,24 @@ export class AuthService {
       );
     }
 
+    // Revoga sessões anteriores (login único).
+    await this.prisma.userSession.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: {
+        revokedAt: new Date(),
+        revokeReason: 'replaced_by_new_login',
+      },
+    });
+
+    const session = await this.prisma.userSession.create({
+      data: {
+        userId: user.id,
+        client: client ?? null,
+        ipAddress: meta.ipAddress?.slice(0, 128) || null,
+        userAgent: meta.userAgent?.slice(0, 512) || null,
+      },
+    });
+
     const authUser: AuthUser = {
       id: user.id,
       email: user.email,
@@ -56,6 +82,7 @@ export class AuthService {
       organizationId: user.organizationId,
       storeIds: user.userStores.map((us) => us.storeId),
       permissions: resolveUserPermissions(user.role, user.permissions),
+      sessionId: session.id,
     };
 
     const accessToken = await this.jwt.signAsync(authUser);
@@ -64,6 +91,56 @@ export class AuthService {
       user: authUser,
       organization: { id: user.organization.id, name: user.organization.name },
     };
+  }
+
+  async logout(sessionId: string | undefined) {
+    if (!sessionId) return { ok: true };
+    await this.prisma.userSession.updateMany({
+      where: { id: sessionId, revokedAt: null },
+      data: { revokedAt: new Date(), revokeReason: 'logout' },
+    });
+    return { ok: true };
+  }
+
+  /** Valida sid do JWT; atualiza lastSeenAt com throttle. */
+  async assertActiveSession(userId: string, sessionId: string | undefined): Promise<void> {
+    if (!sessionId) {
+      throw new UnauthorizedException({
+        code: SESSION_SUPERSEDED_CODE,
+        message: 'Sessão expirada. Faça login novamente.',
+      });
+    }
+
+    const session = await this.prisma.userSession.findFirst({
+      where: { id: sessionId, userId },
+      select: { id: true, revokedAt: true, revokeReason: true, lastSeenAt: true },
+    });
+
+    if (!session) {
+      throw new UnauthorizedException({
+        code: SESSION_SUPERSEDED_CODE,
+        message: 'Sessão inválida. Faça login novamente.',
+      });
+    }
+
+    if (session.revokedAt) {
+      const elsewhere =
+        session.revokeReason === 'replaced_by_new_login'
+        || session.revokeReason === 'revoked_by_admin';
+      throw new UnauthorizedException({
+        code: SESSION_SUPERSEDED_CODE,
+        message: elsewhere
+          ? 'Sua conta foi acessada de outro lugar. Faça login novamente.'
+          : 'Sessão encerrada. Faça login novamente.',
+      });
+    }
+
+    if (Date.now() - session.lastSeenAt.getTime() >= LAST_SEEN_THROTTLE_MS) {
+      await this.prisma.userSession.update({
+        where: { id: session.id },
+        data: { lastSeenAt: new Date() },
+      }).catch(() => undefined);
+    }
   }
 
   async me(userId: string) {
@@ -189,6 +266,11 @@ export class AuthService {
       this.prisma.passwordResetToken.update({
         where: { id: record.id },
         data: { usedAt: new Date() },
+      }),
+      // Novo login obrigatório após reset.
+      this.prisma.userSession.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: 'password_reset' },
       }),
     ]);
 

@@ -224,9 +224,14 @@ export function SchedulesPanel({
           : storeId
             ? [{ id: storeId, name: grid?.store.name ?? 'Unidade' }]
             : [];
+    // Preferir a unidade do filtro atual (painel) quando o colaborador ainda
+    // pertence a ela — evita salvar com loja antiga após desvínculo.
     const dayStoreId =
-      entry?.storeId
-      ?? (storeOptions.some((s) => s.id === storeId) ? storeId : storeOptions[0]?.id)
+      (storeOptions.some((s) => s.id === storeId) ? storeId : null)
+      ?? (entry?.storeId && storeOptions.some((s) => s.id === entry.storeId)
+        ? entry.storeId
+        : null)
+      ?? storeOptions[0]?.id
       ?? storeId;
     setSelected({
       userId: collab.id,
@@ -507,13 +512,22 @@ export function SchedulesPanel({
                             )}
                             title={
                               entry
-                                ? SCHEDULE_DAY_TYPE_LABELS[entry.dayType]
+                                ? `${SCHEDULE_DAY_TYPE_LABELS[entry.dayType]}${
+                                    entry.storeName && entry.storeId !== storeId
+                                      ? ` · ${entry.storeName}`
+                                      : ''
+                                  }`
                                 : canEdit
                                   ? 'Clique para cadastrar'
                                   : 'Sem escala'
                             }
                           >
                             {cellLabel(entry)}
+                            {entry?.storeName && entry.storeId !== storeId ? (
+                              <span className="max-w-full truncate text-[8px] opacity-70">
+                                {entry.storeName}
+                              </span>
+                            ) : null}
                           </button>
                         </td>
                       );

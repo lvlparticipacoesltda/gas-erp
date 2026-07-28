@@ -1414,21 +1414,41 @@ export class SchedulesService {
               date: parseDateOnly(todayKey),
             },
           },
-          select: { storeId: true, dayType: true },
+          select: { id: true, storeId: true, dayType: true },
         });
+
+        const deliverer = await this.prisma.deliverer.findUnique({
+          where: { userId: user.id },
+          include: { stores: { orderBy: { createdAt: 'asc' } } },
+        });
+        const linkedStoreIds = new Set(
+          (deliverer?.stores ?? []).map((s) => s.storeId),
+        );
+        const fallbackStoreId =
+          deliverer?.availableStoreId && linkedStoreIds.has(deliverer.availableStoreId)
+            ? deliverer.availableStoreId
+            : deliverer?.stores[0]?.storeId;
 
         if (
           todayEntry?.storeId
           && todayEntry.dayType !== ScheduleDayType.DAY_OFF
+          && linkedStoreIds.has(todayEntry.storeId)
         ) {
-          // Prefere a unidade da escala de hoje (geofence do ponto).
           storeId = todayEntry.storeId;
-        } else {
-          const deliverer = await this.prisma.deliverer.findUnique({
-            where: { userId: user.id },
-            include: { stores: { take: 1, orderBy: { createdAt: 'asc' } } },
+        } else if (
+          todayEntry?.storeId
+          && todayEntry.dayType !== ScheduleDayType.DAY_OFF
+          && fallbackStoreId
+          && !linkedStoreIds.has(todayEntry.storeId)
+        ) {
+          // Escala apontava para loja da qual o entregador foi desvinculado.
+          await this.prisma.workScheduleEntry.update({
+            where: { id: todayEntry.id },
+            data: { storeId: fallbackStoreId },
           });
-          storeId = deliverer?.availableStoreId ?? deliverer?.stores[0]?.storeId;
+          storeId = fallbackStoreId;
+        } else {
+          storeId = fallbackStoreId;
         }
       } else {
         storeId = user.storeIds[0];
