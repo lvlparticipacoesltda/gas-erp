@@ -13,6 +13,7 @@ import {
   TIME_CLOCK_PHOTO_MAX_BYTES,
   canManageSchedules,
   canViewTimeClockLog,
+  assignTimeClockPunchSlots,
   computeTimeClockDayTotals,
   copyScheduleSchema,
   formatMinutesComma,
@@ -903,13 +904,14 @@ export class SchedulesService {
     assertStoreAccess(user, params.storeId);
 
     const { start: dayStart, end: dayEnd } = getBusinessDayBounds(params.date, BR_TZ);
+    // Busca todas as batidas do dia para mapear ENT.1/SAÍ.1/ENT.2/SAÍ.2 corretamente
+    // (batidas manuais na web podem não ter foto).
     const punches = await this.prisma.timeClockPunch.findMany({
       where: {
         organizationId: user.organizationId,
         storeId: params.storeId,
         userId: params.userId,
         punchedAt: { gte: dayStart, lt: dayEnd },
-        photoBytes: { not: null },
       },
       orderBy: { punchedAt: 'asc' },
       select: {
@@ -921,16 +923,34 @@ export class SchedulesService {
       },
     });
 
-    return {
-      date: params.date,
-      photos: punches.map((punch) => ({
+    const slotted = assignTimeClockPunchSlots(
+      punches.map((p) => ({
+        id: p.id,
+        type: p.type,
+        punchedAt: p.punchedAt,
+        source: p.source,
+        photoBytes: p.photoBytes,
+      })),
+    );
+
+    const slotOrder = { ent1: 0, sai1: 1, ent2: 2, sai2: 3 } as const;
+    const photos = slotted
+      .filter((p) => p.photoBytes != null)
+      .sort((a, b) => slotOrder[a.slot] - slotOrder[b.slot])
+      .map((punch) => ({
         id: punch.id,
         type: punch.type,
+        slot: punch.slot,
+        slotLabel: punch.slotLabel,
         punchedAt: punch.punchedAt.toISOString(),
         source: punch.source,
         mimeType: 'image/jpeg' as const,
         photoBase64: Buffer.from(punch.photoBytes!).toString('base64'),
-      })),
+      }));
+
+    return {
+      date: params.date,
+      photos,
     };
   }
 

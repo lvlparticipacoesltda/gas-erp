@@ -128,6 +128,44 @@ export function isTimeClockDayComplete(
   return ins >= 2 && outs >= 2;
 }
 
+export const TIME_CLOCK_PUNCH_SLOTS = ['ent1', 'sai1', 'ent2', 'sai2'] as const;
+export type TimeClockPunchSlotKey = (typeof TIME_CLOCK_PUNCH_SLOTS)[number];
+
+export const TIME_CLOCK_PUNCH_SLOT_LABELS: Record<TimeClockPunchSlotKey, string> = {
+  ent1: 'ENT.1',
+  sai1: 'SAÍ.1',
+  ent2: 'ENT.2',
+  sai2: 'SAÍ.2',
+};
+
+/** 1º CLOCK_IN → ENT.1, 1º CLOCK_OUT → SAÍ.1, 2º IN → ENT.2, 2º OUT → SAÍ.2. */
+export function assignTimeClockPunchSlots<T extends { id: string; type: TimeClockPunchType; punchedAt: string | Date }>(
+  punches: T[],
+): Array<T & { slot: TimeClockPunchSlotKey; slotLabel: string }> {
+  const ordered = [...punches].sort(
+    (a, b) => new Date(a.punchedAt).getTime() - new Date(b.punchedAt).getTime(),
+  );
+  const ins = ordered.filter((p) => p.type === 'CLOCK_IN');
+  const outs = ordered.filter((p) => p.type === 'CLOCK_OUT');
+  const byId = new Map<string, TimeClockPunchSlotKey>();
+  if (ins[0]) byId.set(ins[0].id, 'ent1');
+  if (outs[0]) byId.set(outs[0].id, 'sai1');
+  if (ins[1]) byId.set(ins[1].id, 'ent2');
+  if (outs[1]) byId.set(outs[1].id, 'sai2');
+
+  return ordered
+    .map((punch) => {
+      const slot = byId.get(punch.id);
+      if (!slot) return null;
+      return {
+        ...punch,
+        slot,
+        slotLabel: TIME_CLOCK_PUNCH_SLOT_LABELS[slot],
+      };
+    })
+    .filter((row): row is T & { slot: TimeClockPunchSlotKey; slotLabel: string } => row != null);
+}
+
 export const TIME_CLOCK_DAY_STATUSES = [
   'OK',
   'LATE',

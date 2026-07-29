@@ -33,6 +33,8 @@ type DayPhotosResponse = {
   photos: Array<{
     id: string;
     type: 'CLOCK_IN' | 'CLOCK_OUT';
+    slot?: 'ent1' | 'sai1' | 'ent2' | 'sai2';
+    slotLabel?: string;
     punchedAt: string;
     source: string;
     mimeType: string;
@@ -500,19 +502,26 @@ export function TimeClockLogPanel({
                 minute: '2-digit',
                 timeZone: 'America/Sao_Paulo',
               });
-              const label = photo.type === 'CLOCK_IN' ? 'Entrada' : 'Saída';
+              const kind = photo.type === 'CLOCK_IN' ? 'Entrada' : 'Saída';
+              const slotLabel = photo.slotLabel
+                ?? (photo.type === 'CLOCK_IN' ? 'Entrada' : 'Saída');
               return (
                 <figure key={photo.id} className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-800">
+                      {slotLabel}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {kind} · {time}
+                      {photo.source === 'MOBILE' ? ' · App' : ' · Web'}
+                    </span>
+                  </div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`data:${photo.mimeType};base64,${photo.photoBase64}`}
-                    alt={`${label} às ${time}`}
+                    alt={`${slotLabel} — ${kind} às ${time}`}
                     className="max-h-80 w-full rounded-lg border border-slate-200 object-contain bg-slate-50"
                   />
-                  <figcaption className="text-xs text-slate-600">
-                    {label} · {time}
-                    {photo.source === 'MOBILE' ? ' · App' : ' · Web'}
-                  </figcaption>
                 </figure>
               );
             })}
