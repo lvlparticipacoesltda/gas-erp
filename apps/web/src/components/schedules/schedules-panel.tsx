@@ -812,7 +812,8 @@ export function SchedulesPanel({
             <h3 className="text-base font-semibold">Aplicar horários semanais</h3>
             <p className="text-sm text-slate-600">
               Preenche os dias ainda vazios de {MONTH_NAMES[month - 1]}/{year} com os horários
-              semanais ativos desta unidade. Dias já editados não são alterados.
+              semanais ativos dos colaboradores desta unidade. Cada dia recebe a unidade de
+              referência configurada no horário; edições manuais na escala não são sobrescritas.
             </p>
             <div className="flex gap-2">
               <Button className="flex-1" disabled={saving} onClick={() => void applyWeekliesToMonth()}>

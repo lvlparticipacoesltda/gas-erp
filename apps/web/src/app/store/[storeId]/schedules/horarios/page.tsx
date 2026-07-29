@@ -28,7 +28,7 @@ export default function StoreWeeklySchedulesPage() {
         title="Horários"
         subtitle={
           canManage
-            ? 'Padrão semanal por colaborador — aplique ao mês para preencher dias vazios'
+            ? 'Padrão semanal por pessoa — unidade na criação é a referência padrão; dias pontuais se ajustam na Escala'
             : 'Consulta de horários semanais'
         }
         action={

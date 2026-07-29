@@ -28,7 +28,7 @@ export default function MasterWeeklySchedulesPage() {
     <>
       <PageHeader
         title="Horários"
-        subtitle="Padrão semanal por colaborador — aplique ao mês para preencher dias vazios da escala"
+        subtitle="Padrão semanal por pessoa — a unidade na criação é a referência padrão; o gestor pode trocar a unidade de um dia na Escala"
         action={
           <Link
             href="/master/schedules"

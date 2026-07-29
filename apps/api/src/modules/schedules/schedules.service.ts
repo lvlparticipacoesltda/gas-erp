@@ -969,10 +969,10 @@ export class SchedulesService {
     let created = 0;
     let skipped = 0;
     for (const w of weeklies) {
+      // Usa a unidade salva no horário de cada pessoa (não força a loja do filtro).
       const result = await this.applyWeekly(user, w.userId, {
         year: data.year,
         month: data.month,
-        storeId: data.storeId,
       });
       created += result.created;
       skipped += result.skipped;

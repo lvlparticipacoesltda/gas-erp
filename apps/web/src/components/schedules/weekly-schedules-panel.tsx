@@ -294,7 +294,7 @@ export function WeeklySchedulesPanel({
           body: JSON.stringify({
             year: applyYear,
             month: applyMonth,
-            storeId: formStoreId || storeId,
+            // Sem override: usa a unidade de referência salva no horário.
           }),
         },
         getToken(),
@@ -340,7 +340,10 @@ export function WeeklySchedulesPanel({
             <h2 className="text-lg font-semibold text-slate-900">
               {editingUserId ? 'Editar horário' : 'Novo horário'}
             </h2>
-            <p className="text-sm text-slate-500">Padrão semanal · preenche só dias vazios da escala</p>
+            <p className="text-sm text-slate-500">
+              Um padrão por pessoa (entregador ou atendente). A unidade abaixo é só a referência
+              padrão dos dias gerados.
+            </p>
           </div>
           <Button type="button" variant="secondary" onClick={() => setMode('list')}>
             Voltar à lista
@@ -392,7 +395,7 @@ export function WeeklySchedulesPanel({
               />
             </div>
             <div>
-              <Label>Unidade</Label>
+              <Label>Unidade de referência</Label>
               <Select
                 value={formStoreId}
                 disabled={!canEdit || Boolean(fixedStoreId)}
@@ -404,6 +407,10 @@ export function WeeklySchedulesPanel({
                   </option>
                 ))}
               </Select>
+              <p className="mt-1 text-xs text-slate-500">
+                Unidade padrão ao preencher a escala. O horário vale para a pessoa em todas as
+                unidades; em dias pontuais o gestor pode trocar a unidade na tela Escalas.
+              </p>
             </div>
             <div>
               <Label>Status</Label>
@@ -555,7 +562,7 @@ export function WeeklySchedulesPanel({
     <div className="space-y-4">
       <FilterBar>
         {showStoreFilter && stores ? (
-          <FilterField label="Unidade">
+          <FilterField label="Filtrar unidade">
             <Select value={storeId} onChange={(e) => setStoreId(e.target.value)}>
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
