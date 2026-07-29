@@ -43,6 +43,54 @@ const MONTH_NAMES = [
 ];
 const WEEKDAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
+/** Tamanho real do binário a partir do base64 (sem data-URL). */
+function base64ByteLength(b64: string): number {
+  const cleaned = b64.replace(/^data:image\/\w+;base64,/, '').replace(/\s/g, '');
+  const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+  return Math.floor((cleaned.length * 3) / 4) - padding;
+}
+
+/**
+ * Câmeras modernas geram JPEG grande; uma compressão só (960px/0.45) ainda passa de 400 KB.
+ * Tenta várias resoluções/qualidades até caber, com margem de segurança.
+ */
+async function compressPunchPhoto(uri: string): Promise<{ uri: string; base64: string }> {
+  const attempts: Array<{ width: number; compress: number }> = [
+    { width: 960, compress: 0.45 },
+    { width: 720, compress: 0.4 },
+    { width: 640, compress: 0.35 },
+    { width: 560, compress: 0.3 },
+    { width: 480, compress: 0.25 },
+    { width: 400, compress: 0.2 },
+  ];
+  const maxBytes = Math.floor(TIME_CLOCK_PHOTO_MAX_BYTES * 0.9);
+  let lastSizeLabel: string | null = null;
+
+  for (const attempt of attempts) {
+    const compressed = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: attempt.width } }],
+      {
+        compress: attempt.compress,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      },
+    );
+    if (!compressed.base64) continue;
+    const bytes = base64ByteLength(compressed.base64);
+    if (bytes <= maxBytes) {
+      return { uri: compressed.uri, base64: compressed.base64 };
+    }
+    lastSizeLabel = `${Math.round(bytes / 1024)} KB`;
+  }
+
+  throw new Error(
+    lastSizeLabel
+      ? `Foto ainda grande (${lastSizeLabel}). Tire outra com menos luz de fundo.`
+      : 'Não foi possível processar a foto. Tente novamente.',
+  );
+}
+
 function dayFillColor(type: ScheduleDayType) {
   if (type === 'WORK') return colors.success;
   if (type === 'HALF_DAY') return colors.warning;
@@ -284,7 +332,8 @@ export default function ScheduleScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.5,
+      // Qualidade baixa na captura — a compressão iterativa ainda reduz depois.
+      quality: 0.4,
       base64: false,
       allowsEditing: false,
       exif: false,
@@ -292,30 +341,12 @@ export default function ScheduleScreen() {
     if (result.canceled || !result.assets[0]) return;
 
     try {
-      // Reduz resolução/tamanho — JSON com base64 grande gerava "request entity too large".
-      const compressed = await ImageManipulator.manipulateAsync(
-        result.assets[0].uri,
-        [{ resize: { width: 960 } }],
-        {
-          compress: 0.45,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        },
-      );
-      if (!compressed.base64) {
-        setError('Não foi possível processar a foto. Tente novamente.');
-        return;
-      }
-      const approxBytes = Math.ceil((compressed.base64.length * 3) / 4);
-      if (approxBytes > TIME_CLOCK_PHOTO_MAX_BYTES) {
-        setError('Foto ainda grande demais. Tire outra mais próxima / com menos luz forte.');
-        return;
-      }
+      const compressed = await compressPunchPhoto(result.assets[0].uri);
       setPhotoUri(compressed.uri);
       setPhotoBase64(compressed.base64);
       setError(null);
-    } catch {
-      setError('Falha ao comprimir a foto. Tente novamente.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao comprimir a foto. Tente novamente.');
     }
   }
 
@@ -339,7 +370,7 @@ export default function ScheduleScreen() {
         latitude: geo.pos.coords.latitude,
         longitude: geo.pos.coords.longitude,
         accuracy: geo.pos.coords.accuracy ?? undefined,
-        photoBase64,
+        photoBase64: photoBase64.replace(/^data:image\/\w+;base64,/, ''),
       });
       setPhotoUri(null);
       setPhotoBase64(null);

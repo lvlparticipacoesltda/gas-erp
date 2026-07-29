@@ -864,7 +864,7 @@ export class SchedulesService {
         throw new BadRequestException('Foto inválida.');
       }
       if (buf.length > TIME_CLOCK_PHOTO_MAX_BYTES) {
-        throw new BadRequestException('Foto muito grande (máx. 400 KB).');
+        throw new BadRequestException('Foto muito grande (máx. 512 KB).');
       }
       photoBytes = new Uint8Array(buf);
     }
