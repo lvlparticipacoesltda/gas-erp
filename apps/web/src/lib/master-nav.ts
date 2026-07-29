@@ -37,6 +37,7 @@ export const MASTER_NAV_GROUPS: MasterNavGroup[] = [
     id: 'escalas',
     label: 'Escalas e ponto',
     items: [
+      { href: '/master/schedules/horarios', label: 'Horários' },
       { href: '/master/schedules', label: 'Escalas de trabalho' },
       { href: '/master/schedules/ponto', label: 'Cartão de ponto' },
     ],

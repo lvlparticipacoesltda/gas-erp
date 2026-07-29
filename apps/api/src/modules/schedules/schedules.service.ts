@@ -34,6 +34,11 @@ import {
   todayDateKey,
   upsertScheduleDaySchema,
   upsertTimeClockDaySchema,
+  upsertWeeklyScheduleSchema,
+  weeklyScheduleListQuerySchema,
+  applyWeeklyScheduleSchema,
+  applyStoreWeekliesSchema,
+  WEEKDAY_LABELS_SHORT,
   zonedTimeToUtc,
   type TimeClockDayStatus,
 } from '@gas-erp/shared';
@@ -644,6 +649,336 @@ export class SchedulesService {
     }
 
     return { copied };
+  }
+
+  private formatWeeklySummary(
+    days: Array<{
+      weekday: number;
+      dayType: ScheduleDayType;
+      startTime: string | null;
+      endTime: string | null;
+      breakStart: string | null;
+      breakEnd: string | null;
+    }>,
+  ): string {
+    const ordered = [...days].sort((a, b) => a.weekday - b.weekday);
+    const groups = new Map<string, number[]>();
+    for (const day of ordered) {
+      let key: string;
+      if (day.dayType === ScheduleDayType.DAY_OFF || (!day.startTime && !day.endTime)) {
+        key = 'Folga';
+      } else {
+        const parts = [day.startTime, day.breakStart, day.breakEnd, day.endTime]
+          .filter(Boolean)
+          .map((t) => t!.slice(0, 5));
+        // Compact: 08:00-12:00 13:00-17:00
+        if (parts.length === 4) {
+          key = `${parts[0]}-${parts[1]} ${parts[2]}-${parts[3]}`;
+        } else if (parts.length >= 2) {
+          key = `${parts[0]}-${parts[parts.length - 1]}`;
+        } else {
+          key = parts[0] ?? '—';
+        }
+      }
+      const list = groups.get(key) ?? [];
+      list.push(day.weekday);
+      groups.set(key, list);
+    }
+    return Array.from(groups.entries())
+      .map(([pattern, weekdays]) => {
+        const labels = weekdays.map((w) => WEEKDAY_LABELS_SHORT[w]).join(' ');
+        return `${labels}: ${pattern}`;
+      })
+      .join(' · ');
+  }
+
+  private mapWeeklyDto(weekly: {
+    id: string;
+    userId: string;
+    storeId: string;
+    name: string;
+    active: boolean;
+    updatedAt: Date;
+    user: { id: string; name: string; role: UserRole; email: string };
+    store: { id: string; name: string };
+    days: Array<{
+      weekday: number;
+      dayType: ScheduleDayType;
+      startTime: string | null;
+      endTime: string | null;
+      breakStart: string | null;
+      breakEnd: string | null;
+    }>;
+  }) {
+    return {
+      id: weekly.id,
+      userId: weekly.userId,
+      storeId: weekly.storeId,
+      storeName: weekly.store.name,
+      name: weekly.name,
+      active: weekly.active,
+      type: 'Semanal' as const,
+      summary: this.formatWeeklySummary(weekly.days),
+      updatedAt: weekly.updatedAt.toISOString(),
+      user: {
+        id: weekly.user.id,
+        name: weekly.user.name,
+        role: weekly.user.role,
+        email: weekly.user.email,
+      },
+      days: weekly.days
+        .slice()
+        .sort((a, b) => a.weekday - b.weekday)
+        .map((d) => ({
+          weekday: d.weekday,
+          dayType: d.dayType,
+          startTime: d.startTime,
+          endTime: d.endTime,
+          breakStart: d.breakStart,
+          breakEnd: d.breakEnd,
+        })),
+    };
+  }
+
+  async listWeeklies(user: AuthUser, query: unknown) {
+    this.assertCanManage(user);
+    const params = weeklyScheduleListQuerySchema.parse(query);
+    assertStoreAccess(user, params.storeId);
+
+    const collaborators = await this.listCollaborators(user, params.storeId, 'all');
+    const collabIds = collaborators.map((c) => c.id);
+    if (collabIds.length === 0) return { items: [], eligibleUsers: [] };
+
+    const existingUserIds = await this.prisma.workScheduleWeekly.findMany({
+      where: {
+        organizationId: user.organizationId,
+        userId: { in: collabIds },
+      },
+      select: { userId: true },
+    });
+    const hasWeekly = new Set(existingUserIds.map((w) => w.userId));
+
+    const weeklies = await this.prisma.workScheduleWeekly.findMany({
+      where: {
+        organizationId: user.organizationId,
+        userId: { in: collabIds },
+        ...(params.status === 'active'
+          ? { active: true }
+          : params.status === 'inactive'
+            ? { active: false }
+            : {}),
+        ...(params.q?.trim()
+          ? {
+              OR: [
+                { name: { contains: params.q.trim(), mode: 'insensitive' as const } },
+                { user: { name: { contains: params.q.trim(), mode: 'insensitive' as const } } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        user: { select: { id: true, name: true, role: true, email: true } },
+        store: { select: { id: true, name: true } },
+        days: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return {
+      items: weeklies.map((w) => this.mapWeeklyDto(w)),
+      eligibleUsers: collaborators
+        .filter((c) => !hasWeekly.has(c.id))
+        .map((c) => ({ id: c.id, name: c.name, role: c.role, email: c.email })),
+    };
+  }
+
+  async getWeekly(user: AuthUser, userId: string) {
+    this.assertCanManage(user);
+    const weekly = await this.prisma.workScheduleWeekly.findFirst({
+      where: { organizationId: user.organizationId, userId },
+      include: {
+        user: { select: { id: true, name: true, role: true, email: true } },
+        store: { select: { id: true, name: true } },
+        days: true,
+      },
+    });
+    if (!weekly) throw new NotFoundException('Horário semanal não encontrado');
+    assertStoreAccess(user, weekly.storeId);
+    return this.mapWeeklyDto(weekly);
+  }
+
+  async upsertWeekly(user: AuthUser, userId: string, input: unknown) {
+    this.assertCanManage(user);
+    const data = upsertWeeklyScheduleSchema.parse(input);
+    assertStoreAccess(user, data.storeId);
+    await this.assertUserBelongsToStore(userId, data.storeId, user.organizationId);
+
+    const weekdaySet = new Set(data.days.map((d) => d.weekday));
+    if (weekdaySet.size !== 7) {
+      throw new BadRequestException('Informe exatamente um dia para cada weekday 0–6.');
+    }
+
+    const targetUser = await this.prisma.user.findFirst({
+      where: { id: userId, organizationId: user.organizationId, active: true },
+      select: { id: true, name: true, role: true },
+    });
+    if (!targetUser) throw new NotFoundException('Colaborador não encontrado');
+    if (
+      targetUser.role !== UserRole.DELIVERER
+      && targetUser.role !== UserRole.ATTENDANT
+      && targetUser.role !== UserRole.STORE_MANAGER
+    ) {
+      throw new BadRequestException('Horário semanal só para entregadores, atendentes ou gerentes.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const weekly = await tx.workScheduleWeekly.upsert({
+        where: { userId },
+        create: {
+          organizationId: user.organizationId,
+          userId,
+          storeId: data.storeId,
+          name: data.name,
+          active: data.active,
+        },
+        update: {
+          storeId: data.storeId,
+          name: data.name,
+          active: data.active,
+        },
+      });
+
+      await tx.workScheduleWeeklyDay.deleteMany({ where: { weeklyId: weekly.id } });
+      await tx.workScheduleWeeklyDay.createMany({
+        data: data.days.map((day) => {
+          const isOff = day.dayType === 'DAY_OFF';
+          return {
+            weeklyId: weekly.id,
+            weekday: day.weekday,
+            dayType: day.dayType as ScheduleDayType,
+            startTime: isOff ? null : day.startTime ?? null,
+            endTime: isOff ? null : day.endTime ?? null,
+            breakStart: isOff ? null : day.breakStart ?? null,
+            breakEnd: isOff ? null : day.breakEnd ?? null,
+          };
+        }),
+      });
+    });
+
+    return this.getWeekly(user, userId);
+  }
+
+  async deleteWeekly(user: AuthUser, userId: string) {
+    this.assertCanManage(user);
+    const weekly = await this.prisma.workScheduleWeekly.findFirst({
+      where: { organizationId: user.organizationId, userId },
+    });
+    if (!weekly) throw new NotFoundException('Horário semanal não encontrado');
+    assertStoreAccess(user, weekly.storeId);
+    await this.prisma.workScheduleWeekly.delete({ where: { id: weekly.id } });
+    return { ok: true };
+  }
+
+  async applyWeekly(user: AuthUser, userId: string, input: unknown) {
+    this.assertCanManage(user);
+    const data = applyWeeklyScheduleSchema.parse(input);
+
+    const weekly = await this.prisma.workScheduleWeekly.findFirst({
+      where: { organizationId: user.organizationId, userId },
+      include: { days: true },
+    });
+    if (!weekly) throw new NotFoundException('Horário semanal não encontrado');
+    if (!weekly.active) {
+      throw new BadRequestException('Horário inativo não pode ser aplicado.');
+    }
+
+    const storeId = data.storeId ?? weekly.storeId;
+    assertStoreAccess(user, storeId);
+    await this.assertUserBelongsToStore(userId, storeId, user.organizationId);
+
+    const byWeekday = new Map(weekly.days.map((d) => [d.weekday, d]));
+    const totalDays = daysInMonth(data.year, data.month);
+    const { start, end } = monthBounds(data.year, data.month);
+
+    const existing = await this.prisma.workScheduleEntry.findMany({
+      where: {
+        organizationId: user.organizationId,
+        userId,
+        date: { gte: start, lt: end },
+      },
+      select: { date: true },
+    });
+    const existingKeys = new Set(existing.map((e) => formatDateOnly(e.date)));
+
+    let created = 0;
+    let skipped = 0;
+
+    for (let day = 1; day <= totalDays; day += 1) {
+      const date = new Date(Date.UTC(data.year, data.month - 1, day));
+      const key = formatDateOnly(date);
+      if (existingKeys.has(key)) {
+        skipped += 1;
+        continue;
+      }
+      // Date.UTC midday weekday: use noon UTC to avoid TZ edge — date-only is UTC midnight
+      // weekday of calendar date in BR: use the UTC date's getUTCDay which matches civil calendar for Date @ UTC midnight
+      const weekday = date.getUTCDay();
+      const template = byWeekday.get(weekday);
+      if (!template) {
+        skipped += 1;
+        continue;
+      }
+      const isOff = template.dayType === ScheduleDayType.DAY_OFF;
+      await this.prisma.workScheduleEntry.create({
+        data: {
+          organizationId: user.organizationId,
+          storeId,
+          userId,
+          date,
+          dayType: template.dayType,
+          startTime: isOff ? null : template.startTime,
+          endTime: isOff ? null : template.endTime,
+          breakStart: isOff ? null : template.breakStart,
+          breakEnd: isOff ? null : template.breakEnd,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+      created += 1;
+    }
+
+    return { created, skipped, year: data.year, month: data.month };
+  }
+
+  async applyStoreWeeklies(user: AuthUser, input: unknown) {
+    this.assertCanManage(user);
+    const data = applyStoreWeekliesSchema.parse(input);
+    assertStoreAccess(user, data.storeId);
+
+    const collaborators = await this.listCollaborators(user, data.storeId, 'all');
+    const collabIds = collaborators.map((c) => c.id);
+    const weeklies = await this.prisma.workScheduleWeekly.findMany({
+      where: {
+        organizationId: user.organizationId,
+        userId: { in: collabIds },
+        active: true,
+      },
+      select: { userId: true },
+    });
+
+    let created = 0;
+    let skipped = 0;
+    for (const w of weeklies) {
+      const result = await this.applyWeekly(user, w.userId, {
+        year: data.year,
+        month: data.month,
+        storeId: data.storeId,
+      });
+      created += result.created;
+      skipped += result.skipped;
+    }
+
+    return { created, skipped, appliedUsers: weeklies.length, year: data.year, month: data.month };
   }
 
   private async assertCanEditCollaboratorSchedule(user: AuthUser, targetUserId: string) {

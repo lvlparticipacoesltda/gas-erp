@@ -35,6 +35,44 @@ export class SchedulesController {
     return this.schedules.copyMonth(user, body);
   }
 
+  @Get('schedules/weeklies')
+  listWeeklies(@CurrentUser() user: AuthUser, @Query() query: Record<string, string>) {
+    return this.schedules.listWeeklies(user, query);
+  }
+
+  @Post('schedules/weeklies/apply-store')
+  applyStoreWeeklies(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.schedules.applyStoreWeeklies(user, body);
+  }
+
+  @Get('schedules/weeklies/:userId')
+  getWeekly(@CurrentUser() user: AuthUser, @Param('userId') userId: string) {
+    return this.schedules.getWeekly(user, userId);
+  }
+
+  @Put('schedules/weeklies/:userId')
+  upsertWeekly(
+    @CurrentUser() user: AuthUser,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+  ) {
+    return this.schedules.upsertWeekly(user, userId, body);
+  }
+
+  @Delete('schedules/weeklies/:userId')
+  deleteWeekly(@CurrentUser() user: AuthUser, @Param('userId') userId: string) {
+    return this.schedules.deleteWeekly(user, userId);
+  }
+
+  @Post('schedules/weeklies/:userId/apply')
+  applyWeekly(
+    @CurrentUser() user: AuthUser,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+  ) {
+    return this.schedules.applyWeekly(user, userId, body);
+  }
+
   @Get('time-clock/me')
   myPunches(@CurrentUser() user: AuthUser, @Query() query: Record<string, string>) {
     return this.schedules.getMyPunches(user, query);

@@ -132,6 +132,7 @@ export function SchedulesPanel({
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyTargetMonth, setCopyTargetMonth] = useState(month === 12 ? 1 : month + 1);
   const [copyTargetYear, setCopyTargetYear] = useState(month === 12 ? year + 1 : year);
+  const [applyWeekliesOpen, setApplyWeekliesOpen] = useState(false);
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const pendingScrollLeftRef = useRef<number | null>(null);
@@ -333,6 +334,31 @@ export function SchedulesPanel({
     }
   }
 
+  async function applyWeekliesToMonth() {
+    if (!canEdit || !storeId) return;
+    setSaving(true);
+    try {
+      const result = await api<{ created: number; skipped: number; appliedUsers: number }>(
+        '/schedules/weeklies/apply-store',
+        {
+          method: 'POST',
+          body: JSON.stringify({ storeId, year, month }),
+        },
+        getToken(),
+      );
+      setApplyWeekliesOpen(false);
+      setError(null);
+      await load({ silent: true });
+      alert(
+        `Horários semanais: ${result.appliedUsers} colaborador(es), ${result.created} dia(s) preenchido(s), ${result.skipped} já existente(s).`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao aplicar horários');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function doPunch() {
     if (!punch || !storeId || !punch.nextType || punch.dayComplete) return;
     setPunching(true);
@@ -457,7 +483,10 @@ export function SchedulesPanel({
         ) : null}
 
         {canEdit ? (
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => setApplyWeekliesOpen(true)}>
+              Aplicar horários semanais
+            </Button>
             <Button type="button" variant="secondary" onClick={() => setCopyOpen(true)}>
               Copiar escala
             </Button>
@@ -770,6 +799,26 @@ export function SchedulesPanel({
                 Copiar
               </Button>
               <Button type="button" variant="secondary" onClick={() => setCopyOpen(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {applyWeekliesOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <Card className="w-full max-w-sm space-y-4 p-5">
+            <h3 className="text-base font-semibold">Aplicar horários semanais</h3>
+            <p className="text-sm text-slate-600">
+              Preenche os dias ainda vazios de {MONTH_NAMES[month - 1]}/{year} com os horários
+              semanais ativos desta unidade. Dias já editados não são alterados.
+            </p>
+            <div className="flex gap-2">
+              <Button className="flex-1" disabled={saving} onClick={() => void applyWeekliesToMonth()}>
+                Aplicar
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setApplyWeekliesOpen(false)}>
                 Cancelar
               </Button>
             </div>

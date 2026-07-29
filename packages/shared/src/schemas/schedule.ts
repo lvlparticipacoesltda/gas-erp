@@ -82,6 +82,69 @@ export const copyScheduleSchema = z.object({
 });
 export type CopyScheduleInput = z.infer<typeof copyScheduleSchema>;
 
+/** weekday: 0=Domingo … 6=Sábado (Date.getDay). */
+export const WEEKDAY_LABELS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] as const;
+export const WEEKDAY_LABELS = [
+  'Domingo',
+  'Segunda',
+  'Terça',
+  'Quarta',
+  'Quinta',
+  'Sexta',
+  'Sábado',
+] as const;
+
+export const weeklyScheduleDaySchema = z
+  .object({
+    weekday: z.number().int().min(0).max(6),
+    dayType: z.enum(SCHEDULE_DAY_TYPES),
+    startTime: timeHm,
+    endTime: timeHm,
+    breakStart: timeHm,
+    breakEnd: timeHm,
+  })
+  .superRefine((data, ctx) => {
+    if (data.dayType === 'DAY_OFF') return;
+    if (!data.startTime || !data.endTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Informe entrada 1 e saída 2 para dia de trabalho.',
+        path: ['startTime'],
+      });
+    }
+  });
+
+export const upsertWeeklyScheduleSchema = z.object({
+  storeId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  active: z.boolean().default(true),
+  days: z.array(weeklyScheduleDaySchema).length(7),
+});
+export type UpsertWeeklyScheduleInput = z.infer<typeof upsertWeeklyScheduleSchema>;
+
+export const weeklyScheduleListQuerySchema = z.object({
+  storeId: z.string().min(1),
+  /** active | inactive | all */
+  status: z.enum(['active', 'inactive', 'all']).default('active'),
+  q: z.string().max(120).optional(),
+});
+export type WeeklyScheduleListQuery = z.infer<typeof weeklyScheduleListQuerySchema>;
+
+export const applyWeeklyScheduleSchema = z.object({
+  year: z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+  /** Se informado, sobrescreve a loja de referência do template só nesta aplicação. */
+  storeId: z.string().min(1).optional(),
+});
+export type ApplyWeeklyScheduleInput = z.infer<typeof applyWeeklyScheduleSchema>;
+
+export const applyStoreWeekliesSchema = z.object({
+  storeId: z.string().min(1),
+  year: z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+});
+export type ApplyStoreWeekliesInput = z.infer<typeof applyStoreWeekliesSchema>;
+
 export const timeClockMeQuerySchema = z.object({
   storeId: z.string().min(1),
   date: z

@@ -148,6 +148,7 @@ model Organization {
   storePaymentMethods StorePaymentMethod[]
   notifications       Notification[]
   workScheduleEntries WorkScheduleEntry[]
+  workScheduleWeeklies WorkScheduleWeekly[]
   timeClockPunches    TimeClockPunch[]
 }
 
@@ -191,6 +192,7 @@ model Store {
   customerProductPrices CustomerProductPrice[]
   customers           Customer[]
   workScheduleEntries WorkScheduleEntry[]
+  workScheduleWeeklies WorkScheduleWeekly[]
   timeClockPunches    TimeClockPunch[]
 
   @@unique([organizationId, code])
@@ -257,6 +259,7 @@ model User {
   salesMobileApproved Sale[] @relation("SaleMobileApprover")
   saleMobileApprovalLogs SaleMobileApprovalLog[]
   workScheduleEntries WorkScheduleEntry[]
+  workScheduleWeekly  WorkScheduleWeekly?
   workSchedulesCreated WorkScheduleEntry[] @relation("WorkScheduleCreatedBy")
   workSchedulesUpdated WorkScheduleEntry[] @relation("WorkScheduleUpdatedBy")
   timeClockPunches    TimeClockPunch[]
@@ -900,6 +903,47 @@ model WorkScheduleEntry {
   @@unique([organizationId, userId, date])
   @@index([organizationId, storeId, date])
   @@index([userId, date])
+}
+
+/**
+ * Padrão semanal de horário (1 por colaborador).
+ * Usado para preencher dias vazios da escala mensal.
+ */
+model WorkScheduleWeekly {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String   @unique
+  /** Unidade de referência ao aplicar o padrão na escala. */
+  storeId        String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store        Store                  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  days         WorkScheduleWeeklyDay[]
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, storeId])
+}
+
+/** Dia da semana no padrão (weekday: 0=Dom … 6=Sáb, igual a Date.getDay()). */
+model WorkScheduleWeeklyDay {
+  id         String          @id @default(cuid())
+  weeklyId   String
+  weekday    Int
+  dayType    ScheduleDayType
+  startTime  String?
+  endTime    String?
+  breakStart String?
+  breakEnd   String?
+
+  weekly WorkScheduleWeekly @relation(fields: [weeklyId], references: [id], onDelete: Cascade)
+
+  @@unique([weeklyId, weekday])
+  @@index([weeklyId])
 }
 
 /** Registro de bater ponto (entrada/saída). */
