@@ -24,6 +24,7 @@ import {
   haversineDistanceMeters,
   intervalsFromSlots,
   isTimeClockDayComplete,
+  isNonWorkingScheduleDay,
   parseHmToMinutes,
   scheduleMonthQuerySchema,
   timeClockCardsQuerySchema,
@@ -92,7 +93,7 @@ function resolveDayStatus(input: {
 }): TimeClockDayStatus {
   const { dayType, startTime, clockIn, clockOut } = input;
 
-  if (!dayType || dayType === ScheduleDayType.DAY_OFF) {
+  if (!dayType || isNonWorkingScheduleDay(dayType)) {
     if (clockIn || clockOut) return 'OFF_SCHEDULE';
     return 'DAY_OFF';
   }
@@ -128,7 +129,9 @@ function formatPrevistoFromSchedule(entry: {
   breakStart: string | null;
   breakEnd: string | null;
 } | null): string {
-  if (!entry || entry.dayType === ScheduleDayType.DAY_OFF) return 'Folga';
+  if (!entry || isNonWorkingScheduleDay(entry.dayType)) {
+    return entry?.dayType === ScheduleDayType.VACATION ? 'Férias' : 'Folga';
+  }
   const start = sliceHm(entry.startTime);
   const end = sliceHm(entry.endTime);
   const breakStart = sliceHm(entry.breakStart);
@@ -147,7 +150,7 @@ function scheduleSlotsFromEntry(entry: {
   breakStart: string | null;
   breakEnd: string | null;
 } | null): { ent1: string | null; sai1: string | null; ent2: string | null; sai2: string | null } {
-  if (!entry || entry.dayType === ScheduleDayType.DAY_OFF) {
+  if (!entry || isNonWorkingScheduleDay(entry.dayType)) {
     return { ent1: null, sai1: null, ent2: null, sai2: null };
   }
   const start = sliceHm(entry.startTime);
@@ -526,7 +529,7 @@ export class SchedulesService {
 
     const date = parseDateOnly(data.date);
     const dayType = data.dayType as ScheduleDayType;
-    const isOff = dayType === ScheduleDayType.DAY_OFF;
+    const isOff = isNonWorkingScheduleDay(dayType);
 
     return this.prisma.workScheduleEntry.upsert({
       where: {
@@ -687,8 +690,8 @@ export class SchedulesService {
     const groups = new Map<string, number[]>();
     for (const day of ordered) {
       let key: string;
-      if (day.dayType === ScheduleDayType.DAY_OFF || (!day.startTime && !day.endTime)) {
-        key = 'Folga';
+      if (isNonWorkingScheduleDay(day.dayType) || (!day.startTime && !day.endTime)) {
+        key = day.dayType === ScheduleDayType.VACATION ? 'Férias' : 'Folga';
       } else {
         const parts = [day.startTime, day.breakStart, day.breakEnd, day.endTime]
           .filter(Boolean)
@@ -873,7 +876,7 @@ export class SchedulesService {
       await tx.workScheduleWeeklyDay.deleteMany({ where: { weeklyId: weekly.id } });
       await tx.workScheduleWeeklyDay.createMany({
         data: data.days.map((day) => {
-          const isOff = day.dayType === 'DAY_OFF';
+          const isOff = isNonWorkingScheduleDay(day.dayType);
           return {
             weeklyId: weekly.id,
             weekday: day.weekday,
@@ -950,7 +953,7 @@ export class SchedulesService {
         skipped += 1;
         continue;
       }
-      const isOff = template.dayType === ScheduleDayType.DAY_OFF;
+      const isOff = isNonWorkingScheduleDay(template.dayType);
       await this.prisma.workScheduleEntry.create({
         data: {
           organizationId: user.organizationId,
@@ -1705,7 +1708,7 @@ export class SchedulesService {
           const slots = assignDayPunchSlots(punchesByKey.get(key) ?? []);
           const scheduleSlots = scheduleSlotsFromEntry(schedule);
           const isWorkDay = Boolean(
-            schedule && schedule.dayType !== ScheduleDayType.DAY_OFF,
+            schedule && !isNonWorkingScheduleDay(schedule.dayType),
           );
 
           const scheduledIntervals = intervalsFromSlots(scheduleSlots);
@@ -1976,13 +1979,13 @@ export class SchedulesService {
 
         if (
           todayEntry?.storeId
-          && todayEntry.dayType !== ScheduleDayType.DAY_OFF
+          && !isNonWorkingScheduleDay(todayEntry.dayType)
           && linkedStoreIds.has(todayEntry.storeId)
         ) {
           storeId = todayEntry.storeId;
         } else if (
           todayEntry?.storeId
-          && todayEntry.dayType !== ScheduleDayType.DAY_OFF
+          && !isNonWorkingScheduleDay(todayEntry.dayType)
           && fallbackStoreId
           && !linkedStoreIds.has(todayEntry.storeId)
         ) {

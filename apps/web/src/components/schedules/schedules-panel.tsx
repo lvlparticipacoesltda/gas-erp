@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SCHEDULE_DAY_TYPE_LABELS,
   canManageSchedules,
+  isNonWorkingScheduleDay,
   type AuthUser,
   type ScheduleDayType,
 } from '@gas-erp/shared';
@@ -68,12 +69,14 @@ function cellClass(dayType: ScheduleDayType | undefined) {
   if (!dayType) return 'bg-slate-50 text-slate-300';
   if (dayType === 'WORK') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   if (dayType === 'HALF_DAY') return 'bg-amber-100 text-amber-900 border-amber-200';
+  if (dayType === 'VACATION') return 'bg-sky-100 text-sky-800 border-sky-200';
   return 'bg-slate-100 text-slate-500 border-slate-200';
 }
 
 function cellLabel(entry: ScheduleEntry | undefined) {
   if (!entry) return '—';
   if (entry.dayType === 'DAY_OFF') return 'F';
+  if (entry.dayType === 'VACATION') return 'Fe';
   if (entry.startTime && entry.endTime) {
     return `${entry.startTime.slice(0, 5)}-${entry.endTime.slice(0, 5)}`;
   }
@@ -266,12 +269,12 @@ export function SchedulesPanel({
             userId: selected.userId,
             date: selected.date,
             dayType: form.dayType,
-            startTime: form.dayType === 'DAY_OFF' ? null : form.startTime,
-            endTime: form.dayType === 'DAY_OFF' ? null : form.endTime,
+            startTime: isNonWorkingScheduleDay(form.dayType) ? null : form.startTime,
+            endTime: isNonWorkingScheduleDay(form.dayType) ? null : form.endTime,
             breakStart:
-              form.dayType === 'DAY_OFF' || !form.breakEnabled ? null : form.breakStart,
+              isNonWorkingScheduleDay(form.dayType) || !form.breakEnabled ? null : form.breakStart,
             breakEnd:
-              form.dayType === 'DAY_OFF' || !form.breakEnabled ? null : form.breakEnd,
+              isNonWorkingScheduleDay(form.dayType) || !form.breakEnabled ? null : form.breakEnd,
             notes: form.notes.trim() || null,
           }),
         },
@@ -590,6 +593,9 @@ export function SchedulesPanel({
             <span className="inline-flex items-center gap-1.5">
               <span className="h-3 w-3 rounded bg-slate-200" /> Folga
             </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded bg-sky-200" /> Férias
+            </span>
           </div>
         </Card>
       )}
@@ -659,7 +665,7 @@ export function SchedulesPanel({
                 </div>
               </div>
 
-              {form.dayType !== 'DAY_OFF' ? (
+              {form.dayType !== 'DAY_OFF' && form.dayType !== 'VACATION' ? (
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

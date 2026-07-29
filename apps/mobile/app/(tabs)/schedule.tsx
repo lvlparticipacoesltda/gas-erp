@@ -19,6 +19,7 @@ import {
   TIME_CLOCK_GEOFENCE_METERS,
   TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES,
   haversineDistanceMeters,
+  isNonWorkingScheduleDay,
   isTimeClockDayComplete,
   type ScheduleDayType,
   type TimeClockPunchType,
@@ -54,12 +55,14 @@ function base64ByteLength(b64: string): number {
 function dayFillColor(type: ScheduleDayType) {
   if (type === 'WORK') return colors.success;
   if (type === 'HALF_DAY') return colors.warning;
+  if (type === 'VACATION') return colors.primary;
   return colors.textFaint;
 }
 
 function dayTypeBadgeColors(type: ScheduleDayType) {
   if (type === 'WORK') return { bg: colors.successBg, text: colors.successText };
   if (type === 'HALF_DAY') return { bg: colors.warningBg, text: colors.warningText };
+  if (type === 'VACATION') return { bg: colors.surfaceAlt, text: colors.primary };
   return { bg: colors.surfaceAlt, text: colors.textMuted };
 }
 
@@ -184,7 +187,7 @@ export default function ScheduleScreen() {
   const nextCommitment = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const upcoming = entries
-      .filter((e) => e.date >= today && e.dayType !== 'DAY_OFF')
+      .filter((e) => e.date >= today && !isNonWorkingScheduleDay(e.dayType))
       .sort((a, b) => a.date.localeCompare(b.date));
     return upcoming[0] ?? null;
   }, [entries]);
@@ -698,6 +701,7 @@ export default function ScheduleScreen() {
             </Text>
             {selectedEntry &&
             selectedEntry.dayType !== 'DAY_OFF' &&
+            selectedEntry.dayType !== 'VACATION' &&
             (selectedEntry.storeName || storeName) ? (
               <View style={styles.modalUnitBanner}>
                 <Ionicons name="location" size={16} color={colors.primary} />
@@ -711,7 +715,7 @@ export default function ScheduleScreen() {
             ) : null}
             {selectedEntry ? (
               <>
-                {selectedEntry.dayType !== 'DAY_OFF' ? (
+                {!isNonWorkingScheduleDay(selectedEntry.dayType) ? (
                   <>
                     <View style={styles.modalMetaRow}>
                       <Text style={styles.modalLineFlex}>

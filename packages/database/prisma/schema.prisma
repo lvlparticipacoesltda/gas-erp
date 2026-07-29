@@ -118,6 +118,7 @@ enum ScheduleDayType {
   WORK
   HALF_DAY
   DAY_OFF
+  VACATION
 }
 
 enum TimeClockPunchType {

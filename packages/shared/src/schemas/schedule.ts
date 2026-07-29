@@ -1,13 +1,19 @@
 import { z } from 'zod';
 
-export const SCHEDULE_DAY_TYPES = ['WORK', 'HALF_DAY', 'DAY_OFF'] as const;
+export const SCHEDULE_DAY_TYPES = ['WORK', 'HALF_DAY', 'DAY_OFF', 'VACATION'] as const;
 export type ScheduleDayType = (typeof SCHEDULE_DAY_TYPES)[number];
 
 export const SCHEDULE_DAY_TYPE_LABELS: Record<ScheduleDayType, string> = {
   WORK: 'Trabalho',
   HALF_DAY: 'Meia jornada',
   DAY_OFF: 'Folga',
+  VACATION: 'Férias',
 };
+
+/** Dia sem jornada esperada (folga ou férias) — sem horário obrigatório / sem falta. */
+export function isNonWorkingScheduleDay(dayType: ScheduleDayType | null | undefined): boolean {
+  return dayType === 'DAY_OFF' || dayType === 'VACATION';
+}
 
 export const TIME_CLOCK_PUNCH_TYPES = ['CLOCK_IN', 'CLOCK_OUT'] as const;
 export type TimeClockPunchType = (typeof TIME_CLOCK_PUNCH_TYPES)[number];
@@ -58,7 +64,7 @@ export const upsertScheduleDaySchema = z
     notes: z.string().max(500).optional().nullable(),
   })
   .superRefine((data, ctx) => {
-    if (data.dayType === 'DAY_OFF') return;
+    if (isNonWorkingScheduleDay(data.dayType)) return;
     if (!data.startTime || !data.endTime) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -113,7 +119,7 @@ export const weeklyScheduleDaySchema = z
     breakEnd: timeHm,
   })
   .superRefine((data, ctx) => {
-    if (data.dayType === 'DAY_OFF') return;
+    if (isNonWorkingScheduleDay(data.dayType)) return;
     if (!data.startTime || !data.endTime) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
