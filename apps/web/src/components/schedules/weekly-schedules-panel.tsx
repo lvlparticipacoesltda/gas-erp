@@ -56,14 +56,17 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 function emptyWeek(): DayDraft[] {
-  return Array.from({ length: 7 }, (_, weekday) => ({
-    weekday,
-    dayType: weekday === 0 ? 'DAY_OFF' : 'WORK',
-    startTime: '08:00',
-    endTime: '17:00',
-    breakStart: '12:00',
-    breakEnd: '13:00',
-  }));
+  return Array.from({ length: 7 }, (_, weekday) => {
+    const off = weekday === 0;
+    return {
+      weekday,
+      dayType: off ? 'DAY_OFF' : 'WORK',
+      startTime: off ? '00:00' : '08:00',
+      endTime: off ? '00:00' : '17:00',
+      breakStart: off ? '00:00' : '12:00',
+      breakEnd: off ? '00:00' : '13:00',
+    };
+  });
 }
 
 /** Segunda=1 … Domingo=0 no final da tabela (como no print). */
@@ -188,10 +191,13 @@ export function WeeklySchedulesPanel({
         return {
           weekday: d.weekday,
           dayType: d.dayType,
-          startTime: d.startTime?.slice(0, 5) ?? '08:00',
-          endTime: d.endTime?.slice(0, 5) ?? '17:00',
-          breakStart: d.breakStart?.slice(0, 5) ?? '12:00',
-          breakEnd: d.breakEnd?.slice(0, 5) ?? '13:00',
+          startTime:
+            d.dayType === 'DAY_OFF' ? '00:00' : (d.startTime?.slice(0, 5) ?? '08:00'),
+          endTime: d.dayType === 'DAY_OFF' ? '00:00' : (d.endTime?.slice(0, 5) ?? '17:00'),
+          breakStart:
+            d.dayType === 'DAY_OFF' ? '00:00' : (d.breakStart?.slice(0, 5) ?? '12:00'),
+          breakEnd:
+            d.dayType === 'DAY_OFF' ? '00:00' : (d.breakEnd?.slice(0, 5) ?? '13:00'),
         };
       }),
     );
@@ -465,7 +471,7 @@ export function WeeklySchedulesPanel({
                           <Input
                             type="time"
                             className="h-9 w-[7.5rem]"
-                            value={day[field]}
+                            value={off ? '00:00' : day[field]}
                             disabled={!canEdit || off}
                             onChange={(e) => updateDay(weekday, { [field]: e.target.value })}
                           />
@@ -478,9 +484,24 @@ export function WeeklySchedulesPanel({
                           checked={off}
                           disabled={!canEdit}
                           onChange={(e) =>
-                            updateDay(weekday, {
-                              dayType: e.target.checked ? 'DAY_OFF' : 'WORK',
-                            })
+                            updateDay(
+                              weekday,
+                              e.target.checked
+                                ? {
+                                    dayType: 'DAY_OFF',
+                                    startTime: '00:00',
+                                    endTime: '00:00',
+                                    breakStart: '00:00',
+                                    breakEnd: '00:00',
+                                  }
+                                : {
+                                    dayType: 'WORK',
+                                    startTime: '08:00',
+                                    endTime: '17:00',
+                                    breakStart: '12:00',
+                                    breakEnd: '13:00',
+                                  },
+                            )
                           }
                         />
                       </td>

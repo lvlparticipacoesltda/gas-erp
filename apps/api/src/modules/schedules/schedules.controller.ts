@@ -35,6 +35,11 @@ export class SchedulesController {
     return this.schedules.copyMonth(user, body);
   }
 
+  @Post('schedules/clear')
+  clear(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.schedules.clearMonth(user, body);
+  }
+
   @Get('schedules/weeklies')
   listWeeklies(@CurrentUser() user: AuthUser, @Query() query: Record<string, string>) {
     return this.schedules.listWeeklies(user, query);

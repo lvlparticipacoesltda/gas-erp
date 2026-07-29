@@ -17,6 +17,7 @@ import {
   assignTimeClockPunchSlots,
   computeTimeClockDayTotals,
   copyScheduleSchema,
+  clearScheduleSchema,
   formatMinutesComma,
   formatMinutesCommaOrNull,
   getBusinessDayBounds,
@@ -649,6 +650,27 @@ export class SchedulesService {
     }
 
     return { copied };
+  }
+
+  async clearMonth(user: AuthUser, input: unknown) {
+    this.assertCanManage(user);
+    const data = clearScheduleSchema.parse(input);
+    assertStoreAccess(user, data.storeId);
+
+    const collaborators = await this.listCollaborators(user, data.storeId, data.roleFilter);
+    const userIds = collaborators.map((c) => c.id);
+    if (userIds.length === 0) return { deleted: 0 };
+
+    const { start, end } = monthBounds(data.year, data.month);
+    const result = await this.prisma.workScheduleEntry.deleteMany({
+      where: {
+        organizationId: user.organizationId,
+        userId: { in: userIds },
+        date: { gte: start, lt: end },
+      },
+    });
+
+    return { deleted: result.count, year: data.year, month: data.month };
   }
 
   private formatWeeklySummary(

@@ -129,9 +129,7 @@ export function SchedulesPanel({
 
   const [punch, setPunch] = useState<PunchMe | null>(null);
   const [punching, setPunching] = useState(false);
-  const [copyOpen, setCopyOpen] = useState(false);
-  const [copyTargetMonth, setCopyTargetMonth] = useState(month === 12 ? 1 : month + 1);
-  const [copyTargetYear, setCopyTargetYear] = useState(month === 12 ? year + 1 : year);
+  const [clearOpen, setClearOpen] = useState(false);
   const [applyWeekliesOpen, setApplyWeekliesOpen] = useState(false);
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -304,31 +302,31 @@ export function SchedulesPanel({
     }
   }
 
-  async function copyMonth() {
+  async function clearMonth() {
     if (!canEdit || !storeId) return;
     setSaving(true);
     try {
-      const result = await api<{ copied: number }>(
-        '/schedules/copy',
+      const result = await api<{ deleted: number }>(
+        '/schedules/clear',
         {
           method: 'POST',
           body: JSON.stringify({
             storeId,
-            sourceYear: year,
-            sourceMonth: month,
-            targetYear: copyTargetYear,
-            targetMonth: copyTargetMonth,
+            year,
+            month,
+            roleFilter,
           }),
         },
         getToken(),
       );
-      setCopyOpen(false);
-      setYear(copyTargetYear);
-      setMonth(copyTargetMonth);
+      setClearOpen(false);
       setError(null);
-      alert(`Copiados ${result.copied} dias para ${MONTH_NAMES[copyTargetMonth - 1]}/${copyTargetYear}`);
+      await load({ silent: true });
+      alert(
+        `Escala limpa: ${result.deleted} dia(s) removido(s) de ${MONTH_NAMES[month - 1]}/${year}.`,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao copiar');
+      setError(err instanceof Error ? err.message : 'Falha ao limpar escala');
     } finally {
       setSaving(false);
     }
@@ -487,8 +485,8 @@ export function SchedulesPanel({
             <Button type="button" variant="secondary" onClick={() => setApplyWeekliesOpen(true)}>
               Aplicar horários semanais
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setCopyOpen(true)}>
-              Copiar escala
+            <Button type="button" variant="secondary" onClick={() => setClearOpen(true)}>
+              Limpar escala
             </Button>
           </div>
         ) : null}
@@ -764,41 +762,20 @@ export function SchedulesPanel({
         </div>
       ) : null}
 
-      {copyOpen ? (
+      {clearOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
           <Card className="w-full max-w-sm space-y-4 p-5">
-            <h3 className="text-base font-semibold">Copiar escala do mês</h3>
+            <h3 className="text-base font-semibold">Limpar escala</h3>
             <p className="text-sm text-slate-600">
-              Copia {MONTH_NAMES[month - 1]}/{year} para o mês de destino (mesmos dias do mês).
+              Remove todos os dias preenchidos de {MONTH_NAMES[month - 1]}/{year} para os
+              colaboradores visíveis neste filtro. Os horários semanais cadastrados não são
+              apagados — só a escala do mês.
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Mês destino</Label>
-                <Select
-                  value={String(copyTargetMonth)}
-                  onChange={(e) => setCopyTargetMonth(Number(e.target.value))}
-                >
-                  {MONTH_NAMES.map((name, i) => (
-                    <option key={name} value={i + 1}>
-                      {name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label>Ano destino</Label>
-                <Input
-                  type="number"
-                  value={copyTargetYear}
-                  onChange={(e) => setCopyTargetYear(Number(e.target.value))}
-                />
-              </div>
-            </div>
             <div className="flex gap-2">
-              <Button className="flex-1" disabled={saving} onClick={() => void copyMonth()}>
-                Copiar
+              <Button className="flex-1" disabled={saving} onClick={() => void clearMonth()}>
+                Limpar
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setCopyOpen(false)}>
+              <Button type="button" variant="secondary" onClick={() => setClearOpen(false)}>
                 Cancelar
               </Button>
             </div>

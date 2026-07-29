@@ -82,6 +82,15 @@ export const copyScheduleSchema = z.object({
 });
 export type CopyScheduleInput = z.infer<typeof copyScheduleSchema>;
 
+/** Remove dias da escala do mês para os colaboradores da unidade (respeita roleFilter). */
+export const clearScheduleSchema = z.object({
+  storeId: z.string().min(1),
+  year: z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+  roleFilter: z.enum(['deliverers', 'attendants', 'all']).default('all'),
+});
+export type ClearScheduleInput = z.infer<typeof clearScheduleSchema>;
+
 /** weekday: 0=Domingo … 6=Sábado (Date.getDay). */
 export const WEEKDAY_LABELS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] as const;
 export const WEEKDAY_LABELS = [
