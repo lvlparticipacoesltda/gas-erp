@@ -18,7 +18,7 @@ export const MASTER_NAV_TOP: MasterNavItem[] = [
 export const MASTER_NAV_GROUPS: MasterNavGroup[] = [
   {
     id: 'cadastros',
-    label: 'Cadastros',
+    label: 'Gestão de Acessos',
     items: [
       { href: '/master/stores', label: 'Lojas' },
       { href: '/master/users', label: 'Usuários' },
@@ -29,7 +29,7 @@ export const MASTER_NAV_GROUPS: MasterNavGroup[] = [
     id: 'entregadores',
     label: 'Entregadores',
     items: [
-      { href: '/master/deliverers', label: 'Entregadores' },
+      { href: '/master/deliverers', label: 'Gestão de Usuários' },
       { href: '/master/deliverers/map', label: 'Mapa de entregadores' },
     ],
   },
