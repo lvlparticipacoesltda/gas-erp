@@ -15,6 +15,7 @@ import { NavLink } from '@/components/ui';
 import { Logo } from '@/components/logo';
 import { PageLoader } from '@/components/brand-loader';
 import { NotificationsCenter } from '@/components/notifications/notifications-center';
+import { MasterAccountMenu, MasterSidebarNav } from '@/components/master-sidebar-nav';
 import { canManagePaymentMethods, hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
@@ -149,7 +150,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     );
   }
 
-  const storeLinks = activeStoreId
+  const storeLinksBase = activeStoreId
     ? STORE_NAV_ITEMS.filter((item) => hasScreenPermission(user.role, user.permissions, item.screen)).map(
         (item) => ({
           href: buildStoreHref(activeStoreId, item.segment),
@@ -158,30 +159,13 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
       )
     : [];
 
-  const masterLinks = [
-    { href: '/master/dashboard', label: 'Visão geral' },
-    { href: '/master/stores', label: 'Lojas' },
-    { href: '/master/users', label: 'Usuários' },
-    { href: '/master/sessions', label: 'Sessões' },
-    { href: '/master/deliverers', label: 'Entregadores' },
-    { href: '/master/deliverers/map', label: 'Mapa de entregadores' },
-    { href: '/master/schedules', label: 'Escalas de trabalho' },
-    { href: '/master/schedules/ponto', label: 'Cartão de ponto' },
-    { href: '/master/purchases', label: 'Compras' },
-    { href: '/master/reports', label: 'Relatórios' },
-    { href: '/master/settings', label: 'Minha conta' },
+  const storeLinks = [
+    ...storeLinksBase,
+    ...(activeStoreId && canManagePaymentMethods(user.role)
+      ? [{ href: `/store/${activeStoreId}/settings/payment-methods`, label: 'Formas de pagamento' }]
+      : []),
+    ...(activeStoreId ? [{ href: `/store/${activeStoreId}/settings`, label: 'Minha conta' }] : []),
   ];
-
-  const links =
-    mode === 'master'
-      ? masterLinks
-      : [
-          ...storeLinks,
-          ...(activeStoreId && canManagePaymentMethods(user.role)
-            ? [{ href: `/store/${activeStoreId}/settings/payment-methods`, label: 'Formas de pagamento' }]
-            : []),
-          ...(activeStoreId ? [{ href: `/store/${activeStoreId}/settings`, label: 'Minha conta' }] : []),
-        ];
 
   return (
     <div className="min-h-screen">
@@ -189,7 +173,7 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
         <div className="border-b border-slate-200 p-4">
           <Logo size="sm" />
           <div className="mt-2 text-xs text-slate-500">{ROLE_LABELS[user.role] ?? user.role}</div>
-          <div className="text-sm font-medium">{user.name}</div>
+          {mode === 'store' && <div className="text-sm font-medium">{user.name}</div>}
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {mode === 'store' && stores.length > 0 && (
@@ -205,24 +189,34 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
               ))}
             </select>
           )}
-          <nav className="space-y-1">
-            {links.map((l) => (
-              <NavLink key={l.href} href={l.href} active={pathname === l.href}>
-                {l.label}
-              </NavLink>
-            ))}
-            {user.role === 'ORG_MASTER' && mode === 'store' && (
-              <NavLink href="/master/dashboard" active={pathname.startsWith('/master')}>
-                Painel Master
-              </NavLink>
-            )}
-          </nav>
+          {mode === 'master' ? (
+            <MasterSidebarNav />
+          ) : (
+            <nav className="space-y-1">
+              {storeLinks.map((l) => (
+                <NavLink key={l.href} href={l.href} active={pathname === l.href}>
+                  {l.label}
+                </NavLink>
+              ))}
+              {user.role === 'ORG_MASTER' && (
+                <NavLink href="/master/dashboard" active={pathname.startsWith('/master')}>
+                  Painel Master
+                </NavLink>
+              )}
+            </nav>
+          )}
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-4">
-          <button onClick={logout} type="button" className="text-sm text-red-600 hover:underline">
-            Sair
-          </button>
-          {mode === 'master' && <NotificationsCenter />}
+          {mode === 'master' ? (
+            <>
+              <MasterAccountMenu userName={user.name} onLogout={logout} />
+              <NotificationsCenter />
+            </>
+          ) : (
+            <button onClick={logout} type="button" className="text-sm text-red-600 hover:underline">
+              Sair
+            </button>
+          )}
         </div>
       </aside>
       <main className="min-h-screen p-6 lg:ml-64">{children}</main>

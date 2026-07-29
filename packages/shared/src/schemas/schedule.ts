@@ -18,8 +18,17 @@ export type TimeClockSource = (typeof TIME_CLOCK_SOURCES)[number];
 /** Raio máximo (metros) para bater ponto pelo app do entregador. */
 export const TIME_CLOCK_GEOFENCE_METERS = 500;
 
-/** Tamanho máximo da foto JPEG em bytes (~512 KB). */
+/**
+ * Tamanho alvo da foto JPEG após compressão no servidor (~512 KB).
+ * Usado na leitura/exibição; a compressão roda em background após gravar.
+ */
 export const TIME_CLOCK_PHOTO_MAX_BYTES = 512 * 1024;
+
+/**
+ * Tamanho máximo aceito no upload do app (foto da câmera sem compressão local).
+ * ~5 MB binário ≈ ~6.7 MB em base64 no JSON.
+ */
+export const TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 
 const timeHm = z
   .string()

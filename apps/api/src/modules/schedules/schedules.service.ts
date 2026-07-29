@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, ScheduleDayType, TimeClockPunchType, UserRole } from '@gas-erp/database';
@@ -10,7 +11,7 @@ import {
   ROLE_LABELS,
   TIME_CLOCK_DAY_STATUS_LABELS,
   TIME_CLOCK_GEOFENCE_METERS,
-  TIME_CLOCK_PHOTO_MAX_BYTES,
+  TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES,
   canManageSchedules,
   canViewTimeClockLog,
   assignTimeClockPunchSlots,
@@ -39,6 +40,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertScreenPermission, assertStoreAccess } from '../../common/guards';
 import { CnpjLookupService } from '../../common/cnpj/cnpj-lookup.service';
+import { compressJpegToMaxBytes } from '../../common/images/compress-jpeg';
 
 const BR_TZ = 'America/Sao_Paulo';
 /** Tolerância (minutos) após o horário de entrada da escala antes de marcar atraso. */
@@ -295,10 +297,35 @@ function toCollabRow(
 
 @Injectable()
 export class SchedulesService {
+  private readonly logger = new Logger(SchedulesService.name);
+
   constructor(
     private prisma: PrismaService,
     private cnpjLookup: CnpjLookupService,
   ) {}
+
+  /** Comprime a selfie em background após a batida já estar gravada. */
+  private schedulePunchPhotoCompress(punchId: string, original: Buffer) {
+    void (async () => {
+      try {
+        const compressed = await compressJpegToMaxBytes(original);
+        if (compressed.length >= original.length) return;
+        await this.prisma.timeClockPunch.update({
+          where: { id: punchId },
+          data: { photoBytes: new Uint8Array(compressed) },
+        });
+        this.logger.log(
+          `Foto do ponto ${punchId} comprimida: ${original.length} → ${compressed.length} bytes`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Falha ao comprimir foto do ponto ${punchId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    })();
+  }
 
   private assertCanViewSchedules(user: AuthUser) {
     if (canManageSchedules(user.role)) return;
@@ -864,8 +891,10 @@ export class SchedulesService {
       if (buf.length === 0) {
         throw new BadRequestException('Foto inválida.');
       }
-      if (buf.length > TIME_CLOCK_PHOTO_MAX_BYTES) {
-        throw new BadRequestException('Foto muito grande (máx. 512 KB).');
+      if (buf.length > TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES) {
+        throw new BadRequestException(
+          `Foto muito grande (máx. ${Math.round(TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES / (1024 * 1024))} MB).`,
+        );
       }
       photoBytes = new Uint8Array(buf);
     }
@@ -893,6 +922,11 @@ export class SchedulesService {
         source: true,
       },
     });
+
+    // Ponto já está no banco — compressão não bloqueia o app.
+    if (photoBytes) {
+      this.schedulePunchPhotoCompress(punch.id, Buffer.from(photoBytes));
+    }
 
     return punch;
   }

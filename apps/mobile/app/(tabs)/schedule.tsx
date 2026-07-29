@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -13,14 +13,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import {
   SCHEDULE_DAY_TYPE_LABELS,
   TIME_CLOCK_GEOFENCE_METERS,
-  TIME_CLOCK_PHOTO_MAX_BYTES,
+  TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES,
   haversineDistanceMeters,
+  isTimeClockDayComplete,
   type ScheduleDayType,
+  type TimeClockPunchType,
 } from '@gas-erp/shared';
 import { Loading, StateMessage } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -48,47 +49,6 @@ function base64ByteLength(b64: string): number {
   const cleaned = b64.replace(/^data:image\/\w+;base64,/, '').replace(/\s/g, '');
   const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
   return Math.floor((cleaned.length * 3) / 4) - padding;
-}
-
-/**
- * Câmeras modernas geram JPEG grande; uma compressão só (960px/0.45) ainda passa de 400 KB.
- * Tenta várias resoluções/qualidades até caber, com margem de segurança.
- */
-async function compressPunchPhoto(uri: string): Promise<{ uri: string; base64: string }> {
-  const attempts: Array<{ width: number; compress: number }> = [
-    { width: 960, compress: 0.45 },
-    { width: 720, compress: 0.4 },
-    { width: 640, compress: 0.35 },
-    { width: 560, compress: 0.3 },
-    { width: 480, compress: 0.25 },
-    { width: 400, compress: 0.2 },
-  ];
-  const maxBytes = Math.floor(TIME_CLOCK_PHOTO_MAX_BYTES * 0.9);
-  let lastSizeLabel: string | null = null;
-
-  for (const attempt of attempts) {
-    const compressed = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: attempt.width } }],
-      {
-        compress: attempt.compress,
-        format: ImageManipulator.SaveFormat.JPEG,
-        base64: true,
-      },
-    );
-    if (!compressed.base64) continue;
-    const bytes = base64ByteLength(compressed.base64);
-    if (bytes <= maxBytes) {
-      return { uri: compressed.uri, base64: compressed.base64 };
-    }
-    lastSizeLabel = `${Math.round(bytes / 1024)} KB`;
-  }
-
-  throw new Error(
-    lastSizeLabel
-      ? `Foto ainda grande (${lastSizeLabel}). Tire outra com menos luz de fundo.`
-      : 'Não foi possível processar a foto. Tente novamente.',
-  );
 }
 
 function dayFillColor(type: ScheduleDayType) {
@@ -128,9 +88,15 @@ export default function ScheduleScreen() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [punch, setPunch] = useState<TimeClockMe | null>(null);
   const [punchBusy, setPunchBusy] = useState(false);
+  const [punchSyncing, setPunchSyncing] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [distanceM, setDistanceM] = useState<number | null>(null);
+  const lastGeoRef = useRef<{
+    pos: Location.LocationObject;
+    dist: number;
+    at: number;
+  } | null>(null);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -256,7 +222,8 @@ export default function ScheduleScreen() {
     [punch],
   );
 
-  const canSubmitPunch = canPunch && !dayComplete && punch?.nextType != null;
+  const canSubmitPunch =
+    canPunch && !dayComplete && punch?.nextType != null && !punchSyncing;
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
@@ -313,6 +280,7 @@ export default function ScheduleScreen() {
         storeLng,
       );
       setDistanceM(dist);
+      lastGeoRef.current = { pos, dist, at: Date.now() };
       setError(null);
       return { pos, dist };
     } catch (err) {
@@ -325,6 +293,19 @@ export default function ScheduleScreen() {
     }
   }
 
+  /** Reusa GPS recente (<45s) para o registro ficar imediato. */
+  async function resolveGeoForPunch() {
+    const cached = lastGeoRef.current;
+    if (
+      cached
+      && Date.now() - cached.at < 45_000
+      && cached.dist <= TIME_CLOCK_GEOFENCE_METERS
+    ) {
+      return cached;
+    }
+    return refreshDistance();
+  }
+
   async function takePhoto() {
     const cam = await ImagePicker.requestCameraPermissionsAsync();
     if (!cam.granted) {
@@ -332,52 +313,113 @@ export default function ScheduleScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      // Qualidade baixa na captura — a compressão iterativa ainda reduz depois.
-      quality: 0.4,
-      base64: false,
+      // Qualidade moderada na captura; compressão final fica no servidor.
+      quality: 0.55,
+      base64: true,
       allowsEditing: false,
       exif: false,
     });
     if (result.canceled || !result.assets[0]) return;
 
-    try {
-      const compressed = await compressPunchPhoto(result.assets[0].uri);
-      setPhotoUri(compressed.uri);
-      setPhotoBase64(compressed.base64);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao comprimir a foto. Tente novamente.');
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      setError('Não foi possível ler a foto. Tente novamente.');
+      return;
     }
+    if (base64ByteLength(asset.base64) > TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES) {
+      setError('Foto muito grande. Tire outra com menos luz de fundo.');
+      return;
+    }
+
+    setPhotoUri(asset.uri);
+    setPhotoBase64(asset.base64);
+    setError(null);
+    // Aquecer GPS enquanto o usuário confere a foto.
+    void refreshDistance();
+  }
+
+  function applyOptimisticPunch(
+    current: TimeClockMe,
+    type: TimeClockPunchType,
+    dist: number | null,
+  ): TimeClockMe {
+    const punches = [
+      ...current.punches,
+      {
+        id: `local-${Date.now()}`,
+        type,
+        punchedAt: new Date().toISOString(),
+        distanceMeters: dist,
+        source: 'MOBILE' as const,
+      },
+    ];
+    const complete = isTimeClockDayComplete(punches);
+    return {
+      ...current,
+      punches,
+      dayComplete: complete,
+      nextType: complete ? null : type === 'CLOCK_IN' ? 'CLOCK_OUT' : 'CLOCK_IN',
+    };
   }
 
   async function submitPunch() {
-    if (!storeId || !punch || !punch.nextType || dayComplete) return;
+    if (!storeId || !punch || !punch.nextType || dayComplete || punchSyncing) return;
+    if (!photoBase64) {
+      setError('Tire uma foto para validar o ponto.');
+      return;
+    }
+
     setPunchBusy(true);
     setError(null);
     try {
-      const geo = await refreshDistance();
+      const geo = await resolveGeoForPunch();
       if (!geo) throw new Error('Não foi possível obter o GPS.');
       if (geo.dist > TIME_CLOCK_GEOFENCE_METERS) {
         throw new Error(
           `Você está a ~${Math.round(geo.dist)} m da unidade. Aproxime-se (máx. ${TIME_CLOCK_GEOFENCE_METERS} m).`,
         );
       }
-      if (!photoBase64) throw new Error('Tire uma foto para validar o ponto.');
 
-      await punchTimeClock({
-        storeId,
-        type: punch.nextType,
-        latitude: geo.pos.coords.latitude,
-        longitude: geo.pos.coords.longitude,
-        accuracy: geo.pos.coords.accuracy ?? undefined,
-        photoBase64: photoBase64.replace(/^data:image\/\w+;base64,/, ''),
-      });
+      const type = punch.nextType;
+      const sid = storeId;
+      const snapshot = punch;
+      const b64 = photoBase64.replace(/^data:image\/\w+;base64,/, '');
+
+      // Feedback imediato — upload segue em background; compressão é no servidor.
+      setPunch(applyOptimisticPunch(punch, type, geo.dist));
       setPhotoUri(null);
       setPhotoBase64(null);
-      await loadPunch(storeId);
+      setPunchBusy(false);
+      setPunchSyncing(true);
+
+      void (async () => {
+        try {
+          await punchTimeClock({
+            storeId: sid,
+            type,
+            latitude: geo.pos.coords.latitude,
+            longitude: geo.pos.coords.longitude,
+            accuracy: geo.pos.coords.accuracy ?? undefined,
+            photoBase64: b64,
+          });
+          await loadPunch(sid);
+        } catch (err) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Falha ao enviar o ponto. Tente novamente.',
+          );
+          try {
+            await loadPunch(sid);
+          } catch {
+            setPunch(snapshot);
+          }
+        } finally {
+          setPunchSyncing(false);
+        }
+      })();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao bater ponto');
-    } finally {
       setPunchBusy(false);
     }
   }
@@ -578,6 +620,14 @@ export default function ScheduleScreen() {
               {activePunchSlot ? ` · ${PUNCH_SLOT_LABELS[activePunchSlot]}` : ''}
             </Text>
           ) : null}
+          {punchSyncing ? (
+            <View style={styles.syncRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.syncText}>
+                Ponto registrado · enviando ao servidor…
+              </Text>
+            </View>
+          ) : null}
           {distanceM != null ? (
             <Text style={styles.hint}>
               Distância atual: ~{Math.round(distanceM)} m
@@ -588,10 +638,18 @@ export default function ScheduleScreen() {
           {!dayComplete ? (
             <>
               <View style={styles.punchActions}>
-                <Pressable style={styles.secondaryBtn} onPress={() => void refreshDistance()}>
+                <Pressable
+                  style={[styles.secondaryBtn, punchSyncing && styles.btnDisabled]}
+                  disabled={punchSyncing}
+                  onPress={() => void refreshDistance()}
+                >
                   <Text style={styles.secondaryBtnText}>Atualizar GPS</Text>
                 </Pressable>
-                <Pressable style={styles.secondaryBtn} onPress={() => void takePhoto()}>
+                <Pressable
+                  style={[styles.secondaryBtn, punchSyncing && styles.btnDisabled]}
+                  disabled={punchSyncing}
+                  onPress={() => void takePhoto()}
+                >
                   <Text style={styles.secondaryBtnText}>Tirar foto</Text>
                 </Pressable>
               </View>
@@ -901,6 +959,13 @@ const styles = StyleSheet.create({
   },
   hint: { fontSize: 12, color: colors.textMuted },
   punchStatus: { fontSize: 13, color: colors.text, fontWeight: '600' },
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  syncText: { flex: 1, fontSize: 12, color: colors.primary, fontWeight: '500' },
   punchActions: { flexDirection: 'row', gap: spacing.sm },
   slotsGrid: {
     flexDirection: 'row',

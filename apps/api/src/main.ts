@@ -8,8 +8,8 @@ import {
 import { ZodExceptionFilter } from './common/filters/zod-exception.filter';
 import { RequestTimingInterceptor } from './common/interceptors/request-timing.interceptor';
 
-/** JSON body: foto de ponto em base64 (~512 KB binário ≈ 700 KB no JSON). */
-const JSON_BODY_LIMIT = '2mb';
+/** JSON body: foto de ponto em base64 (~5 MB binário ≈ ~6.7 MB no JSON). */
+const JSON_BODY_LIMIT = '8mb';
 
 function parseAllowedOrigins(): string[] {
   const raw = process.env.WEB_URL?.trim();
