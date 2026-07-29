@@ -20,9 +20,11 @@ import {
   getBusinessDayBounds,
   haversineDistanceMeters,
   intervalsFromSlots,
+  isTimeClockDayComplete,
   parseHmToMinutes,
   scheduleMonthQuerySchema,
   timeClockCardsQuerySchema,
+  timeClockDayPhotosQuerySchema,
   timeClockHistoryQuerySchema,
   timeClockMeQuerySchema,
   timeClockPunchSchema,
@@ -705,8 +707,10 @@ export class SchedulesService {
     });
 
     const last = punches[punches.length - 1] ?? null;
-    const nextType: TimeClockPunchType =
-      !last || last.type === TimeClockPunchType.CLOCK_OUT
+    const dayComplete = isTimeClockDayComplete(punches);
+    const nextType: TimeClockPunchType | null = dayComplete
+      ? null
+      : !last || last.type === TimeClockPunchType.CLOCK_OUT
         ? TimeClockPunchType.CLOCK_IN
         : TimeClockPunchType.CLOCK_OUT;
 
@@ -729,6 +733,7 @@ export class SchedulesService {
       date: dateStr,
       store,
       nextType,
+      dayComplete,
       punches,
       schedule: schedule
         ? {
@@ -795,15 +800,23 @@ export class SchedulesService {
     const todayKey = todayDateKey(BR_TZ);
     const { start: dayStart, end: dayEnd } = getBusinessDayBounds(todayKey, BR_TZ);
 
-    const last = await this.prisma.timeClockPunch.findFirst({
+    const dayPunches = await this.prisma.timeClockPunch.findMany({
       where: {
         storeId: data.storeId,
         userId: user.id,
         punchedAt: { gte: dayStart, lt: dayEnd },
       },
-      orderBy: { punchedAt: 'desc' },
+      orderBy: { punchedAt: 'asc' },
+      select: { type: true, punchedAt: true },
     });
 
+    if (isTimeClockDayComplete(dayPunches)) {
+      throw new BadRequestException(
+        'Ponto do dia já está completo (ENT.1, SAÍ.1, ENT.2 e SAÍ.2). Não é possível registrar outra batida.',
+      );
+    }
+
+    const last = dayPunches[dayPunches.length - 1] ?? null;
     const expected: TimeClockPunchType =
       !last || last.type === TimeClockPunchType.CLOCK_OUT
         ? TimeClockPunchType.CLOCK_IN
@@ -881,6 +894,44 @@ export class SchedulesService {
     });
 
     return punch;
+  }
+
+  /** Fotos das batidas de um dia (cartão de ponto). */
+  async getDayPhotos(user: AuthUser, query: unknown) {
+    this.assertCanViewTimeClock(user);
+    const params = timeClockDayPhotosQuerySchema.parse(query);
+    assertStoreAccess(user, params.storeId);
+
+    const { start: dayStart, end: dayEnd } = getBusinessDayBounds(params.date, BR_TZ);
+    const punches = await this.prisma.timeClockPunch.findMany({
+      where: {
+        organizationId: user.organizationId,
+        storeId: params.storeId,
+        userId: params.userId,
+        punchedAt: { gte: dayStart, lt: dayEnd },
+        photoBytes: { not: null },
+      },
+      orderBy: { punchedAt: 'asc' },
+      select: {
+        id: true,
+        type: true,
+        punchedAt: true,
+        source: true,
+        photoBytes: true,
+      },
+    });
+
+    return {
+      date: params.date,
+      photos: punches.map((punch) => ({
+        id: punch.id,
+        type: punch.type,
+        punchedAt: punch.punchedAt.toISOString(),
+        source: punch.source,
+        mimeType: 'image/jpeg' as const,
+        photoBase64: Buffer.from(punch.photoBytes!).toString('base64'),
+      })),
+    };
   }
 
   async listPunches(user: AuthUser, query: unknown) {
@@ -1118,7 +1169,7 @@ export class SchedulesService {
     punchTo.setUTCDate(punchTo.getUTCDate() + 1);
     const dim = daysInMonth(params.year, params.month);
 
-    const [entries, punches] = await Promise.all([
+    const [entries, punches, punchesWithPhoto] = await Promise.all([
       this.prisma.workScheduleEntry.findMany({
         where: {
           organizationId: user.organizationId,
@@ -1139,6 +1190,19 @@ export class SchedulesService {
           type: true,
           punchedAt: true,
           source: true,
+        },
+      }),
+      this.prisma.timeClockPunch.findMany({
+        where: {
+          organizationId: user.organizationId,
+          storeId: params.storeId,
+          userId: { in: userIds },
+          punchedAt: { gte: punchFrom, lt: punchTo },
+          photoBytes: { not: null },
+        },
+        select: {
+          userId: true,
+          punchedAt: true,
         },
       }),
     ]);
@@ -1164,6 +1228,14 @@ export class SchedulesService {
       const list = punchesByKey.get(key) ?? [];
       list.push({ type: punch.type, punchedAt: punch.punchedAt, source: punch.source });
       punchesByKey.set(key, list);
+    }
+
+    const photosByKey = new Set<string>();
+    for (const punch of punchesWithPhoto) {
+      const dateKey = brazilDateKey(punch.punchedAt);
+      const [y, m] = dateKey.split('-').map(Number);
+      if (y !== params.year || m !== params.month) continue;
+      photosByKey.add(`${punch.userId}|${dateKey}`);
     }
 
     const cards = filtered
@@ -1278,6 +1350,7 @@ export class SchedulesService {
             sai1: formatPunchHm(slots.sai1, slots.sourceSai1),
             ent2: formatPunchHm(slots.ent2, slots.sourceEnt2),
             sai2: formatPunchHm(slots.sai2, slots.sourceSai2),
+            hasPhotos: photosByKey.has(key),
             totalNormais: formatMinutesCommaOrNull(calc.totalNormaisMinutes),
             totalNormaisMinutes: calc.totalNormaisMinutes,
             totalNoturno: formatMinutesCommaOrNull(calc.totalNoturnoMinutes),

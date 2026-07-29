@@ -9,6 +9,7 @@ import { canManageSchedules, canViewTimeClockLog, type AuthUser } from '@gas-erp
 import { api, getToken } from '@/lib/api';
 import { FilterBar, FilterField } from '@/components/filters';
 import { Button, Card, Select } from '@/components/ui';
+import { Modal } from '@/components/modal';
 import { PageLoader } from '@/components/brand-loader';
 import { cn } from '@/lib/utils';
 import {
@@ -26,6 +27,18 @@ interface CardsResponse {
   month: number;
   cards: TimeClockCard[];
 }
+
+type DayPhotosResponse = {
+  date: string;
+  photos: Array<{
+    id: string;
+    type: 'CLOCK_IN' | 'CLOCK_OUT';
+    punchedAt: string;
+    source: string;
+    mimeType: string;
+    photoBase64: string;
+  }>;
+};
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -126,6 +139,14 @@ export function TimeClockLogPanel({
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [photoModal, setPhotoModal] = useState<{
+    userId: string;
+    userName: string;
+    date: string;
+  } | null>(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [dayPhotos, setDayPhotos] = useState<DayPhotosResponse['photos']>([]);
 
   useEffect(() => {
     if (fixedStoreId) setStoreId(fixedStoreId);
@@ -248,6 +269,38 @@ export function TimeClockLogPanel({
     } finally {
       setSavingKey(null);
     }
+  }
+
+  async function openDayPhotos(targetUserId: string, userName: string, date: string) {
+    if (!storeId) return;
+    setPhotoModal({ userId: targetUserId, userName, date });
+    setPhotoLoading(true);
+    setPhotoError(null);
+    setDayPhotos([]);
+    try {
+      const params = new URLSearchParams({
+        storeId,
+        userId: targetUserId,
+        date,
+      });
+      const res = await api<DayPhotosResponse>(
+        `/time-clock/day-photos?${params}`,
+        {},
+        getToken(),
+      );
+      setDayPhotos(res.photos);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Falha ao carregar fotos');
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
+
+  function closePhotoModal() {
+    setPhotoModal(null);
+    setDayPhotos([]);
+    setPhotoError(null);
+    setPhotoLoading(false);
   }
 
   if (!canView) {
@@ -411,6 +464,9 @@ export function TimeClockLogPanel({
                             saveDayPunches(card.header.userId, date, slot, slots)
                         : undefined
                     }
+                    onViewPhotos={(date) =>
+                      void openDayPhotos(card.header.userId, card.header.userName, date)
+                    }
                   />
                 </div>
               </Card>
@@ -418,6 +474,51 @@ export function TimeClockLogPanel({
           )}
         </div>
       )}
+
+      <Modal
+        open={Boolean(photoModal)}
+        onClose={closePhotoModal}
+        title="Fotos do ponto"
+        subtitle={
+          photoModal
+            ? `${photoModal.userName} · ${new Date(photoModal.date + 'T12:00:00').toLocaleDateString('pt-BR')}`
+            : undefined
+        }
+        size="lg"
+      >
+        {photoLoading ? (
+          <p className="text-sm text-slate-500">Carregando fotos…</p>
+        ) : photoError ? (
+          <p className="text-sm text-red-600">{photoError}</p>
+        ) : dayPhotos.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhuma foto registrada neste dia.</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {dayPhotos.map((photo) => {
+              const time = new Date(photo.punchedAt).toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'America/Sao_Paulo',
+              });
+              const label = photo.type === 'CLOCK_IN' ? 'Entrada' : 'Saída';
+              return (
+                <figure key={photo.id} className="space-y-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:${photo.mimeType};base64,${photo.photoBase64}`}
+                    alt={`${label} às ${time}`}
+                    className="max-h-80 w-full rounded-lg border border-slate-200 object-contain bg-slate-50"
+                  />
+                  <figcaption className="text-xs text-slate-600">
+                    {label} · {time}
+                    {photo.source === 'MOBILE' ? ' · App' : ' · Web'}
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

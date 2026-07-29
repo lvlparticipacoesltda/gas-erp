@@ -37,6 +37,7 @@ export type TimeClockCard = {
     sai1: string | null;
     ent2: string | null;
     sai2: string | null;
+    hasPhotos?: boolean;
     totalNormais: string | null;
     totalNoturno?: string | null;
     diaFalta?: string | null;
@@ -295,6 +296,7 @@ export function TimeClockCardView({
   editable = false,
   savingKey = null,
   onPunchEdit,
+  onViewPhotos,
 }: {
   card: TimeClockCard;
   year: number;
@@ -309,11 +311,13 @@ export function TimeClockCardView({
     value: string | null;
     slots: DayPunchSlots;
   }) => Promise<void> | void;
+  /** Botão de fotos à direita (só na tela web; omitir no PDF). */
+  onViewPhotos?: (date: string) => void;
 }) {
+  const showPhotosCol = Boolean(onViewPhotos);
   const { header, horarioTrabalho, days, totals } = card;
   const cnpj = formatCnpj(header.cnpj) || '—';
   const weekCols = horarioTrabalho.length + 1;
-  const dayCols = DAY_COLUMNS.length;
 
   return (
     <div
@@ -440,12 +444,23 @@ export function TimeClockCardView({
                 style={cellStyle({
                   header: true,
                   center: col.align !== 'left',
-                  lastCol: idx === dayCols - 1,
+                  lastCol: !showPhotosCol && idx === DAY_COLUMNS.length - 1,
                 })}
               >
                 {col.label}
               </th>
             ))}
+            {showPhotosCol ? (
+              <th
+                style={cellStyle({
+                  header: true,
+                  center: true,
+                  lastCol: true,
+                })}
+              >
+                FOTO
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -493,9 +508,40 @@ export function TimeClockCardView({
                 <td style={cellStyle({ center: true, lastRow })}>{metric(day.extraDiurna)}</td>
                 <td style={cellStyle({ center: true, lastRow })}>{metric(day.extraNoturna)}</td>
                 <td style={cellStyle({ center: true, lastRow })}>{metric(day.bancoTotal)}</td>
-                <td style={cellStyle({ center: true, lastCol: true, lastRow })}>
+                <td
+                  style={cellStyle({
+                    center: true,
+                    lastRow,
+                    lastCol: !showPhotosCol,
+                  })}
+                >
                   {metric(day.bancoSaldo)}
                 </td>
+                {showPhotosCol ? (
+                  <td style={cellStyle({ center: true, lastCol: true, lastRow })}>
+                    {day.hasPhotos ? (
+                      <button
+                        type="button"
+                        onClick={() => onViewPhotos?.(day.date)}
+                        title="Ver fotos do ponto"
+                        style={{
+                          border: '1px solid #94a3b8',
+                          background: '#f8fafc',
+                          borderRadius: 4,
+                          padding: '1px 6px',
+                          fontSize: 9,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          color: '#0f172a',
+                        }}
+                      >
+                        Ver
+                      </button>
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                ) : null}
               </tr>
             );
           })}

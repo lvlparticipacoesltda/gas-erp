@@ -63,11 +63,28 @@ export function Modal({
         )}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="shrink-0 border-b border-slate-100 px-6 py-4">
-          <h2 id="modal-title" className="text-lg font-bold text-slate-900">
-            {title}
-          </h2>
-          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-6 py-4">
+          <div className="min-w-0">
+            <h2 id="modal-title" className="text-lg font-bold text-slate-900">
+              {title}
+            </h2>
+            {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <path
+                d="M5 5l10 10M15 5L5 15"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
         <div className="overflow-y-auto px-6 py-4">{children}</div>
       </div>

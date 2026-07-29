@@ -104,6 +104,30 @@ export type TimeClockReportQuery = z.infer<typeof timeClockReportQuerySchema>;
 export const timeClockCardsQuerySchema = timeClockReportQuerySchema;
 export type TimeClockCardsQuery = z.infer<typeof timeClockCardsQuerySchema>;
 
+/** Fotos de batida de um dia (cartão de ponto na web). */
+export const timeClockDayPhotosQuerySchema = z.object({
+  storeId: z.string().min(1),
+  userId: z.string().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (YYYY-MM-DD)'),
+});
+export type TimeClockDayPhotosQuery = z.infer<typeof timeClockDayPhotosQuerySchema>;
+
+/**
+ * Dia completo no cartão = 2 entradas + 2 saídas (ENT.1/SAÍ.1/ENT.2/SAÍ.2).
+ * Após isso o app/API não devem aceitar nova batida.
+ */
+export function isTimeClockDayComplete(
+  punches: Array<{ type: TimeClockPunchType }>,
+): boolean {
+  let ins = 0;
+  let outs = 0;
+  for (const punch of punches) {
+    if (punch.type === 'CLOCK_IN') ins += 1;
+    else if (punch.type === 'CLOCK_OUT') outs += 1;
+  }
+  return ins >= 2 && outs >= 2;
+}
+
 export const TIME_CLOCK_DAY_STATUSES = [
   'OK',
   'LATE',

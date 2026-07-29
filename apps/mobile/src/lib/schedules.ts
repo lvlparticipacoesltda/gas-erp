@@ -1,5 +1,9 @@
 import { api } from './api';
-import type { ScheduleDayType, TimeClockPunchType } from '@gas-erp/shared';
+import {
+  isTimeClockDayComplete,
+  type ScheduleDayType,
+  type TimeClockPunchType,
+} from '@gas-erp/shared';
 
 export interface ScheduleEntryDto {
   id: string;
@@ -29,7 +33,8 @@ export interface MyScheduleMonth {
 export interface TimeClockMe {
   date: string;
   store: { id: string; name: string; latitude: number | null; longitude: number | null } | null;
-  nextType: TimeClockPunchType;
+  nextType: TimeClockPunchType | null;
+  dayComplete?: boolean;
   punches: Array<{
     id: string;
     type: TimeClockPunchType;
@@ -115,11 +120,13 @@ export function mapPunchesToSlots(
   };
 }
 
-/** Qual slot será preenchido na próxima batida. */
-export function nextPunchSlot(punches: TimeClockMe['punches']): PunchSlotKey {
+/** Qual slot será preenchido na próxima batida (null = dia completo). */
+export function nextPunchSlot(punches: TimeClockMe['punches']): PunchSlotKey | null {
+  if (isTimeClockDayComplete(punches)) return null;
   const slots = mapPunchesToSlots(punches);
   if (!slots.ent1) return 'ent1';
   if (!slots.sai1) return 'sai1';
   if (!slots.ent2) return 'ent2';
-  return 'sai2';
+  if (!slots.sai2) return 'sai2';
+  return null;
 }

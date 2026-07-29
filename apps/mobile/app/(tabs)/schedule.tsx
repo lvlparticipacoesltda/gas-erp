@@ -195,10 +195,20 @@ export default function ScheduleScreen() {
     return mapPunchesToSlots(punch.punches);
   }, [punch]);
 
+  const dayComplete = useMemo(() => {
+    if (!punch) return false;
+    if (punch.dayComplete != null) return punch.dayComplete;
+    return Boolean(
+      punchSlots.ent1 && punchSlots.sai1 && punchSlots.ent2 && punchSlots.sai2,
+    );
+  }, [punch, punchSlots]);
+
   const activePunchSlot = useMemo(
     () => (punch ? nextPunchSlot(punch.punches) : 'ent1'),
     [punch],
   );
+
+  const canSubmitPunch = canPunch && !dayComplete && punch?.nextType != null;
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
@@ -310,7 +320,7 @@ export default function ScheduleScreen() {
   }
 
   async function submitPunch() {
-    if (!storeId || !punch) return;
+    if (!storeId || !punch || !punch.nextType || dayComplete) return;
     setPunchBusy(true);
     setError(null);
     try {
@@ -512,7 +522,7 @@ export default function ScheduleScreen() {
           <View style={styles.slotsGrid}>
             {(['ent1', 'sai1', 'ent2', 'sai2'] as PunchSlotKey[]).map((key) => {
               const time = punchSlots[key];
-              const isNext = activePunchSlot === key && !time;
+              const isNext = !dayComplete && activePunchSlot === key && !time;
               return (
                 <View
                   key={key}
@@ -529,11 +539,12 @@ export default function ScheduleScreen() {
             })}
           </View>
 
-          {punch ? (
+          {dayComplete ? (
+            <Text style={styles.punchStatus}>Ponto do dia completo</Text>
+          ) : punch ? (
             <Text style={styles.punchStatus}>
-              Próximo: {punch.nextType === 'CLOCK_IN' ? 'Entrada' : 'Saída'}
-              {' · '}
-              {PUNCH_SLOT_LABELS[activePunchSlot]}
+              Próximo: {punch.nextType === 'CLOCK_OUT' ? 'Saída' : 'Entrada'}
+              {activePunchSlot ? ` · ${PUNCH_SLOT_LABELS[activePunchSlot]}` : ''}
             </Text>
           ) : null}
           {distanceM != null ? (
@@ -543,30 +554,38 @@ export default function ScheduleScreen() {
             </Text>
           ) : null}
 
-          <View style={styles.punchActions}>
-            <Pressable style={styles.secondaryBtn} onPress={() => void refreshDistance()}>
-              <Text style={styles.secondaryBtnText}>Atualizar GPS</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={() => void takePhoto()}>
-              <Text style={styles.secondaryBtnText}>Tirar foto</Text>
-            </Pressable>
-          </View>
-          {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.preview} />
-          ) : null}
-          <Pressable
-            style={[styles.primaryBtn, (!canPunch || punchBusy) && styles.btnDisabled]}
-            disabled={!canPunch || punchBusy}
-            onPress={() => void submitPunch()}
-          >
-            {punchBusy ? (
-              <ActivityIndicator color={colors.primaryText} />
-            ) : (
-              <Text style={styles.primaryBtnText}>
-                {punch?.nextType === 'CLOCK_OUT' ? 'Registrar saída' : 'Registrar entrada'}
-              </Text>
-            )}
-          </Pressable>
+          {!dayComplete ? (
+            <>
+              <View style={styles.punchActions}>
+                <Pressable style={styles.secondaryBtn} onPress={() => void refreshDistance()}>
+                  <Text style={styles.secondaryBtnText}>Atualizar GPS</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryBtn} onPress={() => void takePhoto()}>
+                  <Text style={styles.secondaryBtnText}>Tirar foto</Text>
+                </Pressable>
+              </View>
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} style={styles.preview} />
+              ) : null}
+              <Pressable
+                style={[styles.primaryBtn, (!canSubmitPunch || punchBusy) && styles.btnDisabled]}
+                disabled={!canSubmitPunch || punchBusy}
+                onPress={() => void submitPunch()}
+              >
+                {punchBusy ? (
+                  <ActivityIndicator color={colors.primaryText} />
+                ) : (
+                  <Text style={styles.primaryBtnText}>
+                    {punch?.nextType === 'CLOCK_OUT' ? 'Registrar saída' : 'Registrar entrada'}
+                  </Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <Text style={styles.hint}>
+              ENT.1, SAÍ.1, ENT.2 e SAÍ.2 já registrados. Não é possível bater ponto novamente hoje.
+            </Text>
+          )}
         </View>
       </ScrollView>
 

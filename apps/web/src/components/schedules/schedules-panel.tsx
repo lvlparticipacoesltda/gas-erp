@@ -47,7 +47,8 @@ interface MonthGrid {
 
 interface PunchMe {
   date: string;
-  nextType: 'CLOCK_IN' | 'CLOCK_OUT';
+  nextType: 'CLOCK_IN' | 'CLOCK_OUT' | null;
+  dayComplete?: boolean;
   punches: Array<{ id: string; type: string; punchedAt: string; source: string }>;
   schedule: ScheduleEntry | null;
 }
@@ -333,7 +334,7 @@ export function SchedulesPanel({
   }
 
   async function doPunch() {
-    if (!punch || !storeId) return;
+    if (!punch || !storeId || !punch.nextType || punch.dayComplete) return;
     setPunching(true);
     try {
       await api(
@@ -379,12 +380,17 @@ export function SchedulesPanel({
                     .join(' · ')}
             </div>
           </div>
-          <Button onClick={() => void doPunch()} disabled={punching}>
+          <Button
+            onClick={() => void doPunch()}
+            disabled={punching || punch.dayComplete || !punch.nextType}
+          >
             {punching
               ? 'Registrando…'
-              : punch.nextType === 'CLOCK_IN'
-                ? 'Bater entrada'
-                : 'Bater saída'}
+              : punch.dayComplete || !punch.nextType
+                ? 'Ponto do dia completo'
+                : punch.nextType === 'CLOCK_IN'
+                  ? 'Bater entrada'
+                  : 'Bater saída'}
           </Button>
         </Card>
       ) : null}
