@@ -41,7 +41,7 @@ async function renderCardToCanvas(
   host.style.position = 'fixed';
   host.style.left = '-10000px';
   host.style.top = '0';
-  host.style.width = '794px';
+  host.style.width = '1100px';
   host.style.background = '#fff';
   host.style.zIndex = '-1';
   document.body.appendChild(host);
@@ -60,8 +60,8 @@ async function renderCardToCanvas(
       scale: 2,
       backgroundColor: '#ffffff',
       useCORS: true,
-      width: 794,
-      windowWidth: 794,
+      width: 1100,
+      windowWidth: 1100,
     });
   } finally {
     root.unmount();
@@ -71,9 +71,10 @@ async function renderCardToCanvas(
 
 async function appendCanvasPage(pdf: jsPDF, canvas: HTMLCanvasElement, isFirstPage: boolean) {
   const imgData = canvas.toDataURL('image/png');
-  const pageW = 210;
-  const pageH = 297;
-  const margin = 8;
+  // A4 landscape — cabe a grade completa do PDF de referência.
+  const pageW = 297;
+  const pageH = 210;
+  const margin = 6;
   const maxW = pageW - margin * 2;
   const maxH = pageH - margin * 2;
   const ratio = canvas.height / canvas.width;
@@ -83,7 +84,7 @@ async function appendCanvasPage(pdf: jsPDF, canvas: HTMLCanvasElement, isFirstPa
     h = maxH;
     w = h / ratio;
   }
-  if (!isFirstPage) pdf.addPage();
+  if (!isFirstPage) pdf.addPage('a4', 'landscape');
   pdf.addImage(imgData, 'PNG', margin, margin, w, h);
 }
 
@@ -186,7 +187,7 @@ export function TimeClockLogPanel({
     setExporting(true);
     setError(null);
     try {
-      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
       for (let i = 0; i < cards.length; i += 1) {
         // PDF sempre sem modo edição.
         const canvas = await renderCardToCanvas(cards[i], year, month);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import type { TimeClockDayStatus } from '@gas-erp/shared';
 import { formatCnpj } from '@/lib/utils';
 
@@ -37,12 +37,30 @@ export type TimeClockCard = {
     sai1: string | null;
     ent2: string | null;
     sai2: string | null;
-    totalNormais: string;
+    totalNormais: string | null;
+    totalNoturno?: string | null;
+    diaFalta?: string | null;
+    faltaEAtraso?: string | null;
+    abono?: string | null;
+    extra50d?: string | null;
+    extraDiurna?: string | null;
+    extraNoturna?: string | null;
+    bancoTotal?: string | null;
+    bancoSaldo?: string | null;
     status: TimeClockDayStatus;
     statusLabel: string;
   }>;
   totals: {
     totalNormais: string;
+    totalNoturno?: string | null;
+    diaFalta?: string | null;
+    faltaEAtraso?: string | null;
+    abono?: string | null;
+    extra50d?: string | null;
+    extraDiurna?: string | null;
+    extraNoturna?: string | null;
+    bancoTotal?: string | null;
+    bancoSaldo?: string | null;
     faltas: number;
     atrasos: number;
   };
@@ -56,6 +74,29 @@ export type DayPunchSlots = {
 };
 
 const SLOT_KEYS: PunchSlotKey[] = ['ent1', 'sai1', 'ent2', 'sai2'];
+
+const DAY_COLUMNS: Array<{
+  key: string;
+  label: ReactNode;
+  align?: 'left' | 'center';
+}> = [
+  { key: 'dia', label: 'DIA', align: 'left' },
+  { key: 'previsto', label: 'PREVISTO', align: 'left' },
+  { key: 'ent1', label: 'ENT.1', align: 'center' },
+  { key: 'sai1', label: 'SAÍ.1', align: 'center' },
+  { key: 'ent2', label: 'ENT.2', align: 'center' },
+  { key: 'sai2', label: 'SAÍ.2', align: 'center' },
+  { key: 'totalNormais', label: <>TOTAL<br />NORMAIS</>, align: 'center' },
+  { key: 'totalNoturno', label: <>TOTAL<br />NOTURNO</>, align: 'center' },
+  { key: 'diaFalta', label: <>DIA<br />FALTA</>, align: 'center' },
+  { key: 'faltaEAtraso', label: <>FALTA E<br />ATRASO</>, align: 'center' },
+  { key: 'abono', label: 'ABONO', align: 'center' },
+  { key: 'extra50d', label: <>EXTRA<br />50%D</>, align: 'center' },
+  { key: 'extraDiurna', label: <>EXTRA<br />DIURNA</>, align: 'center' },
+  { key: 'extraNoturna', label: <>EXTRA<br />NOTURNA</>, align: 'center' },
+  { key: 'bancoTotal', label: <>BANCO<br />TOTAL</>, align: 'center' },
+  { key: 'bancoSaldo', label: <>BANCO<br />SALDO</>, align: 'center' },
+];
 
 /** Remove marcador (M) e normaliza para HH:mm ou null. */
 export function punchDisplayToHm(value?: string | null): string | null {
@@ -104,6 +145,11 @@ function formatDateBr(value?: string | null) {
   return `${d}/${m}/${y}`;
 }
 
+function cellValue(value?: string | null) {
+  if (value == null || value === '') return '';
+  return value;
+}
+
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
@@ -120,10 +166,11 @@ const tableStyle: CSSProperties = {
 const cellBase: CSSProperties = {
   borderTop: '1px solid #222',
   borderLeft: '1px solid #222',
-  padding: '4px 5px',
+  padding: '2px 3px',
   verticalAlign: 'middle',
-  lineHeight: '1.35',
+  lineHeight: '1.2',
   background: '#fff',
+  fontSize: 9,
 };
 
 function cellStyle(opts?: {
@@ -178,7 +225,6 @@ function EditablePunchCell({
     if (savingRef.current) return;
     const next = draft.trim() === '' ? null : punchDisplayToHm(draft.trim() || null);
     if (draft.trim() && !next) {
-      // valor inválido — mantém edição
       return;
     }
     const prev = punchDisplayToHm(display);
@@ -208,7 +254,7 @@ function EditablePunchCell({
 
   if (editing) {
     return (
-      <td style={{ ...style, padding: 2, background: '#fff' }}>
+      <td style={{ ...style, padding: 1, background: '#fff' }}>
         <input
           ref={inputRef}
           type="time"
@@ -221,8 +267,8 @@ function EditablePunchCell({
             width: '100%',
             border: '1px solid #f59e0b',
             borderRadius: 3,
-            padding: '2px 3px',
-            fontSize: 11,
+            padding: '1px 2px',
+            fontSize: 9,
             textAlign: 'center',
           }}
         />
@@ -267,67 +313,67 @@ export function TimeClockCardView({
   const { header, horarioTrabalho, days, totals } = card;
   const cnpj = formatCnpj(header.cnpj) || '—';
   const weekCols = horarioTrabalho.length + 1;
-  const dayCols = 8;
+  const dayCols = DAY_COLUMNS.length;
 
   return (
     <div
       className={className}
       data-time-clock-card={header.userId}
       style={{
-        width: 794,
+        width: 1100,
         maxWidth: '100%',
         background: '#fff',
         color: '#111',
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: 11,
-        lineHeight: 1.35,
-        padding: 16,
+        fontSize: 10,
+        lineHeight: 1.3,
+        padding: 12,
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
+      <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
         Cartão de Ponto — {MONTH_NAMES[month - 1]} / {year}
       </div>
 
-      <table style={{ ...tableStyle, marginBottom: 10 }}>
+      <table style={{ ...tableStyle, marginBottom: 8, tableLayout: 'auto' }}>
         <tbody>
           <tr>
-            <td style={{ padding: '3px 0', width: '55%' }}>
+            <td style={{ padding: '2px 0', width: '55%', fontSize: 10 }}>
               <strong>Empresa:</strong> {header.companyName}
             </td>
-            <td style={{ padding: '3px 0' }}>
+            <td style={{ padding: '2px 0', fontSize: 10 }}>
               <strong>CNPJ:</strong> {cnpj}
             </td>
           </tr>
           <tr>
-            <td style={{ padding: '3px 0' }}>
+            <td style={{ padding: '2px 0', fontSize: 10 }}>
               <strong>Funcionário:</strong> {header.userName}
             </td>
-            <td style={{ padding: '3px 0' }}>
+            <td style={{ padding: '2px 0', fontSize: 10 }}>
               <strong>Cargo:</strong> {header.jobTitle || header.roleLabel}
             </td>
           </tr>
           <tr>
-            <td style={{ padding: '3px 0' }}>
+            <td style={{ padding: '2px 0', fontSize: 10 }}>
               <strong>CPF:</strong> {formatCpf(header.cpf)}
             </td>
-            <td style={{ padding: '3px 0' }}>
+            <td style={{ padding: '2px 0', fontSize: 10 }}>
               <strong>PIS:</strong> {header.pis || '—'}
             </td>
           </tr>
           <tr>
-            <td style={{ padding: '3px 0' }}>
+            <td style={{ padding: '2px 0', fontSize: 10 }}>
               <strong>Admissão:</strong> {formatDateBr(header.admittedAt)}
             </td>
-            <td style={{ padding: '3px 0' }}>
+            <td style={{ padding: '2px 0', fontSize: 10 }}>
               <strong>Unidade:</strong> {header.storeName}
             </td>
           </tr>
         </tbody>
       </table>
 
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>Horário de trabalho</div>
-      <table style={{ ...tableStyle, marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, marginBottom: 3, fontSize: 10 }}>Horário de trabalho</div>
+      <table style={{ ...tableStyle, marginBottom: 10 }}>
         <thead>
           <tr>
             {['', ...horarioTrabalho.map((h) => h.weekday)].map((label, idx) => (
@@ -388,21 +434,18 @@ export function TimeClockCardView({
       <table style={tableStyle}>
         <thead>
           <tr>
-            {['DIA', 'PREVISTO', 'ENT.1', 'SAÍ.1', 'ENT.2', 'SAÍ.2', 'TOTAL', 'STATUS'].map(
-              (label, idx) => (
-                <th
-                  key={label}
-                  style={cellStyle({
-                    header: true,
-                    center: label !== 'DIA' && label !== 'PREVISTO' && label !== 'STATUS',
-                    nowrap: true,
-                    lastCol: idx === dayCols - 1,
-                  })}
-                >
-                  {label}
-                </th>
-              ),
-            )}
+            {DAY_COLUMNS.map((col, idx) => (
+              <th
+                key={col.key}
+                style={cellStyle({
+                  header: true,
+                  center: col.align !== 'left',
+                  lastCol: idx === dayCols - 1,
+                })}
+              >
+                {col.label}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -414,25 +457,14 @@ export function TimeClockCardView({
               { key: 'ent2', value: day.ent2 ?? '—' },
               { key: 'sai2', value: day.sai2 ?? '—' },
             ];
+            const metric = (v?: string | null) => cellValue(v);
 
             return (
               <tr key={day.date}>
-                <td
-                  style={cellStyle({
-                    nowrap: true,
-                    lastRow,
-                  })}
-                >
+                <td style={cellStyle({ nowrap: true, lastRow })}>
                   {String(day.day).padStart(2, '0')} {day.weekday}
                 </td>
-                <td
-                  style={cellStyle({
-                    nowrap: true,
-                    lastRow,
-                  })}
-                >
-                  {day.previsto}
-                </td>
+                <td style={cellStyle({ nowrap: true, lastRow })}>{day.previsto}</td>
                 {punchDisplays.map(({ key, value }) => (
                   <EditablePunchCell
                     key={`${day.date}-${key}`}
@@ -452,22 +484,17 @@ export function TimeClockCardView({
                     }}
                   />
                 ))}
-                <td
-                  style={cellStyle({
-                    center: true,
-                    lastRow,
-                  })}
-                >
-                  {day.totalNormais}
-                </td>
-                <td
-                  style={cellStyle({
-                    nowrap: true,
-                    lastCol: true,
-                    lastRow,
-                  })}
-                >
-                  {day.statusLabel}
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.totalNormais)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.totalNoturno)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.diaFalta)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.faltaEAtraso)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.abono)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.extra50d)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.extraDiurna)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.extraNoturna)}</td>
+                <td style={cellStyle({ center: true, lastRow })}>{metric(day.bancoTotal)}</td>
+                <td style={cellStyle({ center: true, lastCol: true, lastRow })}>
+                  {metric(day.bancoSaldo)}
                 </td>
               </tr>
             );
@@ -477,20 +504,24 @@ export function TimeClockCardView({
 
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: 12,
-          marginTop: 10,
+          marginTop: 8,
           borderTop: '1px solid #222',
-          paddingTop: 8,
+          paddingTop: 6,
+          fontSize: 9,
         }}
       >
-        <div>
-          <strong>Totais:</strong> Normais {totals.totalNormais}
-          {' · '}
-          Faltas {totals.faltas}
-          {' · '}
-          Atrasos {totals.atrasos}
+        <div style={{ marginBottom: 4 }}>
+          <strong>TOTAIS:</strong>
+          {' '}Normais {totals.totalNormais}
+          {totals.totalNoturno ? ` · Noturno ${totals.totalNoturno}` : ''}
+          {totals.diaFalta ? ` · Dia falta ${totals.diaFalta}` : ''}
+          {totals.faltaEAtraso ? ` · Falta/atraso ${totals.faltaEAtraso}` : ''}
+          {totals.extra50d ? ` · Extra 50%D ${totals.extra50d}` : ''}
+          {totals.extraDiurna ? ` · Extra diurna ${totals.extraDiurna}` : ''}
+          {totals.extraNoturna ? ` · Extra noturna ${totals.extraNoturna}` : ''}
+          {totals.bancoTotal ? ` · Banco total ${totals.bancoTotal}` : ''}
+          {totals.bancoSaldo ? ` · Banco saldo ${totals.bancoSaldo}` : ''}
+          {` · Faltas ${totals.faltas} · Atrasos ${totals.atrasos}`}
         </div>
         <div style={{ color: '#444' }}>
           (M) = App móvel

@@ -38,3 +38,4 @@ export * from './business-day';
 export * from './phone';
 export * from './types';
 export * from './fiscal/fiscal-provider';
+export * from './time-clock-totals';

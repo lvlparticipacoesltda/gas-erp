@@ -13,9 +13,14 @@ import {
   TIME_CLOCK_PHOTO_MAX_BYTES,
   canManageSchedules,
   canViewTimeClockLog,
+  computeTimeClockDayTotals,
   copyScheduleSchema,
+  formatMinutesComma,
+  formatMinutesCommaOrNull,
   getBusinessDayBounds,
   haversineDistanceMeters,
+  intervalsFromSlots,
+  parseHmToMinutes,
   scheduleMonthQuerySchema,
   timeClockCardsQuerySchema,
   timeClockHistoryQuerySchema,
@@ -66,12 +71,6 @@ function brazilTimeHm(date: Date): string {
     minute: '2-digit',
     hour12: false,
   });
-}
-
-function parseHmToMinutes(hm: string): number | null {
-  const match = hm.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 function resolveDayStatus(input: {
@@ -150,13 +149,6 @@ function scheduleSlotsFromEntry(entry: {
   return { ent1: start, sai1: null, ent2: null, sai2: end };
 }
 
-function formatMinutesComma(totalMinutes: number): string {
-  const mins = Math.max(0, Math.round(totalMinutes));
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${String(h).padStart(2, '0')},${String(m).padStart(2, '0')}`;
-}
-
 function formatPunchHm(at: Date | null, source: string | null): string | null {
   if (!at) return null;
   const hm = brazilTimeHm(at);
@@ -203,14 +195,6 @@ function assignDayPunchSlots(
     sourceEnt2: ins[1]?.source ?? null,
     sourceSai2: outs[1]?.source ?? null,
   };
-}
-
-function workedMinutesFromSlots(slots: PunchSlotBucket): number {
-  const pairMinutes = (start: Date | null, end: Date | null) => {
-    if (!start || !end) return 0;
-    return Math.max(0, (end.getTime() - start.getTime()) / 60000);
-  };
-  return pairMinutes(slots.ent1, slots.sai1) + pairMinutes(slots.ent2, slots.sai2);
 }
 
 function parseHmParts(hm: string): { hour: number; minute: number } {
@@ -1075,7 +1059,7 @@ export class SchedulesService {
   }
 
   /**
-   * Cartões de ponto no formato do fechamento (4 batidas, previsto, totais simples).
+   * Cartões de ponto no formato do fechamento PDF (4 batidas + totais CLT).
    */
   async getTimeClockCards(user: AuthUser, query: unknown) {
     this.assertCanViewTimeClock(user);
@@ -1219,8 +1203,16 @@ export class SchedulesService {
         });
 
         let totalNormaisMinutes = 0;
+        let totalNoturnoMinutes = 0;
+        let diaFaltaMinutes = 0;
+        let faltaEAtrasoMinutes = 0;
+        let extra50dMinutes = 0;
+        let extraDiurnaMinutes = 0;
+        let extraNoturnaMinutes = 0;
+        let bancoTotalMinutes = 0;
         let faltas = 0;
         let atrasos = 0;
+        let bancoSaldoRunning = 0;
 
         const days = Array.from({ length: dim }, (_, i) => {
           const day = i + 1;
@@ -1228,8 +1220,42 @@ export class SchedulesService {
           const key = `${collab.id}|${date}`;
           const schedule = scheduleByKey.get(key) ?? null;
           const slots = assignDayPunchSlots(punchesByKey.get(key) ?? []);
-          const worked = workedMinutesFromSlots(slots);
-          totalNormaisMinutes += worked;
+          const scheduleSlots = scheduleSlotsFromEntry(schedule);
+          const isWorkDay = Boolean(
+            schedule && schedule.dayType !== ScheduleDayType.DAY_OFF,
+          );
+
+          const scheduledIntervals = intervalsFromSlots(scheduleSlots);
+          const workedIntervals = intervalsFromSlots({
+            ent1: slots.ent1 ? brazilTimeHm(slots.ent1) : null,
+            sai1: slots.sai1 ? brazilTimeHm(slots.sai1) : null,
+            ent2: slots.ent2 ? brazilTimeHm(slots.ent2) : null,
+            sai2: slots.sai2 ? brazilTimeHm(slots.sai2) : null,
+          });
+
+          const calc = computeTimeClockDayTotals({
+            isWorkDay,
+            scheduled: scheduledIntervals,
+            worked: workedIntervals,
+            scheduledStartMinutes: parseHmToMinutes(scheduleSlots.ent1),
+            scheduledEndMinutes: parseHmToMinutes(scheduleSlots.sai2 ?? scheduleSlots.sai1),
+            firstInMinutes: slots.ent1 ? parseHmToMinutes(brazilTimeHm(slots.ent1)) : null,
+            lastOutMinutes: slots.sai2
+              ? parseHmToMinutes(brazilTimeHm(slots.sai2))
+              : slots.sai1
+                ? parseHmToMinutes(brazilTimeHm(slots.sai1))
+                : null,
+          });
+
+          bancoSaldoRunning += calc.bancoTotalMinutes;
+          totalNormaisMinutes += calc.totalNormaisMinutes;
+          totalNoturnoMinutes += calc.totalNoturnoMinutes;
+          diaFaltaMinutes += calc.diaFaltaMinutes;
+          faltaEAtrasoMinutes += calc.faltaEAtrasoMinutes;
+          extra50dMinutes += calc.extra50dMinutes;
+          extraDiurnaMinutes += calc.extraDiurnaMinutes;
+          extraNoturnaMinutes += calc.extraNoturnaMinutes;
+          bancoTotalMinutes += calc.bancoTotalMinutes;
 
           const clockIn = slots.ent1;
           const clockOut = slots.sai2 ?? slots.sai1;
@@ -1252,8 +1278,26 @@ export class SchedulesService {
             sai1: formatPunchHm(slots.sai1, slots.sourceSai1),
             ent2: formatPunchHm(slots.ent2, slots.sourceEnt2),
             sai2: formatPunchHm(slots.sai2, slots.sourceSai2),
-            totalNormais: formatMinutesComma(worked),
-            totalNormaisMinutes: Math.round(worked),
+            totalNormais: formatMinutesCommaOrNull(calc.totalNormaisMinutes),
+            totalNormaisMinutes: calc.totalNormaisMinutes,
+            totalNoturno: formatMinutesCommaOrNull(calc.totalNoturnoMinutes),
+            totalNoturnoMinutes: calc.totalNoturnoMinutes,
+            diaFalta: formatMinutesCommaOrNull(calc.diaFaltaMinutes),
+            diaFaltaMinutes: calc.diaFaltaMinutes,
+            faltaEAtraso: formatMinutesCommaOrNull(calc.faltaEAtrasoMinutes),
+            faltaEAtrasoMinutes: calc.faltaEAtrasoMinutes,
+            abono: null as string | null,
+            abonoMinutes: 0,
+            extra50d: formatMinutesCommaOrNull(calc.extra50dMinutes),
+            extra50dMinutes: calc.extra50dMinutes,
+            extraDiurna: formatMinutesCommaOrNull(calc.extraDiurnaMinutes),
+            extraDiurnaMinutes: calc.extraDiurnaMinutes,
+            extraNoturna: formatMinutesCommaOrNull(calc.extraNoturnaMinutes),
+            extraNoturnaMinutes: calc.extraNoturnaMinutes,
+            bancoTotal: formatMinutesCommaOrNull(calc.bancoTotalMinutes),
+            bancoTotalMinutes: calc.bancoTotalMinutes,
+            bancoSaldo: bancoSaldoRunning > 0 ? formatMinutesComma(bancoSaldoRunning) : null,
+            bancoSaldoMinutes: bancoSaldoRunning,
             status,
             statusLabel: TIME_CLOCK_DAY_STATUS_LABELS[status],
           };
@@ -1278,6 +1322,23 @@ export class SchedulesService {
           totals: {
             totalNormais: formatMinutesComma(totalNormaisMinutes),
             totalNormaisMinutes: Math.round(totalNormaisMinutes),
+            totalNoturno: formatMinutesCommaOrNull(totalNoturnoMinutes),
+            totalNoturnoMinutes: Math.round(totalNoturnoMinutes),
+            diaFalta: formatMinutesCommaOrNull(diaFaltaMinutes),
+            diaFaltaMinutes: Math.round(diaFaltaMinutes),
+            faltaEAtraso: formatMinutesCommaOrNull(faltaEAtrasoMinutes),
+            faltaEAtrasoMinutes: Math.round(faltaEAtrasoMinutes),
+            abono: null as string | null,
+            extra50d: formatMinutesCommaOrNull(extra50dMinutes),
+            extra50dMinutes: Math.round(extra50dMinutes),
+            extraDiurna: formatMinutesCommaOrNull(extraDiurnaMinutes),
+            extraDiurnaMinutes: Math.round(extraDiurnaMinutes),
+            extraNoturna: formatMinutesCommaOrNull(extraNoturnaMinutes),
+            extraNoturnaMinutes: Math.round(extraNoturnaMinutes),
+            bancoTotal: formatMinutesCommaOrNull(bancoTotalMinutes),
+            bancoTotalMinutes: Math.round(bancoTotalMinutes),
+            bancoSaldo: formatMinutesCommaOrNull(bancoSaldoRunning) ?? formatMinutesComma(0),
+            bancoSaldoMinutes: Math.round(bancoSaldoRunning),
             faltas,
             atrasos,
           },
