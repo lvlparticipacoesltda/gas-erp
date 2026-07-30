@@ -6,8 +6,7 @@ import { PageLoader } from '@/components/brand-loader';
 import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import type { PaginatedResponse } from '@gas-erp/shared';
-import { canManageStock } from '@gas-erp/shared';
+import { STOCK_TRANSFER_STATUS_LABELS, canManageStock, type PaginatedResponse } from '@gas-erp/shared';
 
 interface Store { id: string; name: string }
 interface Product { id: string; name: string }
@@ -20,13 +19,6 @@ interface Transfer {
   toStore: { name: string };
   items: { quantity: number; product: { name: string } }[];
 }
-
-const TRANSFER_STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Pendente',
-  APPROVED: 'Aprovada',
-  REJECTED: 'Rejeitada',
-  COMPLETED: 'Concluída',
-};
 
 export default function StockTransfersPage() {
   const { storeId } = useParams<{ storeId: string }>();
@@ -131,7 +123,7 @@ export default function StockTransfersPage() {
                 <td className="p-3 whitespace-nowrap">
                   {t.completedAt ? formatDateTime(t.completedAt) : '—'}
                 </td>
-                <td className="p-3">{TRANSFER_STATUS_LABELS[t.status] ?? t.status}</td>
+                <td className="p-3">{STOCK_TRANSFER_STATUS_LABELS[t.status] ?? t.status}</td>
                 <td className="p-3 space-x-2">
                   {canEditStock && t.status === 'PENDING' && <Button variant="secondary" onClick={() => approve(t.id)}>Aprovar</Button>}
                   {canEditStock && t.status === 'APPROVED' && <Button onClick={() => complete(t.id)}>Concluir</Button>}

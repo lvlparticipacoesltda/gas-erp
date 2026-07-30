@@ -10,8 +10,23 @@ export class StockTransfersController {
   constructor(private service: StockTransfersService) {}
 
   @Get()
-  findAll(@CurrentUser() user: AuthUser, @Query('storeId') storeId?: string) {
-    return this.service.findAll(user, storeId);
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query('storeId') storeId?: string,
+    @Query('fromStoreId') fromStoreId?: string,
+    @Query('toStoreId') toStoreId?: string,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.service.findAll(user, {
+      storeId,
+      fromStoreId,
+      toStoreId,
+      status,
+      dateFrom,
+      dateTo,
+    });
   }
 
   @Post()

@@ -184,7 +184,6 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
             <StoreAccountMenu
               storeId={activeStoreId}
               userName={user.name}
-              role={user.role}
               onLogout={logout}
             />
           ) : (

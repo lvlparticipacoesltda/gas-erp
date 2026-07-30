@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronDown, MoreVertical } from 'lucide-react';
-import { canManagePaymentMethods, type AuthUser } from '@gas-erp/shared';
+import type { AuthUser } from '@gas-erp/shared';
 import { NavLink } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
   STORE_NAV_GROUPS,
+  STORE_NAV_TOP,
   allStoreNavHrefs,
   buildStoreHref,
   canAccessStoreNavItem,
@@ -40,6 +41,10 @@ function defaultOpenGroups(pathname: string, storeId: string): Record<string, bo
 export function StoreSidebarNav({ storeId, user }: { storeId: string; user: AuthUser }) {
   const pathname = usePathname();
   const allHrefs = useMemo(() => allStoreNavHrefs(storeId), [storeId]);
+  const visibleTop = useMemo(
+    () => STORE_NAV_TOP.filter((item) => canAccessStoreNavItem(user, item)),
+    [user],
+  );
   const visibleGroups = useMemo(
     () =>
       STORE_NAV_GROUPS.map((group) => ({
@@ -91,6 +96,15 @@ export function StoreSidebarNav({ storeId, user }: { storeId: string; user: Auth
 
   return (
     <nav className="space-y-1">
+      {visibleTop.map((item) => {
+        const href = buildStoreHref(storeId, item.segment);
+        return (
+          <NavLink key={item.segment} href={href} active={isStoreNavActive(pathname, href, allHrefs)}>
+            {item.label}
+          </NavLink>
+        );
+      })}
+
       {visibleGroups.map((group) => {
         const open = openGroups[group.id] ?? true;
         const groupActive = group.items.some((item) =>
@@ -144,19 +158,15 @@ export function StoreSidebarNav({ storeId, user }: { storeId: string; user: Auth
 export function StoreAccountMenu({
   storeId,
   userName,
-  role,
   onLogout,
 }: {
   storeId: string;
   userName: string;
-  role: string;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const settingsHref = `/store/${storeId}/settings`;
-  const paymentMethodsHref = `/store/${storeId}/settings/payment-methods`;
-  const showPaymentMethods = canManagePaymentMethods(role);
 
   useEffect(() => {
     if (!open) return;
@@ -210,16 +220,6 @@ export function StoreAccountMenu({
           >
             Editar informações
           </Link>
-          {showPaymentMethods && (
-            <Link
-              role="menuitem"
-              href={paymentMethodsHref}
-              onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              Formas de pagamento
-            </Link>
-          )}
           <button
             role="menuitem"
             type="button"

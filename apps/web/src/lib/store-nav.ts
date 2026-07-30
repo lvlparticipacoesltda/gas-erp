@@ -1,13 +1,15 @@
 import type { StoreScreenKey } from '@gas-erp/shared';
 import {
   canAccessHorarios,
+  canManagePaymentMethods,
   canViewTimeClockLog,
   hasScreenPermission,
 } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
 export type StoreNavItem = {
-  screen: StoreScreenKey;
+  /** Omitido para itens com acesso por papel (ex.: formas de pagamento). */
+  screen?: StoreScreenKey;
   segment: string;
   label: string;
 };
@@ -18,13 +20,17 @@ export type StoreNavGroup = {
   items: StoreNavItem[];
 };
 
+/** Itens de topo sem agrupamento (ex.: Resumo diário). */
+export const STORE_NAV_TOP: StoreNavItem[] = [
+  { screen: 'store.daily-summary', segment: 'daily-summary', label: 'Resumo diário' },
+];
+
 /** Grupos accordion do painel da loja. */
 export const STORE_NAV_GROUPS: StoreNavGroup[] = [
   {
     id: 'operacao',
     label: 'Operação',
     items: [
-      { screen: 'store.daily-summary', segment: 'daily-summary', label: 'Resumo diário' },
       { screen: 'store.sales.new', segment: 'sales/new', label: 'Nova venda' },
       { screen: 'store.sales', segment: 'sales', label: 'Vendas' },
       { screen: 'store.customers', segment: 'customers', label: 'Clientes' },
@@ -57,12 +63,23 @@ export const STORE_NAV_GROUPS: StoreNavGroup[] = [
     label: 'Relatórios',
     items: [{ screen: 'store.reports', segment: 'reports', label: 'Relatórios' }],
   },
+  {
+    id: 'configuracao',
+    label: 'Configuração',
+    items: [{ segment: 'settings/payment-methods', label: 'Formas de pagamento' }],
+  },
 ];
 
 /** Lista plana (ordem de prioridade para fallback de rota). */
-export const STORE_NAV_ITEMS: StoreNavItem[] = STORE_NAV_GROUPS.flatMap((g) => g.items);
+export const STORE_NAV_ITEMS: StoreNavItem[] = [
+  ...STORE_NAV_TOP,
+  ...STORE_NAV_GROUPS.flatMap((g) => g.items),
+];
 
 export function canAccessStoreNavItem(user: AuthUser, item: StoreNavItem): boolean {
+  if (!item.screen) {
+    return item.segment === 'settings/payment-methods' && canManagePaymentMethods(user.role);
+  }
   if (item.screen === 'store.schedules.horarios') {
     return canAccessHorarios(user.role, user.permissions);
   }
@@ -76,7 +93,7 @@ export function storeNavItemForPath(pathname: string, storeId: string): StoreNav
   const prefix = `/store/${storeId}/`;
   if (!pathname.startsWith(prefix)) return null;
   const rest = pathname.slice(prefix.length).replace(/\/$/, '');
-  if (rest === 'settings' || rest.startsWith('settings/') || rest === 'dashboard') return null;
+  if (rest === 'dashboard' || rest === 'settings') return null;
   return (
     STORE_NAV_ITEMS.filter(
       (nav) => rest === nav.segment || rest.startsWith(`${nav.segment}/`),

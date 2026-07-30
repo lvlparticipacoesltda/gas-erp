@@ -140,6 +140,13 @@ export const PURCHASE_INVOICE_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelada',
 };
 
+export const STOCK_TRANSFER_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Pendente',
+  APPROVED: 'Aprovada',
+  REJECTED: 'Rejeitada',
+  COMPLETED: 'Concluída',
+};
+
 export const ROLE_LABELS: Record<string, string> = {
   PLATFORM_ADMIN: 'Admin Plataforma',
   ORG_MASTER: 'Master',
