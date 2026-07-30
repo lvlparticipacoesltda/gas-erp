@@ -28,10 +28,10 @@ interface SessionRow {
   durationSeconds: number;
 }
 
-/** Padrão: atendentes (painel), sem entregadores. */
+/** Padrão: atendentes; todas as sessões (ativas + encerradas) para ver troca de IP. */
 const emptyFilters = {
   search: '',
-  active: 'true',
+  active: '',
   audience: 'staff',
 };
 
@@ -41,7 +41,8 @@ const CLIENT_LABELS: Record<string, string> = {
 };
 
 const REVOKE_LABELS: Record<string, string> = {
-  replaced_by_new_login: 'Substituída por novo login',
+  replaced_by_new_login: 'Novo login (outro acesso)',
+  ip_changed: 'IP alterado (mesmo login)',
   revoked_by_admin: 'Encerrada pelo master',
   logout: 'Logout',
   password_reset: 'Reset de senha',
@@ -148,7 +149,7 @@ export default function MasterSessionsPage() {
     <>
       <PageHeader
         title="Sessões"
-        subtitle="Login único por conta — veja sessões ativas, origem e tempo de uso"
+        subtitle="Login único por conta — IP de cada acesso fica registrado; sessão antiga fica encerrada quando há novo login ou troca de IP"
       />
 
       <FilterPanel onSearch={applyFilters} onReset={resetFilters}>
@@ -177,9 +178,9 @@ export default function MasterSessionsPage() {
             value={draftFilters.active}
             onChange={(e) => setDraftFilters((f) => ({ ...f, active: e.target.value }))}
           >
+            <option value="">Todas</option>
             <option value="true">Ativas</option>
             <option value="false">Encerradas</option>
-            <option value="">Todas</option>
           </Select>
         </div>
       </FilterPanel>
@@ -224,7 +225,13 @@ export default function MasterSessionsPage() {
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="border-b border-slate-200 odd:bg-white even:bg-slate-50/60">
+                <tr
+                  key={row.id}
+                  className={cn(
+                    'border-b border-slate-200 odd:bg-white even:bg-slate-50/60',
+                    row.active && 'bg-emerald-50/40 odd:bg-emerald-50/50 even:bg-emerald-50/30',
+                  )}
+                >
                   <td className={cn(cell, 'min-w-[12rem]')}>
                     <div className="font-medium text-slate-900">{row.userName}</div>
                     <div className="mt-0.5 break-all text-xs text-slate-500">{row.userEmail}</div>
@@ -239,7 +246,7 @@ export default function MasterSessionsPage() {
                       <div className="space-y-1">
                         <Badge>Encerrada</Badge>
                         {row.revokeReason ? (
-                          <div className="max-w-[8rem] text-xs leading-snug text-slate-500">
+                          <div className="max-w-[9rem] text-xs leading-snug text-slate-500">
                             {REVOKE_LABELS[row.revokeReason] ?? row.revokeReason}
                           </div>
                         ) : null}
@@ -249,8 +256,17 @@ export default function MasterSessionsPage() {
                   <td className={cn(cell, 'whitespace-nowrap text-slate-700')}>
                     {CLIENT_LABELS[row.client ?? ''] ?? row.client ?? '—'}
                   </td>
-                  <td className={cn(cell, 'max-w-[11rem] break-all font-mono text-xs leading-snug text-slate-700')}>
-                    {row.ipAddress ?? '—'}
+                  <td className={cn(cell, 'max-w-[12rem]')}>
+                    <div className="break-all font-mono text-sm font-semibold leading-snug text-slate-900">
+                      {row.ipAddress ?? '—'}
+                    </div>
+                    {!row.active
+                    && (row.revokeReason === 'replaced_by_new_login'
+                      || row.revokeReason === 'ip_changed') ? (
+                      <div className="mt-1 text-[11px] font-medium text-amber-700">
+                        IP anterior / outro lugar
+                      </div>
+                    ) : null}
                   </td>
                   <td className={cn(cell, 'whitespace-nowrap text-slate-700')}>
                     {formatDateTime(row.createdAt)}

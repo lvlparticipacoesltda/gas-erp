@@ -960,6 +960,23 @@ export class DeliverersService {
       await syncUserStoresForDeliverer(this.prisma, deliverer.userId, data.storeIds);
     }
 
+    if (data.active === false) {
+      await this.prisma.workScheduleWeekly.updateMany({
+        where: {
+          userId: deliverer.userId,
+          organizationId: user.organizationId,
+        },
+        data: { active: false },
+      });
+      await this.prisma.userSession.updateMany({
+        where: { userId: deliverer.userId, revokedAt: null },
+        data: {
+          revokedAt: new Date(),
+          revokeReason: 'revoked_by_admin',
+        },
+      });
+    }
+
     await this.audit.log(user, 'UPDATE', 'Deliverer', id, {
       active: data.active,
       status: nextStatus,

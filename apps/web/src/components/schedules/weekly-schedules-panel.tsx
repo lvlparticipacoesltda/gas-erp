@@ -348,7 +348,7 @@ export function WeeklySchedulesPanel({
             </h2>
             <p className="text-sm text-slate-500">
               Um padrão por pessoa (entregador ou atendente). A unidade abaixo é só a referência
-              padrão dos dias gerados.
+              padrão dos dias gerados. Status Inativo remove a pessoa da Escala e da folha de ponto.
             </p>
           </div>
           <Button type="button" variant="secondary" onClick={() => setMode('list')}>

@@ -148,6 +148,19 @@ export class UsersService {
       },
       include: { userStores: { include: { store: true } } },
     });
+    if (data.active === false) {
+      await this.prisma.workScheduleWeekly.updateMany({
+        where: { userId: id, organizationId: user.organizationId },
+        data: { active: false },
+      });
+      await this.prisma.userSession.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: {
+          revokedAt: new Date(),
+          revokeReason: 'revoked_by_admin',
+        },
+      });
+    }
     await this.audit.log(user, 'UPDATE', 'User', id);
     if (updated.role === 'DELIVERER') {
       const storeIds = updated.userStores.map((us) => us.storeId);

@@ -4,17 +4,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards';
 import { CurrentUser } from '../../common/decorators';
 import { AuthUser } from '@gas-erp/shared';
-
-function clientIp(req: Request): string | null {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return forwarded.split(',')[0]?.trim() || null;
-  }
-  if (Array.isArray(forwarded) && forwarded[0]) {
-    return forwarded[0].split(',')[0]?.trim() || null;
-  }
-  return req.ip || req.socket?.remoteAddress || null;
-}
+import { clientIpFromRequest } from '../../common/http/client-ip';
 
 @Controller('auth')
 export class AuthController {
@@ -23,7 +13,7 @@ export class AuthController {
   @Post('login')
   login(@Body() body: unknown, @Req() req: Request) {
     return this.authService.login(body, {
-      ipAddress: clientIp(req),
+      ipAddress: clientIpFromRequest(req),
       userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
     });
   }

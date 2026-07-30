@@ -2,9 +2,11 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 import { AuthUser, resolveUserPermissions } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from './auth.service';
+import { clientIpFromRequest } from '../../common/http/client-ip';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -23,10 +25,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ]),
       ignoreExpiration: false,
       secretOrKey: config.get<string>('JWT_SECRET', 'dev-secret'),
+      passReqToCallback: true,
     });
   }
 
-  async validate(payload: AuthUser): Promise<AuthUser> {
+  async validate(req: Request, payload: AuthUser): Promise<AuthUser> {
     const user = await this.prisma.user.findFirst({
       where: { id: payload.id, organizationId: payload.organizationId, active: true },
       include: { userStores: true },
@@ -35,7 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Sessão inválida ou usuário inativo. Faça login novamente.');
     }
 
-    await this.auth.assertActiveSession(user.id, payload.sessionId);
+    await this.auth.assertActiveSession(user.id, payload.sessionId, clientIpFromRequest(req));
 
     return {
       id: user.id,

@@ -441,11 +441,13 @@ export class SchedulesService {
     user: AuthUser,
     storeId: string,
     roleFilter: 'deliverers' | 'attendants' | 'all',
+    opts?: { includeInactiveWeekly?: boolean },
   ): Promise<CollabRow[]> {
     const wantDeliverers = roleFilter === 'deliverers' || roleFilter === 'all';
     const wantAttendants = roleFilter === 'attendants' || roleFilter === 'all';
+    const includeInactiveWeekly = opts?.includeInactiveWeekly === true;
 
-    // Atendente: só entregadores da unidade + a própria pessoa.
+    // Atendente: só entregadores da unidade + a própria pessoa (se ativa).
     if (user.role === 'ATTENDANT') {
       const deliverers = wantDeliverers
         ? await this.prisma.user.findMany({
@@ -459,23 +461,28 @@ export class SchedulesService {
             orderBy: { name: 'asc' },
           })
         : [];
-      const self = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: collaboratorSelect,
-      });
+      const self = wantAttendants
+        ? await this.prisma.user.findFirst({
+            where: { id: user.id, active: true },
+            select: collaboratorSelect,
+          })
+        : null;
       const rows = [...deliverers];
-      if (self && wantAttendants && !rows.some((r) => r.id === self.id)) {
+      if (self && !rows.some((r) => r.id === self.id)) {
         rows.push(self);
       }
-      return rows
+      const mapped = rows
         .map(toCollabRow)
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      return includeInactiveWeekly
+        ? mapped
+        : this.excludeInactiveWeeklyUsers(user.organizationId, mapped);
     }
 
-    // Entregador (app): só a própria escala.
+    // Entregador (app): só a própria escala (se ativo).
     if (user.role === 'DELIVERER') {
-      const self = await this.prisma.user.findUnique({
-        where: { id: user.id },
+      const self = await this.prisma.user.findFirst({
+        where: { id: user.id, active: true },
         select: collaboratorSelect,
       });
       return self ? [toCollabRow(self)] : [];
@@ -511,7 +518,32 @@ export class SchedulesService {
       rows.push(...attendants);
     }
 
-    return rows.map(toCollabRow);
+    const mapped = rows.map(toCollabRow);
+    return includeInactiveWeekly
+      ? mapped
+      : this.excludeInactiveWeeklyUsers(user.organizationId, mapped);
+  }
+
+  /**
+   * Usuário com horário semanal marcado Inativo (ou conta inativa) não entra
+   * na escala / folha de ponto — só permanece editável em Horários.
+   */
+  private async excludeInactiveWeeklyUsers(
+    organizationId: string,
+    collaborators: CollabRow[],
+  ): Promise<CollabRow[]> {
+    if (collaborators.length === 0) return collaborators;
+    const inactiveWeekly = await this.prisma.workScheduleWeekly.findMany({
+      where: {
+        organizationId,
+        active: false,
+        userId: { in: collaborators.map((c) => c.id) },
+      },
+      select: { userId: true },
+    });
+    if (inactiveWeekly.length === 0) return collaborators;
+    const banned = new Set(inactiveWeekly.map((w) => w.userId));
+    return collaborators.filter((c) => !banned.has(c.id));
   }
 
   async upsertDay(user: AuthUser, input: unknown) {
@@ -770,7 +802,9 @@ export class SchedulesService {
     const params = weeklyScheduleListQuerySchema.parse(query);
     assertStoreAccess(user, params.storeId);
 
-    const collaborators = await this.listCollaborators(user, params.storeId, 'all');
+    const collaborators = await this.listCollaborators(user, params.storeId, 'all', {
+      includeInactiveWeekly: true,
+    });
     const collabIds = collaborators.map((c) => c.id);
     if (collabIds.length === 0) return { items: [], eligibleUsers: [] };
 
@@ -778,6 +812,7 @@ export class SchedulesService {
       where: {
         organizationId: user.organizationId,
         userId: { in: collabIds },
+        user: { active: true },
       },
       select: { userId: true },
     });
@@ -787,6 +822,7 @@ export class SchedulesService {
       where: {
         organizationId: user.organizationId,
         userId: { in: collabIds },
+        user: { active: true },
         ...(params.status === 'active'
           ? { active: true }
           : params.status === 'inactive'
@@ -889,6 +925,16 @@ export class SchedulesService {
         }),
       });
     });
+
+    if (data.active === false) {
+      await this.prisma.userSession.updateMany({
+        where: { userId, revokedAt: null },
+        data: {
+          revokedAt: new Date(),
+          revokeReason: 'revoked_by_admin',
+        },
+      });
+    }
 
     return this.getWeekly(user, userId);
   }
@@ -1047,9 +1093,42 @@ export class SchedulesService {
     }
   }
 
+  /**
+   * App / ponto próprio: conta inativa ou horário semanal Inativo
+   * não consulta escala nem bate ponto (entregador e atendente).
+   */
+  private async assertMobileTimeClockAllowed(user: AuthUser) {
+    const dbUser = await this.prisma.user.findFirst({
+      where: { id: user.id, organizationId: user.organizationId },
+      select: { id: true, active: true },
+    });
+    if (!dbUser || !dbUser.active) {
+      throw new ForbiddenException(
+        'Sua conta está inativa. Fale com o gestor da unidade.',
+      );
+    }
+
+    const weekly = await this.prisma.workScheduleWeekly.findFirst({
+      where: { organizationId: user.organizationId, userId: user.id },
+      select: { active: true },
+    });
+    if (weekly && !weekly.active) {
+      throw new ForbiddenException(
+        'Seu horário está inativo. Escala e ponto indisponíveis — fale com o gestor.',
+      );
+    }
+  }
+
+  private shouldAssertOwnTimeClockAccess(user: AuthUser) {
+    return user.role === 'DELIVERER' || user.role === 'ATTENDANT';
+  }
+
   // ─── Time clock ───────────────────────────────────────────────────────────
 
   async getMyPunches(user: AuthUser, query: unknown) {
+    if (this.shouldAssertOwnTimeClockAccess(user)) {
+      await this.assertMobileTimeClockAllowed(user);
+    }
     const params = timeClockMeQuerySchema.parse(query);
     if (user.role === 'DELIVERER' && !user.storeIds.includes(params.storeId)) {
       const todayKey = todayDateKey(BR_TZ);
@@ -1141,6 +1220,12 @@ export class SchedulesService {
 
   async punch(user: AuthUser, input: unknown) {
     const data = timeClockPunchSchema.parse(input);
+    if (
+      data.source === 'MOBILE'
+      || this.shouldAssertOwnTimeClockAccess(user)
+    ) {
+      await this.assertMobileTimeClockAllowed(user);
+    }
     if (user.role === 'DELIVERER' && data.source === 'MOBILE' && !user.storeIds.includes(data.storeId)) {
       const todayKey = todayDateKey(BR_TZ);
       const todayEntry = await this.prisma.workScheduleEntry.findUnique({
@@ -1941,6 +2026,9 @@ export class SchedulesService {
   async getMyMonth(user: AuthUser, query: unknown) {
     if (user.role !== 'DELIVERER' && !canManageSchedules(user.role) && user.role !== 'ATTENDANT') {
       throw new ForbiddenException('Sem permissão');
+    }
+    if (this.shouldAssertOwnTimeClockAccess(user)) {
+      await this.assertMobileTimeClockAllowed(user);
     }
 
     const year = Number((query as { year?: string }).year);

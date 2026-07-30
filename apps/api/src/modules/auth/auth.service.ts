@@ -102,8 +102,12 @@ export class AuthService {
     return { ok: true };
   }
 
-  /** Valida sid do JWT; atualiza lastSeenAt com throttle. */
-  async assertActiveSession(userId: string, sessionId: string | undefined): Promise<void> {
+  /** Valida sid do JWT; atualiza lastSeenAt (e IP, com evidência se mudou). */
+  async assertActiveSession(
+    userId: string,
+    sessionId: string | undefined,
+    requestIp?: string | null,
+  ): Promise<void> {
     if (!sessionId) {
       throw new UnauthorizedException({
         code: SESSION_SUPERSEDED_CODE,
@@ -113,7 +117,17 @@ export class AuthService {
 
     const session = await this.prisma.userSession.findFirst({
       where: { id: sessionId, userId },
-      select: { id: true, revokedAt: true, revokeReason: true, lastSeenAt: true },
+      select: {
+        id: true,
+        userId: true,
+        client: true,
+        ipAddress: true,
+        userAgent: true,
+        createdAt: true,
+        revokedAt: true,
+        revokeReason: true,
+        lastSeenAt: true,
+      },
     });
 
     if (!session) {
@@ -124,23 +138,59 @@ export class AuthService {
     }
 
     if (session.revokedAt) {
-      const elsewhere =
+      const message =
         session.revokeReason === 'replaced_by_new_login'
-        || session.revokeReason === 'revoked_by_admin';
+          ? 'Sua conta foi acessada de outro lugar. Faça login novamente.'
+          : session.revokeReason === 'revoked_by_admin'
+            ? 'Sua sessão foi encerrada pelo administrador. Faça login novamente.'
+            : 'Sessão encerrada. Faça login novamente.';
       throw new UnauthorizedException({
         code: SESSION_SUPERSEDED_CODE,
-        message: elsewhere
-          ? 'Sua conta foi acessada de outro lugar. Faça login novamente.'
-          : 'Sessão encerrada. Faça login novamente.',
+        message,
       });
     }
 
-    if (Date.now() - session.lastSeenAt.getTime() >= LAST_SEEN_THROTTLE_MS) {
-      await this.prisma.userSession.update({
-        where: { id: session.id },
-        data: { lastSeenAt: new Date() },
-      }).catch(() => undefined);
+    const now = new Date();
+    const shouldTouch = Date.now() - session.lastSeenAt.getTime() >= LAST_SEEN_THROTTLE_MS;
+    const incomingIp = requestIp?.slice(0, 128) || null;
+    const ipChanged =
+      Boolean(incomingIp)
+      && Boolean(session.ipAddress)
+      && incomingIp !== session.ipAddress;
+
+    // Só avalia troca de IP no mesmo ritmo do lastSeen (evita spam de evidências).
+    if (!shouldTouch && !(incomingIp && !session.ipAddress)) return;
+
+    if (ipChanged && incomingIp && session.ipAddress) {
+      // Evidência: mantém o IP antigo como sessão encerrada; a ativa passa a ser o novo IP.
+      await this.prisma.$transaction([
+        this.prisma.userSession.create({
+          data: {
+            userId: session.userId,
+            client: session.client,
+            ipAddress: session.ipAddress,
+            userAgent: session.userAgent,
+            createdAt: session.createdAt,
+            lastSeenAt: session.lastSeenAt,
+            revokedAt: now,
+            revokeReason: 'ip_changed',
+          },
+        }),
+        this.prisma.userSession.update({
+          where: { id: session.id },
+          data: { ipAddress: incomingIp, lastSeenAt: now },
+        }),
+      ]).catch(() => undefined);
+      return;
     }
+
+    await this.prisma.userSession.update({
+      where: { id: session.id },
+      data: {
+        lastSeenAt: now,
+        ...(incomingIp && !session.ipAddress ? { ipAddress: incomingIp } : {}),
+      },
+    }).catch(() => undefined);
   }
 
   async me(userId: string) {

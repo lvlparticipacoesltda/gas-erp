@@ -26,6 +26,7 @@ import {
 } from '@gas-erp/shared';
 import { Loading, StateMessage } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { ApiError } from '@/lib/api';
 import {
   fetchMySchedule,
   fetchMyTimeClock,
@@ -44,6 +45,16 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 const WEEKDAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.message) return err.message;
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
+function isForbidden(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 403;
+}
 
 /** Tamanho real do binário a partir do base64 (sem data-URL). */
 function base64ByteLength(b64: string): number {
@@ -83,6 +94,8 @@ export default function ScheduleScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 403 conta/horário inativo — escala e ponto indisponíveis. */
+  const [accessBlocked, setAccessBlocked] = useState(false);
   const [entries, setEntries] = useState<ScheduleEntryDto[]>([]);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [storeName, setStoreName] = useState<string>('');
@@ -101,11 +114,24 @@ export default function ScheduleScreen() {
     at: number;
   } | null>(null);
 
+  const clearScheduleState = useCallback(() => {
+    setStoreId(null);
+    setStoreName('');
+    setStoreLat(null);
+    setStoreLng(null);
+    setEntries([]);
+    setPunch(null);
+    setPhotoUri(null);
+    setPhotoBase64(null);
+    setDistanceM(null);
+  }, []);
+
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const data = await fetchMySchedule(year, month);
+      setAccessBlocked(false);
       setStoreId(data.store.id);
       setStoreName(data.store.name);
       setStoreLat(data.store.latitude);
@@ -113,21 +139,31 @@ export default function ScheduleScreen() {
       setEntries(data.collaborators[0]?.entries ?? []);
       return data.store.id as string | null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar escala');
+      const message = errorMessage(err, 'Falha ao carregar escala');
+      setError(message);
+      if (isForbidden(err)) {
+        setAccessBlocked(true);
+        clearScheduleState();
+      }
       return null;
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, clearScheduleState]);
 
   const loadPunch = useCallback(async (sid: string) => {
     try {
       const data = await fetchMyTimeClock(sid);
       setPunch(data);
-    } catch {
+    } catch (err) {
       setPunch(null);
+      if (isForbidden(err)) {
+        setAccessBlocked(true);
+        clearScheduleState();
+        setError(errorMessage(err, 'Escala e ponto indisponíveis.'));
+      }
     }
-  }, []);
+  }, [clearScheduleState]);
 
   useEffect(() => {
     void load();
@@ -407,22 +443,27 @@ export default function ScheduleScreen() {
           });
           await loadPunch(sid);
         } catch (err) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Falha ao enviar o ponto. Tente novamente.',
+          const message = errorMessage(
+            err,
+            'Falha ao enviar o ponto. Tente novamente.',
           );
-          try {
-            await loadPunch(sid);
-          } catch {
-            setPunch(snapshot);
+          setError(message);
+          if (isForbidden(err)) {
+            setAccessBlocked(true);
+            clearScheduleState();
+          } else {
+            try {
+              await loadPunch(sid);
+            } catch {
+              setPunch(snapshot);
+            }
           }
         } finally {
           setPunchSyncing(false);
         }
       })();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao bater ponto');
+      setError(errorMessage(err, 'Falha ao bater ponto'));
       setPunchBusy(false);
     }
   }
@@ -431,6 +472,34 @@ export default function ScheduleScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <Loading label="Carregando escala…" />
+      </SafeAreaView>
+    );
+  }
+
+  if (accessBlocked) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ScrollView
+          contentContainerStyle={styles.blockedContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        >
+          <Text style={styles.hello}>Olá, {user?.name?.split(' ')[0] ?? 'entregador'}!</Text>
+          <StateMessage
+            emoji="🚫"
+            title="Escala e ponto indisponíveis"
+            subtitle={
+              error
+              ?? 'Sua conta ou horário está inativo. Fale com o gestor da unidade.'
+            }
+          />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -779,6 +848,13 @@ export default function ScheduleScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
+  blockedContent: {
+    flexGrow: 1,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+    justifyContent: 'center',
+  },
   hello: { fontSize: 22, fontWeight: '700', color: colors.text },
   sub: { fontSize: 14, color: colors.textMuted, marginTop: -4 },
   store: { fontSize: 12, color: colors.textFaint },

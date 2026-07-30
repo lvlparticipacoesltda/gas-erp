@@ -82,12 +82,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler((error) => {
-      if (error.code === SESSION_SUPERSEDED_CODE) {
-        Alert.alert(
-          'Sessão encerrada',
-          error.message || 'Sua conta foi acessada de outro lugar. Faça login novamente.',
-        );
-      }
+      Alert.alert(
+        'Sessão encerrada',
+        error.message
+          || (error.code === SESSION_SUPERSEDED_CODE
+            ? 'Sua conta foi acessada de outro lugar. Faça login novamente.'
+            : 'Faça login novamente.'),
+      );
       void logout();
     });
     return () => setUnauthorizedHandler(null);

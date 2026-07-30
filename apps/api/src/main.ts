@@ -25,6 +25,8 @@ function parseAllowedOrigins(): string[] {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Fly / proxies: confia em X-Forwarded-For para IP real do cliente.
+  app.set('trust proxy', 1);
   app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
   const allowedOrigins = parseAllowedOrigins();
 
