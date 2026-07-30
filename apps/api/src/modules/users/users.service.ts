@@ -248,42 +248,94 @@ export class UsersService {
           ? { role: { not: 'DELIVERER' as const } }
           : {};
 
-    const where = {
-      user: {
-        organizationId: user.organizationId,
-        ...(filters.userId ? { id: filters.userId } : {}),
-        ...roleFilter,
-        ...(search
-          ? {
-              OR: [
-                { name: { contains: search, mode: 'insensitive' as const } },
-                { email: { contains: search, mode: 'insensitive' as const } },
-              ],
-            }
-          : {}),
-      },
-      ...(filters.active === 'true'
-        ? { revokedAt: null }
-        : filters.active === 'false'
-          ? { revokedAt: { not: null } }
-          : {}),
+    const userWhere = {
+      organizationId: user.organizationId,
+      ...(filters.userId ? { id: filters.userId } : {}),
+      ...roleFilter,
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' as const } },
+              { email: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
     };
 
-    const [rows, total] = await Promise.all([
-      this.prisma.userSession.findMany({
-        where,
-        skip,
-        take,
-        include: {
-          user: { select: { id: true, name: true, email: true, role: true } },
-        },
-        // Ativas (revokedAt null) primeiro; depois encerradas mais recentes.
-        orderBy: [{ revokedAt: { sort: 'desc', nulls: 'first' } }, { lastSeenAt: 'desc' }],
-      }),
-      this.prisma.userSession.count({ where }),
-    ]);
+    const include = {
+      user: { select: { id: true, name: true, email: true, role: true } },
+    } as const;
 
-    return paginatedResult(rows.map((r) => this.mapSession(r)), total, p, ps);
+    const activeOnly = filters.active === 'true';
+    const inactiveOnly = filters.active === 'false';
+
+    // Filtro Ativas / Encerradas: ordenação simples por última atividade.
+    if (activeOnly || inactiveOnly) {
+      const where = {
+        user: userWhere,
+        ...(activeOnly ? { revokedAt: null } : { revokedAt: { not: null } }),
+      };
+      const [rows, total] = await Promise.all([
+        this.prisma.userSession.findMany({
+          where,
+          skip,
+          take,
+          include,
+          orderBy: { lastSeenAt: 'desc' },
+        }),
+        this.prisma.userSession.count({ where }),
+      ]);
+      return paginatedResult(rows.map((r) => this.mapSession(r)), total, p, ps);
+    }
+
+    // Status=Todas: ativas primeiro, depois encerradas (ambas por lastSeenAt desc).
+    // Não usar orderBy em revokedAt nullable — em PostgreSQL ASC coloca NULLS LAST
+    // (ativas no fim) e nulls:'first' do Prisma não é confiável aqui com paginação.
+    const activeWhere = { user: userWhere, revokedAt: null };
+    const inactiveWhere = { user: userWhere, revokedAt: { not: null } };
+
+    const [activeTotal, inactiveTotal] = await Promise.all([
+      this.prisma.userSession.count({ where: activeWhere }),
+      this.prisma.userSession.count({ where: inactiveWhere }),
+    ]);
+    const total = activeTotal + inactiveTotal;
+
+    if (skip < activeTotal) {
+      const activeTake = Math.min(take, activeTotal - skip);
+      const actives = await this.prisma.userSession.findMany({
+        where: activeWhere,
+        skip,
+        take: activeTake,
+        include,
+        orderBy: { lastSeenAt: 'desc' },
+      });
+      const remaining = take - actives.length;
+      const inactives =
+        remaining > 0
+          ? await this.prisma.userSession.findMany({
+              where: inactiveWhere,
+              skip: 0,
+              take: remaining,
+              include,
+              orderBy: { lastSeenAt: 'desc' },
+            })
+          : [];
+      return paginatedResult(
+        [...actives, ...inactives].map((r) => this.mapSession(r)),
+        total,
+        p,
+        ps,
+      );
+    }
+
+    const inactives = await this.prisma.userSession.findMany({
+      where: inactiveWhere,
+      skip: skip - activeTotal,
+      take,
+      include,
+      orderBy: { lastSeenAt: 'desc' },
+    });
+    return paginatedResult(inactives.map((r) => this.mapSession(r)), total, p, ps);
   }
 
   async revokeSession(user: AuthUser, sessionId: string) {

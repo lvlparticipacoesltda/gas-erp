@@ -87,7 +87,7 @@ function byLastSeenDesc(a: SessionRow, b: SessionRow) {
   return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime();
 }
 
-/** Agrupa por usuário: ativa como principal; encerradas relacionadas ficam no histórico. */
+/** Agrupa por usuário: ativa como principal; encerradas da página vão para o histórico (Expandir). */
 function groupSessionsByUser(rows: SessionRow[]): SessionGroup[] {
   const byUser = new Map<string, SessionRow[]>();
   for (const row of rows) {
@@ -108,6 +108,7 @@ function groupSessionsByUser(rows: SessionRow[]): SessionGroup[] {
     }
   }
 
+  // Ativas primeiro na UI (reforço; API já pagina ativas antes quando Status=Todas).
   groups.sort((a, b) => {
     if (a.primary.active !== b.primary.active) return a.primary.active ? -1 : 1;
     return byLastSeenDesc(a.primary, b.primary);
@@ -314,7 +315,13 @@ export default function MasterSessionsPage() {
         >
           {agentLabel(row.userAgent, row.client)}
         </td>
-        <td className={cn(cell, 'whitespace-nowrap text-right', nested && 'bg-slate-50/80')}>
+        <td
+          className={cn(
+            cell,
+            'min-w-[11rem] whitespace-nowrap text-right',
+            nested && 'bg-slate-50/80',
+          )}
+        >
           {opts.expandControl ?? (nested ? <span className="text-xs text-slate-400">—</span> : null)}
         </td>
       </>
@@ -391,7 +398,7 @@ export default function MasterSessionsPage() {
               <th className={headCell}>Última atividade</th>
               <th className={headCell}>Duração</th>
               <th className={cn(headCell, 'min-w-[7rem]')}>Agente</th>
-              <th className={cn(headCell, 'text-right')}>Ação</th>
+              <th className={cn(headCell, 'min-w-[11rem] text-right')}>Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -407,18 +414,23 @@ export default function MasterSessionsPage() {
                 const history = historyForGroup(group);
                 const loadingHistory = loadingHistoryUserId === group.userId;
 
+                // Slots fixos horizontais: Encerrar não sobe/desce ao Expandir→Recolher.
                 const expandControl = (
-                  <TableActions>
-                    {group.primary.active ? (
-                      <TableAction onClick={() => void revoke(group.primary)}>Encerrar</TableAction>
-                    ) : null}
-                    <TableAction
-                      tone="muted"
-                      onClick={() => void toggleExpand(group)}
-                      disabled={loadingHistory}
-                    >
-                      {expanded ? 'Recolher' : 'Expandir'}
-                    </TableAction>
+                  <TableActions className="flex-nowrap whitespace-nowrap">
+                    <span className="inline-flex min-w-[3.75rem] justify-end">
+                      {group.primary.active ? (
+                        <TableAction onClick={() => void revoke(group.primary)}>Encerrar</TableAction>
+                      ) : null}
+                    </span>
+                    <span className="inline-flex min-w-[4.5rem] justify-end">
+                      <TableAction
+                        tone="muted"
+                        onClick={() => void toggleExpand(group)}
+                        disabled={loadingHistory}
+                      >
+                        {expanded ? 'Recolher' : 'Expandir'}
+                      </TableAction>
+                    </span>
                   </TableActions>
                 );
 
