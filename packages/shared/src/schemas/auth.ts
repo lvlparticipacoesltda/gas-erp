@@ -7,6 +7,10 @@ export const loginSchema = z.object({
   password: z.string().min(6),
   /** `web` bloqueia login de entregadores; omitir ou `mobile` permite (app). */
   client: z.enum(LOGIN_CLIENTS).optional(),
+  /** ID estável do aparelho (mobile) — convivência web+app para atendente. */
+  deviceId: z.string().min(8).max(128).optional(),
+  /** Código de pareamento gerado em Minha conta (atendente). */
+  pairingCode: z.string().min(4).max(12).optional(),
 });
 
 export const updateProfileSchema = z.object({

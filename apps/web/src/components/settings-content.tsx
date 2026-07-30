@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, getStoredUser, getToken, setAuth } from '@/lib/api';
 import type { AuthUser } from '@gas-erp/shared';
@@ -15,6 +15,14 @@ interface Profile {
   permissions?: string[];
 }
 
+type TrustedDevice = {
+  id: string;
+  deviceId: string;
+  label: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+};
+
 export function SettingsContent() {
   const stored = getStoredUser<AuthUser>();
 
@@ -28,6 +36,29 @@ export function SettingsContent() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
+  const [devices, setDevices] = useState<TrustedDevice[]>([]);
+  const [devicesError, setDevicesError] = useState('');
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingExpiresAt, setPairingExpiresAt] = useState<string | null>(null);
+  const [pairingBusy, setPairingBusy] = useState(false);
+
+  const isAttendant = (profile?.role ?? stored?.role) === 'ATTENDANT';
+
+  const loadDevices = useCallback(async () => {
+    if (!isAttendant) return;
+    try {
+      const data = await api<{ items: TrustedDevice[] }>(
+        '/auth/trusted-devices',
+        {},
+        getToken(),
+      );
+      setDevices(data.items);
+      setDevicesError('');
+    } catch (err) {
+      setDevicesError(err instanceof Error ? err.message : 'Falha ao carregar aparelhos');
+    }
+  }, [isAttendant]);
+
   useEffect(() => {
     api<Profile>('/auth/me', {}, getToken()).then((data) => {
       setProfile(data);
@@ -38,6 +69,10 @@ export function SettingsContent() {
       });
     });
   }, []);
+
+  useEffect(() => {
+    void loadDevices();
+  }, [loadDevices]);
 
   async function handleProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -105,6 +140,34 @@ export function SettingsContent() {
       setPasswordError(err instanceof Error ? err.message : 'Erro ao alterar senha');
     } finally {
       setSavingPassword(false);
+    }
+  }
+
+  async function handleCreatePairingCode() {
+    setPairingBusy(true);
+    setDevicesError('');
+    try {
+      const data = await api<{ code: string; expiresAt: string }>(
+        '/auth/trusted-devices/pairing-code',
+        { method: 'POST' },
+        getToken(),
+      );
+      setPairingCode(data.code);
+      setPairingExpiresAt(data.expiresAt);
+    } catch (err) {
+      setDevicesError(err instanceof Error ? err.message : 'Falha ao gerar código');
+    } finally {
+      setPairingBusy(false);
+    }
+  }
+
+  async function handleRemoveDevice(id: string) {
+    setDevicesError('');
+    try {
+      await api(`/auth/trusted-devices/${id}`, { method: 'DELETE' }, getToken());
+      await loadDevices();
+    } catch (err) {
+      setDevicesError(err instanceof Error ? err.message : 'Falha ao remover aparelho');
     }
   }
 
@@ -187,6 +250,67 @@ export function SettingsContent() {
             </Button>
           </form>
         </Card>
+
+        {isAttendant ? (
+          <Card className="lg:col-span-2">
+            <h2 className="mb-1 font-semibold">Dispositivos confiáveis</h2>
+            <p className="mb-4 text-sm text-slate-600">
+              Pareie o celular para consultar a escala e bater ponto no app sem desconectar o painel
+              web. Gere um código aqui e informe-o no login do aplicativo.
+            </p>
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <Button type="button" onClick={() => void handleCreatePairingCode()} disabled={pairingBusy}>
+                {pairingBusy ? 'Gerando…' : 'Adicionar aparelho'}
+              </Button>
+              {pairingCode ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                  <span className="font-mono text-lg font-bold tracking-widest text-amber-900">
+                    {pairingCode}
+                  </span>
+                  {pairingExpiresAt ? (
+                    <span className="ml-2 text-amber-800">
+                      · válido até{' '}
+                      {new Date(pairingExpiresAt).toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {devicesError ? <p className="mb-3 text-sm text-red-600">{devicesError}</p> : null}
+            {devices.length === 0 ? (
+              <p className="text-sm text-slate-500">Nenhum aparelho pareado ainda.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                {devices.map((d) => (
+                  <li
+                    key={d.id}
+                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                  >
+                    <div>
+                      <div className="font-medium text-slate-900">
+                        {d.label?.trim() || 'Aparelho móvel'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Último uso:{' '}
+                        {new Date(d.lastSeenAt).toLocaleString('pt-BR')}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-red-600 hover:underline"
+                      onClick={() => void handleRemoveDevice(d.id)}
+                    >
+                      Remover
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        ) : null}
       </div>
     </>
   );

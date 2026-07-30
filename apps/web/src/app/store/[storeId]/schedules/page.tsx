@@ -31,7 +31,9 @@ export default function StoreSchedulesPage() {
         subtitle={
           canManage
             ? 'Monte a escala da unidade e acompanhe o ponto'
-            : 'Consulte a escala dos entregadores e bata seu ponto'
+            : isAttendant
+              ? 'Consulte a escala. Bata o ponto pelo aplicativo.'
+              : 'Consulte a escala dos entregadores'
         }
         action={
           canViewLog ? (
@@ -47,7 +49,7 @@ export default function StoreSchedulesPage() {
       <SchedulesPanel
         user={user}
         storeId={storeId}
-        showPunchCard={isAttendant || canManage}
+        showPunchCard={false}
       />
     </>
   );

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Loading, StateMessage } from '@/components/ui';
 import { DeliveryCard } from '@/components/DeliveryCard';
@@ -10,6 +10,7 @@ import {
   type HistoryPeriod,
 } from '@/lib/deliveries';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
+import { useAuth } from '@/lib/auth';
 import { colors, radius, spacing } from '@/theme';
 
 type StatusFilter = 'all' | 'DELIVERED' | 'CANCELLED';
@@ -27,11 +28,18 @@ const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
 ];
 
 export default function HistoryScreen() {
+  const { user } = useAuth();
+  if (user?.role === 'ATTENDANT') {
+    return <Redirect href="/schedule" />;
+  }
+  return <DelivererHistoryScreen />;
+}
+
+function DelivererHistoryScreen() {
   const router = useRouter();
   const { deliveries, loading, refreshing, error, refresh } = useDeliveriesContext();
   const [period, setPeriod] = useState<HistoryPeriod>('today');
   const [status, setStatus] = useState<StatusFilter>('all');
-
   const historyDeliveries = useMemo(() => {
     const completed = deliveries.filter(
       (d) => d.status === 'DELIVERED' || d.status === 'CANCELLED',

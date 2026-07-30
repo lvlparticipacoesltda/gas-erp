@@ -22,6 +22,7 @@ export function ExpandableTabBar(props: any) {
       <View style={[styles.tabRow, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 8) }]}>
         {state.routes.map((route: { key: string; name: string }, index: number) => {
           const { options } = descriptors[route.key];
+          if (options.href === null) return null;
           const isFocused = state.index === index;
           const color = isFocused ? TAB_ACTIVE : TAB_INACTIVE;
 

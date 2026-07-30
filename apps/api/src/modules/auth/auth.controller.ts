@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards';
@@ -50,5 +60,23 @@ export class AuthController {
   @Post('reset-password')
   resetPassword(@Body() body: unknown) {
     return this.authService.resetPassword(body);
+  }
+
+  @Get('trusted-devices')
+  @UseGuards(JwtAuthGuard)
+  listTrustedDevices(@CurrentUser() user: AuthUser) {
+    return this.authService.listTrustedDevices(user);
+  }
+
+  @Post('trusted-devices/pairing-code')
+  @UseGuards(JwtAuthGuard)
+  createPairingCode(@CurrentUser() user: AuthUser) {
+    return this.authService.createPairingCode(user);
+  }
+
+  @Delete('trusted-devices/:id')
+  @UseGuards(JwtAuthGuard)
+  deleteTrustedDevice(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.authService.deleteTrustedDevice(user, id);
   }
 }

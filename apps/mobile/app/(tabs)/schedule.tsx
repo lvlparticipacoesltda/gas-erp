@@ -87,7 +87,7 @@ function formatCommitmentDate(date: string) {
 }
 
 export default function ScheduleScreen() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -136,7 +136,10 @@ export default function ScheduleScreen() {
       setStoreName(data.store.name);
       setStoreLat(data.store.latitude);
       setStoreLng(data.store.longitude);
-      setEntries(data.collaborators[0]?.entries ?? []);
+      const mine =
+        data.collaborators.find((c) => c.id === user?.id)
+        ?? data.collaborators[0];
+      setEntries(mine?.entries ?? []);
       return data.store.id as string | null;
     } catch (err) {
       const message = errorMessage(err, 'Falha ao carregar escala');
@@ -149,7 +152,7 @@ export default function ScheduleScreen() {
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [year, month, clearScheduleState]);
+  }, [year, month, clearScheduleState, user?.id]);
 
   const loadPunch = useCallback(async (sid: string) => {
     try {
@@ -490,7 +493,15 @@ export default function ScheduleScreen() {
             />
           }
         >
-          <Text style={styles.hello}>Olá, {user?.name?.split(' ')[0] ?? 'entregador'}!</Text>
+          <View style={styles.helloRow}>
+            <Text style={styles.hello}>Olá, {user?.name?.split(' ')[0] ?? 'colaborador'}!</Text>
+            {user?.role === 'ATTENDANT' ? (
+              <Pressable onPress={() => void logout()} hitSlop={8} style={styles.logoutBtn}>
+                <Ionicons name="log-out-outline" size={22} color={colors.textMuted} />
+                <Text style={styles.logoutText}>Sair</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <StateMessage
             emoji="🚫"
             title="Escala e ponto indisponíveis"
@@ -517,7 +528,15 @@ export default function ScheduleScreen() {
           />
         }
       >
-        <Text style={styles.hello}>Olá, {user?.name?.split(' ')[0] ?? 'entregador'}!</Text>
+        <View style={styles.helloRow}>
+          <Text style={styles.hello}>Olá, {user?.name?.split(' ')[0] ?? 'colaborador'}!</Text>
+          {user?.role === 'ATTENDANT' ? (
+            <Pressable onPress={() => void logout()} hitSlop={8} style={styles.logoutBtn}>
+              <Ionicons name="log-out-outline" size={22} color={colors.textMuted} />
+              <Text style={styles.logoutText}>Sair</Text>
+            </Pressable>
+          ) : null}
+        </View>
         <Text style={styles.sub}>Confira sua escala de trabalho</Text>
         {storeName ? <Text style={styles.store}>Unidade: {storeName}</Text> : null}
 
@@ -855,7 +874,20 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     justifyContent: 'center',
   },
-  hello: { fontSize: 22, fontWeight: '700', color: colors.text },
+  hello: { fontSize: 22, fontWeight: '700', color: colors.text, flex: 1 },
+  helloRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  logoutText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   sub: { fontSize: 14, color: colors.textMuted, marginTop: -4 },
   store: { fontSize: 12, color: colors.textFaint },
   card: {

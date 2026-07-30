@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
 import { colors } from '@/theme';
 
-function TabsNav() {
+function TabsNav({ isAttendant }: { isAttendant: boolean }) {
   const { pending } = useDeliveriesContext();
   return (
     <Tabs
@@ -22,7 +22,8 @@ function TabsNav() {
         name="index"
         options={{
           title: 'Mapa',
-          tabBarBadge: pending.length > 0 ? pending.length : undefined,
+          href: isAttendant ? null : undefined,
+          tabBarBadge: !isAttendant && pending.length > 0 ? pending.length : undefined,
           tabBarBadgeStyle: { backgroundColor: colors.primary },
           tabBarIcon: ({ color, size }) => <Ionicons name="map" size={size} color={color} />,
         }}
@@ -31,6 +32,7 @@ function TabsNav() {
         name="history"
         options={{
           title: 'Histórico',
+          href: isAttendant ? null : undefined,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="checkmark-done" size={size} color={color} />
           ),
@@ -49,6 +51,7 @@ function TabsNav() {
         name="sale"
         options={{
           title: 'Venda',
+          href: isAttendant ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="add-circle-outline" size={size} color={color} />,
         }}
       />
@@ -57,7 +60,7 @@ function TabsNav() {
 }
 
 export default function TabsLayout() {
-  const { token, initializing } = useAuth();
+  const { token, user, initializing } = useAuth();
 
   if (initializing) {
     return (
@@ -68,5 +71,7 @@ export default function TabsLayout() {
   }
   if (!token) return <Redirect href="/login" />;
 
-  return <TabsNav />;
+  const isAttendant = user?.role === 'ATTENDANT';
+
+  return <TabsNav isAttendant={isAttendant} />;
 }

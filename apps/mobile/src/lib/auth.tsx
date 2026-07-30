@@ -16,7 +16,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, pairingCode?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -44,15 +44,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, pairingCode?: string) => {
+    const { getOrCreateDeviceId } = await import('./storage');
+    const deviceId = await getOrCreateDeviceId();
     const res = await api<LoginResponse>('/auth/login', {
       method: 'POST',
       auth: false,
-      body: { email: email.trim().toLowerCase(), password, client: 'mobile' },
+      body: {
+        email: email.trim().toLowerCase(),
+        password,
+        client: 'mobile',
+        deviceId,
+        ...(pairingCode?.trim() ? { pairingCode: pairingCode.trim() } : {}),
+      },
     });
 
-    if (res.user.role !== 'DELIVERER') {
-      throw new ApiError('Este aplicativo é exclusivo para entregadores.', 403);
+    if (res.user.role !== 'DELIVERER' && res.user.role !== 'ATTENDANT') {
+      throw new ApiError(
+        'Este aplicativo é exclusivo para entregadores e atendentes (escala/ponto).',
+        403,
+      );
     }
 
     // Evita herdar rota/GPS de outra conta no mesmo aparelho.
@@ -65,7 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization: res.organization ?? null,
       initializing: false,
     });
-    void syncPushWithRetries(res.accessToken);
+    if (res.user.role === 'DELIVERER') {
+      void syncPushWithRetries(res.accessToken);
+    }
   }, []);
 
   const logout = useCallback(async () => {

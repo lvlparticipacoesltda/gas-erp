@@ -1323,8 +1323,8 @@ export class SchedulesService {
         throw new ForbiddenException('Sem permissão para bater ponto nesta unidade');
       }
     } else {
-      if (user.role !== 'DELIVERER') {
-        throw new ForbiddenException('Ponto mobile é exclusivo do entregador');
+      if (user.role !== 'DELIVERER' && user.role !== 'ATTENDANT') {
+        throw new ForbiddenException('Ponto mobile é exclusivo do entregador ou atendente');
       }
     }
 
@@ -2151,6 +2151,27 @@ export class SchedulesService {
         } else {
           storeId = fallbackStoreId;
         }
+      } else if (user.role === 'ATTENDANT') {
+        const todayKey = todayDateKey(BR_TZ);
+        const todayEntry = await this.prisma.workScheduleEntry.findUnique({
+          where: {
+            organizationId_userId_date: {
+              organizationId: user.organizationId,
+              userId: user.id,
+              date: parseDateOnly(todayKey),
+            },
+          },
+          select: { storeId: true, dayType: true },
+        });
+        if (
+          todayEntry?.storeId
+          && !isNonWorkingScheduleDay(todayEntry.dayType)
+          && user.storeIds.includes(todayEntry.storeId)
+        ) {
+          storeId = todayEntry.storeId;
+        } else {
+          storeId = user.storeIds[0];
+        }
       } else {
         storeId = user.storeIds[0];
       }
@@ -2161,7 +2182,12 @@ export class SchedulesService {
       storeId,
       year,
       month,
-      roleFilter: user.role === 'DELIVERER' ? 'deliverers' : 'all',
+      roleFilter:
+        user.role === 'DELIVERER'
+          ? 'deliverers'
+          : user.role === 'ATTENDANT'
+            ? 'attendants'
+            : 'all',
     });
   }
 }

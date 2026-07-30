@@ -16,22 +16,29 @@ import { colors } from '@/theme';
 
 /** Entregas compartilhadas entre abas e tela de detalhe (/delivery/[id]). */
 function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isDeliverer = user?.role === 'DELIVERER';
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !isDeliverer) return;
     initForegroundPresence();
     return () => {
       teardownForegroundPresence();
     };
-  }, [token]);
+  }, [token, isDeliverer]);
 
   if (!token) return children;
+
+  // Provider sempre presente (abas ocultas do atendente ainda podem montar); push/GPS só entregador.
   return (
     <DeliveriesProvider>
       <DelivererAvailabilityProvider>
-        <PushNotificationsBridge />
-        <DevicePowerSetupBridge />
+        {isDeliverer ? (
+          <>
+            <PushNotificationsBridge />
+            <DevicePowerSetupBridge />
+          </>
+        ) : null}
         {children}
       </DelivererAvailabilityProvider>
     </DeliveriesProvider>

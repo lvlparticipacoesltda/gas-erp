@@ -267,16 +267,20 @@ model User {
   workSchedulesUpdated WorkScheduleEntry[] @relation("WorkScheduleUpdatedBy")
   timeClockPunches    TimeClockPunch[]
   sessions            UserSession[]
+  trustedDevices      TrustedDevice[]
+  devicePairingCodes  DevicePairingCode[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
 }
 
-/** Sessão de login (JWT sid). Uma ativa por usuário; novo login revoga as anteriores. */
+/** Sessão de login (JWT sid). Login único por padrão; atendente pode manter web+mobile com dispositivo confiável. */
 model UserSession {
   id           String    @id @default(cuid())
   userId       String
   client       String?
+  /** ID do aparelho (mobile) — usado com TrustedDevice. */
+  deviceId     String?
   ipAddress    String?
   userAgent    String?
   createdAt    DateTime  @default(now())
@@ -288,6 +292,37 @@ model UserSession {
 
   @@index([userId, revokedAt])
   @@index([revokedAt, lastSeenAt])
+  @@index([userId, deviceId])
+}
+
+/** Aparelho móvel confiável (atendente): convive com sessão web. */
+model TrustedDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  deviceId   String
+  label      String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+}
+
+/** Código de pareamento de aparelho (uso único, TTL curto). */
+model DevicePairingCode {
+  id        String    @id @default(cuid())
+  userId    String
+  code      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, code])
+  @@index([expiresAt])
 }
 
 model UserStore {

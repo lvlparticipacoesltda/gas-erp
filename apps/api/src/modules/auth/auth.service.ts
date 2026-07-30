@@ -25,11 +25,26 @@ const FORGOT_PASSWORD_MESSAGE =
   'Se o e-mail estiver cadastrado, você receberá instruções para redefinir a senha em breve.';
 
 const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
 
 export type LoginRequestMeta = {
   ipAddress?: string | null;
   userAgent?: string | null;
 };
+
+function normalizePairingCode(raw: string): string {
+  return raw.trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function generatePairingCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  const bytes = randomBytes(6);
+  for (let i = 0; i < 6; i += 1) {
+    code += alphabet[bytes[i]! % alphabet.length];
+  }
+  return code;
+}
 
 @Injectable()
 export class AuthService {
@@ -40,7 +55,7 @@ export class AuthService {
   ) {}
 
   async login(input: unknown, meta: LoginRequestMeta = {}) {
-    const { email, password, client } = loginSchema.parse(input);
+    const { email, password, client, deviceId, pairingCode } = loginSchema.parse(input);
     const user = await this.prisma.user.findFirst({
       where: { email, active: true },
       include: { userStores: true, organization: true },
@@ -56,19 +71,110 @@ export class AuthService {
       );
     }
 
-    // Revoga sessões anteriores (login único).
-    await this.prisma.userSession.updateMany({
-      where: { userId: user.id, revokedAt: null },
-      data: {
-        revokedAt: new Date(),
-        revokeReason: 'replaced_by_new_login',
-      },
-    });
+    const now = new Date();
+    let trustedDeviceId: string | null = null;
+
+    // Atendente: pareamento ou aparelho já confiável → convive com sessão web.
+    if (user.role === 'ATTENDANT' && client === 'mobile' && deviceId) {
+      if (pairingCode) {
+        const code = normalizePairingCode(pairingCode);
+        const pairing = await this.prisma.devicePairingCode.findFirst({
+          where: {
+            userId: user.id,
+            code,
+            usedAt: null,
+            expiresAt: { gt: now },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (!pairing) {
+          throw new BadRequestException(
+            'Código de aparelho inválido ou expirado. Gere um novo em Minha conta.',
+          );
+        }
+        await this.prisma.$transaction([
+          this.prisma.devicePairingCode.update({
+            where: { id: pairing.id },
+            data: { usedAt: now },
+          }),
+          this.prisma.trustedDevice.upsert({
+            where: { userId_deviceId: { userId: user.id, deviceId } },
+            create: { userId: user.id, deviceId, lastSeenAt: now },
+            update: { lastSeenAt: now },
+          }),
+        ]);
+        trustedDeviceId = deviceId;
+      } else {
+        const trusted = await this.prisma.trustedDevice.findUnique({
+          where: { userId_deviceId: { userId: user.id, deviceId } },
+        });
+        if (trusted) {
+          trustedDeviceId = deviceId;
+          await this.prisma.trustedDevice.update({
+            where: { id: trusted.id },
+            data: { lastSeenAt: now },
+          });
+        }
+      }
+    }
+
+    if (user.role === 'ATTENDANT' && client === 'mobile' && trustedDeviceId) {
+      // Mantém sessões web; revoga outras sessões mobile.
+      await this.prisma.userSession.updateMany({
+        where: {
+          userId: user.id,
+          revokedAt: null,
+          OR: [{ client: 'mobile' }, { client: null }],
+        },
+        data: {
+          revokedAt: now,
+          revokeReason: 'replaced_by_new_login',
+        },
+      });
+    } else if (user.role === 'ATTENDANT' && client === 'web') {
+      // Mantém sessões mobile de aparelhos confiáveis; revoga web e mobile não confiáveis.
+      const trusted = await this.prisma.trustedDevice.findMany({
+        where: { userId: user.id },
+        select: { deviceId: true },
+      });
+      const trustedIds = trusted.map((t) => t.deviceId);
+      const active = await this.prisma.userSession.findMany({
+        where: { userId: user.id, revokedAt: null },
+        select: { id: true, client: true, deviceId: true },
+      });
+      const toRevoke = active
+        .filter((s) => {
+          if (s.client === 'mobile' && s.deviceId && trustedIds.includes(s.deviceId)) {
+            return false;
+          }
+          return true;
+        })
+        .map((s) => s.id);
+      if (toRevoke.length > 0) {
+        await this.prisma.userSession.updateMany({
+          where: { id: { in: toRevoke } },
+          data: {
+            revokedAt: now,
+            revokeReason: 'replaced_by_new_login',
+          },
+        });
+      }
+    } else {
+      // Login único (entregador e demais casos).
+      await this.prisma.userSession.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: {
+          revokedAt: now,
+          revokeReason: 'replaced_by_new_login',
+        },
+      });
+    }
 
     const session = await this.prisma.userSession.create({
       data: {
         userId: user.id,
         client: client ?? null,
+        deviceId: client === 'mobile' ? deviceId ?? null : null,
         ipAddress: meta.ipAddress?.slice(0, 128) || null,
         userAgent: meta.userAgent?.slice(0, 512) || null,
       },
@@ -90,7 +196,73 @@ export class AuthService {
       accessToken,
       user: authUser,
       organization: { id: user.organization.id, name: user.organization.name },
+      trustedDevice: Boolean(trustedDeviceId),
     };
+  }
+
+  private assertAttendant(user: AuthUser) {
+    if (user.role !== 'ATTENDANT') {
+      throw new ForbiddenException('Dispositivos confiáveis são exclusivos de atendentes.');
+    }
+  }
+
+  async createPairingCode(user: AuthUser) {
+    this.assertAttendant(user);
+    const now = new Date();
+    const code = generatePairingCode();
+    const expiresAt = new Date(now.getTime() + PAIRING_CODE_TTL_MS);
+    await this.prisma.devicePairingCode.create({
+      data: {
+        userId: user.id,
+        code,
+        expiresAt,
+      },
+    });
+    return {
+      code,
+      expiresAt: expiresAt.toISOString(),
+      expiresInSeconds: Math.floor(PAIRING_CODE_TTL_MS / 1000),
+    };
+  }
+
+  async listTrustedDevices(user: AuthUser) {
+    this.assertAttendant(user);
+    const devices = await this.prisma.trustedDevice.findMany({
+      where: { userId: user.id },
+      orderBy: { lastSeenAt: 'desc' },
+    });
+    return {
+      items: devices.map((d) => ({
+        id: d.id,
+        deviceId: d.deviceId,
+        label: d.label,
+        createdAt: d.createdAt.toISOString(),
+        lastSeenAt: d.lastSeenAt.toISOString(),
+      })),
+    };
+  }
+
+  async deleteTrustedDevice(user: AuthUser, id: string) {
+    this.assertAttendant(user);
+    const device = await this.prisma.trustedDevice.findFirst({
+      where: { id, userId: user.id },
+    });
+    if (!device) throw new BadRequestException('Aparelho não encontrado');
+    await this.prisma.$transaction([
+      this.prisma.trustedDevice.delete({ where: { id: device.id } }),
+      this.prisma.userSession.updateMany({
+        where: {
+          userId: user.id,
+          deviceId: device.deviceId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+          revokeReason: 'revoked_by_admin',
+        },
+      }),
+    ]);
+    return { ok: true };
   }
 
   async logout(sessionId: string | undefined) {
@@ -121,6 +293,7 @@ export class AuthService {
         id: true,
         userId: true,
         client: true,
+        deviceId: true,
         ipAddress: true,
         userAgent: true,
         createdAt: true,
@@ -168,6 +341,7 @@ export class AuthService {
           data: {
             userId: session.userId,
             client: session.client,
+            deviceId: session.deviceId,
             ipAddress: session.ipAddress,
             userAgent: session.userAgent,
             createdAt: session.createdAt,

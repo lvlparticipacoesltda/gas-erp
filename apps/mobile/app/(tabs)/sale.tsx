@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Redirect } from 'expo-router';
 import {
   MOBILE_APPROVAL_LABELS,
   getPaymentLinesSumErrorMessage,
@@ -117,6 +118,14 @@ function productDeliveryFee(product: Product | undefined): number {
 }
 
 export default function NewSaleScreen() {
+  const { user } = useAuth();
+  if (user?.role === 'ATTENDANT') {
+    return <Redirect href="/schedule" />;
+  }
+  return <DelivererSaleScreen />;
+}
+
+function DelivererSaleScreen() {
   const { user } = useAuth();
   const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
