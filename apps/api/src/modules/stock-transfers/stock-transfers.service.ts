@@ -11,6 +11,8 @@ import { assertStoreAccess } from '../../common/guards';
 import { StockService } from '../stock/stock.service';
 import { AuditService } from '../../common/audit/audit.service';
 
+type TransferLine = { productId: string; quantity: number };
+
 @Injectable()
 export class StockTransfersService {
   constructor(
@@ -43,6 +45,38 @@ export class StockTransfersService {
     });
   }
 
+  /**
+   * Expande itens com o vasilhame vinculado (`Product.vasilhameProductId`),
+   * na mesma quantidade do produto pai. Se o vasilhame já estiver listado
+   * explicitamente, não duplica.
+   */
+  private async expandItemsWithLinkedVasilhame(items: TransferLine[]): Promise<TransferLine[]> {
+    const productIds = [...new Set(items.map((i) => i.productId))];
+    if (productIds.length === 0) return items;
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, vasilhameProductId: true },
+    });
+    const vasilhameByProduct = new Map(
+      products.map((p) => [p.id, p.vasilhameProductId] as const),
+    );
+
+    const explicitIds = new Set(items.map((i) => i.productId));
+    const qtyByProduct = new Map<string, number>();
+    for (const item of items) {
+      qtyByProduct.set(item.productId, (qtyByProduct.get(item.productId) ?? 0) + item.quantity);
+    }
+
+    for (const item of items) {
+      const vasId = vasilhameByProduct.get(item.productId);
+      if (!vasId || explicitIds.has(vasId)) continue;
+      qtyByProduct.set(vasId, (qtyByProduct.get(vasId) ?? 0) + item.quantity);
+    }
+
+    return [...qtyByProduct.entries()].map(([productId, quantity]) => ({ productId, quantity }));
+  }
+
   async create(user: AuthUser, input: unknown) {
     if (!canManageStock(user.role)) {
       throw new ForbiddenException('Sem permissão para transferir estoque.');
@@ -53,13 +87,15 @@ export class StockTransfersService {
     }
     assertStoreAccess(user, data.fromStoreId);
 
+    const items = await this.expandItemsWithLinkedVasilhame(data.items);
+
     const transfer = await this.prisma.stockTransfer.create({
       data: {
         fromStoreId: data.fromStoreId,
         toStoreId: data.toStoreId,
         notes: data.notes,
         status: StockTransferStatus.PENDING,
-        items: { create: data.items },
+        items: { create: items },
       },
       include: { items: { include: { product: true } }, fromStore: true, toStore: true },
     });
@@ -80,8 +116,14 @@ export class StockTransfersService {
     assertStoreAccess(user, transfer.toStoreId);
 
     if (status === 'COMPLETED') {
+      // Expande de novo para cobrir transferências criadas antes desta regra
+      // (ou itens sem o vasilhame listado).
+      const moves = await this.expandItemsWithLinkedVasilhame(
+        transfer.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      );
+
       return this.prisma.$transaction(async (tx) => {
-        for (const item of transfer.items) {
+        for (const item of moves) {
           await this.stockService.deductForTransfer(
             tx,
             transfer.fromStoreId,

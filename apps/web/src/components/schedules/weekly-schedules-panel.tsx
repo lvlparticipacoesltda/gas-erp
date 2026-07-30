@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   WEEKDAY_LABELS,
-  canManageSchedules,
+  canAccessHorarios,
   type AuthUser,
   type ScheduleDayType,
 } from '@gas-erp/shared';
@@ -108,7 +108,7 @@ export function WeeklySchedulesPanel({
   stores?: Array<{ id: string; name: string }>;
   showStoreFilter?: boolean;
 }) {
-  const canEdit = canManageSchedules(user.role);
+  const canEdit = canAccessHorarios(user.role, user.permissions);
   const [storeId, setStoreId] = useState(fixedStoreId ?? '');
   const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('all');
   const [q, setQ] = useState('');

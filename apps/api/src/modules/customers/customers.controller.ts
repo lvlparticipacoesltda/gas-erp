@@ -28,7 +28,7 @@ export class CustomersController {
     );
   }
 
-  /** Lista categorias canônicas (P13/P20/P45); deve vir antes de :id. */
+  /** Lista categorias canônicas (P13/P20/P45/Gás do Povo); deve vir antes de :id. */
   @Get('categories')
   listCategories(@CurrentUser() user: AuthUser) {
     return this.customersService.listCategories(user);

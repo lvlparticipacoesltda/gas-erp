@@ -10,13 +10,13 @@ import {
   refreshStoredUser,
   setCurrentStoreId,
 } from '@/lib/api';
-import { buildStoreHref, defaultStorePath, STORE_NAV_ITEMS } from '@/lib/store-nav';
-import { NavLink } from '@/components/ui';
+import { defaultStorePath } from '@/lib/store-nav';
 import { Logo } from '@/components/logo';
 import { PageLoader } from '@/components/brand-loader';
 import { NotificationsCenter } from '@/components/notifications/notifications-center';
 import { MasterAccountMenu, MasterSidebarNav } from '@/components/master-sidebar-nav';
-import { canManagePaymentMethods, hasScreenPermission, ROLE_LABELS } from '@gas-erp/shared';
+import { StoreAccountMenu, StoreSidebarNav } from '@/components/store-sidebar-nav';
+import { ROLE_LABELS } from '@gas-erp/shared';
 import type { AuthUser } from '@gas-erp/shared';
 
 interface Store {
@@ -150,30 +150,12 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
     );
   }
 
-  const storeLinksBase = activeStoreId
-    ? STORE_NAV_ITEMS.filter((item) => hasScreenPermission(user.role, user.permissions, item.screen)).map(
-        (item) => ({
-          href: buildStoreHref(activeStoreId, item.segment),
-          label: item.label,
-        }),
-      )
-    : [];
-
-  const storeLinks = [
-    ...storeLinksBase,
-    ...(activeStoreId && canManagePaymentMethods(user.role)
-      ? [{ href: `/store/${activeStoreId}/settings/payment-methods`, label: 'Formas de pagamento' }]
-      : []),
-    ...(activeStoreId ? [{ href: `/store/${activeStoreId}/settings`, label: 'Minha conta' }] : []),
-  ];
-
   return (
     <div className="min-h-screen">
       <aside className="border-r border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col">
         <div className="border-b border-slate-200 p-4">
           <Logo size="sm" />
           <div className="mt-2 text-xs text-slate-500">{ROLE_LABELS[user.role] ?? user.role}</div>
-          {mode === 'store' && <div className="text-sm font-medium">{user.name}</div>}
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {mode === 'store' && stores.length > 0 && (
@@ -191,32 +173,26 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
           )}
           {mode === 'master' ? (
             <MasterSidebarNav />
-          ) : (
-            <nav className="space-y-1">
-              {storeLinks.map((l) => (
-                <NavLink key={l.href} href={l.href} active={pathname === l.href}>
-                  {l.label}
-                </NavLink>
-              ))}
-              {user.role === 'ORG_MASTER' && (
-                <NavLink href="/master/dashboard" active={pathname.startsWith('/master')}>
-                  Painel Master
-                </NavLink>
-              )}
-            </nav>
-          )}
+          ) : activeStoreId ? (
+            <StoreSidebarNav storeId={activeStoreId} user={user} />
+          ) : null}
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-4">
           {mode === 'master' ? (
-            <>
-              <MasterAccountMenu userName={user.name} onLogout={logout} />
-              <NotificationsCenter />
-            </>
+            <MasterAccountMenu userName={user.name} onLogout={logout} />
+          ) : activeStoreId ? (
+            <StoreAccountMenu
+              storeId={activeStoreId}
+              userName={user.name}
+              role={user.role}
+              onLogout={logout}
+            />
           ) : (
             <button onClick={logout} type="button" className="text-sm text-red-600 hover:underline">
               Sair
             </button>
           )}
+          <NotificationsCenter />
         </div>
       </aside>
       <main className="min-h-screen p-6 lg:ml-64">{children}</main>

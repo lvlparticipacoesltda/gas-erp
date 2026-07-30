@@ -12,8 +12,10 @@ import {
   TIME_CLOCK_DAY_STATUS_LABELS,
   TIME_CLOCK_GEOFENCE_METERS,
   TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES,
+  canAccessHorarios,
   canManageSchedules,
   canViewTimeClockLog,
+  hasScreenPermission,
   assignTimeClockPunchSlots,
   computeTimeClockDayTotals,
   copyScheduleSchema,
@@ -48,7 +50,7 @@ import {
   type TimeClockPunchSlotKey,
 } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { assertScreenPermission, assertStoreAccess } from '../../common/guards';
+import { assertStoreAccess } from '../../common/guards';
 import { CnpjLookupService } from '../../common/cnpj/cnpj-lookup.service';
 import { compressJpegToMaxBytes } from '../../common/images/compress-jpeg';
 
@@ -393,16 +395,20 @@ export class SchedulesService {
     if (canManageSchedules(user.role)) return;
     // App do entregador lê a própria escala sem permissão de tela web.
     if (user.role === 'DELIVERER') return;
-    if (user.role === 'ATTENDANT') {
-      assertScreenPermission(user, 'store.schedules');
-      return;
-    }
+    if (hasScreenPermission(user.role, user.permissions, 'store.schedules')) return;
     throw new ForbiddenException('Sem permissão para escalas');
   }
 
   private assertCanManage(user: AuthUser) {
     if (!canManageSchedules(user.role)) {
       throw new ForbiddenException('Apenas master ou gerente podem editar a escala');
+    }
+  }
+
+  /** Horários semanais — master/gerente ou quem tem store.schedules.horarios. */
+  private assertCanAccessHorarios(user: AuthUser) {
+    if (!canAccessHorarios(user.role, user.permissions)) {
+      throw new ForbiddenException('Sem permissão para Horários');
     }
   }
 
@@ -862,7 +868,7 @@ export class SchedulesService {
   }
 
   async listWeeklies(user: AuthUser, query: unknown) {
-    this.assertCanManage(user);
+    this.assertCanAccessHorarios(user);
     const params = weeklyScheduleListQuerySchema.parse(query);
     if (params.storeId) assertStoreAccess(user, params.storeId);
 
@@ -924,7 +930,7 @@ export class SchedulesService {
   }
 
   async getWeekly(user: AuthUser, userId: string) {
-    this.assertCanManage(user);
+    this.assertCanAccessHorarios(user);
     const weekly = await this.prisma.workScheduleWeekly.findFirst({
       where: { organizationId: user.organizationId, userId },
       include: {
@@ -939,7 +945,7 @@ export class SchedulesService {
   }
 
   async upsertWeekly(user: AuthUser, userId: string, input: unknown) {
-    this.assertCanManage(user);
+    this.assertCanAccessHorarios(user);
     const data = upsertWeeklyScheduleSchema.parse(input);
     assertStoreAccess(user, data.storeId);
     await this.assertUserBelongsToStore(userId, data.storeId, user.organizationId);
@@ -1010,7 +1016,7 @@ export class SchedulesService {
   }
 
   async deleteWeekly(user: AuthUser, userId: string) {
-    this.assertCanManage(user);
+    this.assertCanAccessHorarios(user);
     const weekly = await this.prisma.workScheduleWeekly.findFirst({
       where: { organizationId: user.organizationId, userId },
     });
@@ -1021,7 +1027,7 @@ export class SchedulesService {
   }
 
   async applyWeekly(user: AuthUser, userId: string, input: unknown) {
-    this.assertCanManage(user);
+    this.assertCanAccessHorarios(user);
     const data = applyWeeklyScheduleSchema.parse(input);
 
     const weekly = await this.prisma.workScheduleWeekly.findFirst({
@@ -1092,7 +1098,7 @@ export class SchedulesService {
   }
 
   async applyStoreWeeklies(user: AuthUser, input: unknown) {
-    this.assertCanManage(user);
+    this.assertCanAccessHorarios(user);
     const data = applyStoreWeekliesSchema.parse(input);
     assertStoreAccess(user, data.storeId);
 

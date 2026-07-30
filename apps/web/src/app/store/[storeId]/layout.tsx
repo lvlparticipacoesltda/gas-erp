@@ -4,8 +4,7 @@ import { useEffect } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { refreshStoredUser } from '@/lib/api';
-import { hasScreenPermission } from '@gas-erp/shared';
-import { defaultStorePath, pathnameToStoreScreen } from '@/lib/store-nav';
+import { canAccessStoreNavItem, defaultStorePath, storeNavItemForPath } from '@/lib/store-nav';
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -20,10 +19,10 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
         return;
       }
 
-      const screen = pathnameToStoreScreen(pathname, storeId);
-      if (!screen) return;
+      const item = storeNavItemForPath(pathname, storeId);
+      if (!item) return;
 
-      if (!hasScreenPermission(user.role, user.permissions, screen)) {
+      if (!canAccessStoreNavItem(user, item)) {
         router.replace(defaultStorePath(storeId, user));
       }
     });

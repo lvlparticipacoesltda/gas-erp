@@ -12,6 +12,7 @@ export const STORE_SCREEN_KEYS = [
   'store.deliverers',
   'store.deliverers.map',
   'store.schedules',
+  'store.schedules.horarios',
   'store.time-clock',
   'store.daily-summary',
   'store.reports',
@@ -31,6 +32,7 @@ export const STORE_SCREEN_LABELS: Record<StoreScreenKey, string> = {
   'store.deliverers': 'Entregadores',
   'store.deliverers.map': 'Mapa de entregadores',
   'store.schedules': 'Escalas de trabalho',
+  'store.schedules.horarios': 'Horários',
   'store.time-clock': 'Cartão de ponto',
   'store.daily-summary': 'Resumo diário',
   'store.reports': 'Relatórios',
@@ -147,6 +149,15 @@ export function hasScreenPermission(
   const normalized = normalizeScreenKey(screen);
   if (!normalized) return false;
   return resolveUserPermissions(role, custom).includes(normalized);
+}
+
+/** Horários semanais (weeklies) — master/gerente ou quem tem a tela. */
+export function canAccessHorarios(
+  role: string,
+  permissions?: string[] | null,
+): boolean {
+  if (canManageSchedules(role)) return true;
+  return hasScreenPermission(role, permissions, 'store.schedules.horarios');
 }
 
 /** Consulta do log/cartão de ponto (sem editar batidas). */

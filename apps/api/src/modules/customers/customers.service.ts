@@ -18,7 +18,7 @@ import { paginate, paginatedResult } from '../../common/utils/pagination';
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
 
-  /** Garante P13/P20/P45 ativas na organização (idempotente). */
+  /** Garante categorias canônicas (P13/P20/P45/Gás do Povo) ativas na organização (idempotente). */
   async ensureOrgCustomerCategories(organizationId: string) {
     await Promise.all(
       CUSTOMER_CATEGORY_NAMES.map((name) =>

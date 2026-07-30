@@ -138,7 +138,7 @@ async function main() {
   });
 
   const categories = await Promise.all(
-    (['P13', 'P20', 'P45'] as const).map((name) =>
+    (['P13', 'P20', 'P45', 'Gás do Povo'] as const).map((name) =>
       prisma.customerCategory.upsert({
         where: { organizationId_name: { organizationId: org.id, name } },
         update: { active: true },
