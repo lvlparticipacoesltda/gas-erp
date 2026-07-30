@@ -277,7 +277,8 @@ export class UsersService {
         include: {
           user: { select: { id: true, name: true, email: true, role: true } },
         },
-        orderBy: [{ revokedAt: 'asc' }, { lastSeenAt: 'desc' }],
+        // Ativas (revokedAt null) primeiro; depois encerradas mais recentes.
+        orderBy: [{ revokedAt: { sort: 'desc', nulls: 'first' } }, { lastSeenAt: 'desc' }],
       }),
       this.prisma.userSession.count({ where }),
     ]);
