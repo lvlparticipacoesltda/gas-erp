@@ -35,7 +35,7 @@ type SessionGroup = {
   pageHistory: SessionRow[];
 };
 
-/** Padrão: atendentes; todas as sessões (ativas + encerradas) para ver troca de IP. */
+/** Padrão: atendentes; Status=Todas lista só ativas (histórico no Expandir). */
 const emptyFilters = {
   search: '',
   active: '',
@@ -87,8 +87,15 @@ function byLastSeenDesc(a: SessionRow, b: SessionRow) {
   return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime();
 }
 
-/** Agrupa por usuário: ativa como principal; encerradas da página vão para o histórico (Expandir). */
-function groupSessionsByUser(rows: SessionRow[]): SessionGroup[] {
+/**
+ * Agrupa por usuário.
+ * - Status Todas/Ativas: só linhas ativas no topo; encerradas nunca viram row principal.
+ * - Status Encerradas: inativas no topo (primeira = primary, resto no Expandir).
+ */
+function groupSessionsByUser(
+  rows: SessionRow[],
+  opts: { allowInactivePrimary: boolean },
+): SessionGroup[] {
   const byUser = new Map<string, SessionRow[]>();
   for (const row of rows) {
     const list = byUser.get(row.userId) ?? [];
@@ -102,18 +109,13 @@ function groupSessionsByUser(rows: SessionRow[]): SessionGroup[] {
     const inactive = sessions.filter((s) => !s.active).sort(byLastSeenDesc);
     if (active) {
       groups.push({ userId, primary: active, pageHistory: inactive });
-    } else if (inactive.length > 0) {
+    } else if (opts.allowInactivePrimary && inactive.length > 0) {
       const [primary, ...rest] = inactive;
       groups.push({ userId, primary, pageHistory: rest });
     }
   }
 
-  // Ativas primeiro na UI (reforço; API já pagina ativas antes quando Status=Todas).
-  groups.sort((a, b) => {
-    if (a.primary.active !== b.primary.active) return a.primary.active ? -1 : 1;
-    return byLastSeenDesc(a.primary, b.primary);
-  });
-
+  groups.sort((a, b) => byLastSeenDesc(a.primary, b.primary));
   return groups;
 }
 
@@ -132,7 +134,13 @@ export default function MasterSessionsPage() {
   const [historyByUser, setHistoryByUser] = useState<Record<string, SessionRow[]>>({});
   const [loadingHistoryUserId, setLoadingHistoryUserId] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupSessionsByUser(rows), [rows]);
+  const groups = useMemo(
+    () =>
+      groupSessionsByUser(rows, {
+        allowInactivePrimary: appliedFilters.active === 'false',
+      }),
+    [rows, appliedFilters.active],
+  );
 
   async function loadSessions() {
     setLoading(true);

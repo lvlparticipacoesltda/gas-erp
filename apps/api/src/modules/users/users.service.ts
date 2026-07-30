@@ -266,76 +266,26 @@ export class UsersService {
       user: { select: { id: true, name: true, email: true, role: true } },
     } as const;
 
-    const activeOnly = filters.active === 'true';
+    // Status vazio/Todas e Ativas: só ativas na lista paginada.
+    // Encerradas ficam no Expandir (?userId=&active=false), não misturadas nas páginas.
+    // Status=Encerradas: lista só inativas no topo (propósito do filtro).
     const inactiveOnly = filters.active === 'false';
+    const where = {
+      user: userWhere,
+      ...(inactiveOnly ? { revokedAt: { not: null } } : { revokedAt: null }),
+    };
 
-    // Filtro Ativas / Encerradas: ordenação simples por última atividade.
-    if (activeOnly || inactiveOnly) {
-      const where = {
-        user: userWhere,
-        ...(activeOnly ? { revokedAt: null } : { revokedAt: { not: null } }),
-      };
-      const [rows, total] = await Promise.all([
-        this.prisma.userSession.findMany({
-          where,
-          skip,
-          take,
-          include,
-          orderBy: { lastSeenAt: 'desc' },
-        }),
-        this.prisma.userSession.count({ where }),
-      ]);
-      return paginatedResult(rows.map((r) => this.mapSession(r)), total, p, ps);
-    }
-
-    // Status=Todas: ativas primeiro, depois encerradas (ambas por lastSeenAt desc).
-    // Não usar orderBy em revokedAt nullable — em PostgreSQL ASC coloca NULLS LAST
-    // (ativas no fim) e nulls:'first' do Prisma não é confiável aqui com paginação.
-    const activeWhere = { user: userWhere, revokedAt: null };
-    const inactiveWhere = { user: userWhere, revokedAt: { not: null } };
-
-    const [activeTotal, inactiveTotal] = await Promise.all([
-      this.prisma.userSession.count({ where: activeWhere }),
-      this.prisma.userSession.count({ where: inactiveWhere }),
-    ]);
-    const total = activeTotal + inactiveTotal;
-
-    if (skip < activeTotal) {
-      const activeTake = Math.min(take, activeTotal - skip);
-      const actives = await this.prisma.userSession.findMany({
-        where: activeWhere,
+    const [rows, total] = await Promise.all([
+      this.prisma.userSession.findMany({
+        where,
         skip,
-        take: activeTake,
+        take,
         include,
         orderBy: { lastSeenAt: 'desc' },
-      });
-      const remaining = take - actives.length;
-      const inactives =
-        remaining > 0
-          ? await this.prisma.userSession.findMany({
-              where: inactiveWhere,
-              skip: 0,
-              take: remaining,
-              include,
-              orderBy: { lastSeenAt: 'desc' },
-            })
-          : [];
-      return paginatedResult(
-        [...actives, ...inactives].map((r) => this.mapSession(r)),
-        total,
-        p,
-        ps,
-      );
-    }
-
-    const inactives = await this.prisma.userSession.findMany({
-      where: inactiveWhere,
-      skip: skip - activeTotal,
-      take,
-      include,
-      orderBy: { lastSeenAt: 'desc' },
-    });
-    return paginatedResult(inactives.map((r) => this.mapSession(r)), total, p, ps);
+      }),
+      this.prisma.userSession.count({ where }),
+    ]);
+    return paginatedResult(rows.map((r) => this.mapSession(r)), total, p, ps);
   }
 
   async revokeSession(user: AuthUser, sessionId: string) {
