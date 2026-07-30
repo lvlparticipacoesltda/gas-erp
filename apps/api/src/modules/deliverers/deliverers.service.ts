@@ -704,6 +704,7 @@ export class DeliverersService {
             : data.storeIds.length === 1
               ? data.storeIds[0]
               : null,
+        defaultStoreId: data.defaultStoreId ?? data.storeIds[0],
         stores: { create: data.storeIds.map((storeId) => ({ storeId })) },
       },
       include: this.include,
@@ -712,6 +713,7 @@ export class DeliverersService {
     await this.audit.log(user, 'CREATE', 'Deliverer', created.id, {
       userId,
       storeIds: data.storeIds,
+      defaultStoreId: data.defaultStoreId ?? data.storeIds[0],
     });
     return created;
   }
@@ -771,6 +773,7 @@ export class DeliverersService {
     if (!canManage && canToggleAvailability) {
       const restricted =
         data.storeIds !== undefined
+        || data.defaultStoreId !== undefined
         || data.active !== undefined
         || data.name !== undefined
         || data.email !== undefined
@@ -901,6 +904,22 @@ export class DeliverersService {
       nextAvailableStoreId = null;
     }
 
+    let nextDefaultStoreId: string | undefined;
+    if (data.defaultStoreId !== undefined) {
+      if (!linkedStoreIds.includes(data.defaultStoreId)) {
+        throw new BadRequestException(
+          'A unidade padrão deve ser uma das unidades atendidas pelo entregador.',
+        );
+      }
+      nextDefaultStoreId = data.defaultStoreId;
+    } else if (data.storeIds) {
+      if (deliverer.defaultStoreId && linkedStoreIds.includes(deliverer.defaultStoreId)) {
+        nextDefaultStoreId = deliverer.defaultStoreId;
+      } else {
+        nextDefaultStoreId = linkedStoreIds[0];
+      }
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       if (hasUserUpdate) {
         await tx.user.update({
@@ -932,6 +951,7 @@ export class DeliverersService {
           ...(nextAvailableStoreId !== undefined
             ? { availableStoreId: nextAvailableStoreId }
             : {}),
+          ...(nextDefaultStoreId !== undefined ? { defaultStoreId: nextDefaultStoreId } : {}),
           ...(nextStatus === 'OFFLINE'
             ? {
                 lastLatitude: null,
@@ -960,6 +980,16 @@ export class DeliverersService {
       await syncUserStoresForDeliverer(this.prisma, deliverer.userId, data.storeIds);
     }
 
+    if (nextDefaultStoreId && nextDefaultStoreId !== deliverer.defaultStoreId) {
+      await this.prisma.workScheduleWeekly.updateMany({
+        where: {
+          userId: deliverer.userId,
+          organizationId: user.organizationId,
+        },
+        data: { storeId: nextDefaultStoreId },
+      });
+    }
+
     if (data.active === false) {
       await this.prisma.workScheduleWeekly.updateMany({
         where: {
@@ -981,6 +1011,7 @@ export class DeliverersService {
       active: data.active,
       status: nextStatus,
       availableStoreId: nextAvailableStoreId,
+      defaultStoreId: nextDefaultStoreId,
       name: data.name,
       email: normalizedEmail,
       phone: data.phone,

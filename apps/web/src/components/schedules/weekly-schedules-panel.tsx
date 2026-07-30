@@ -42,7 +42,13 @@ type WeeklyItem = {
   }>;
 };
 
-type EligibleUser = { id: string; name: string; role: string; email: string };
+type EligibleUser = {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  defaultStoreId?: string | null;
+};
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -169,10 +175,18 @@ export function WeeklySchedulesPanel({
 
   function openCreate() {
     setEditingUserId(null);
-    setFormUserId(eligible[0]?.id ?? '');
-    setFormName(eligible[0]?.name ?? '');
+    const first = eligible[0];
+    setFormUserId(first?.id ?? '');
+    setFormName(first?.name ?? '');
     setFormActive(true);
-    setFormStoreId(storeId || stores?.[0]?.id || '');
+    const preferred =
+      (first?.defaultStoreId && (!storeId || first.defaultStoreId === storeId)
+        ? first.defaultStoreId
+        : null)
+      || storeId
+      || stores?.[0]?.id
+      || '';
+    setFormStoreId(preferred);
     setDays(emptyWeek());
     setApplyMsg(null);
     setMode('form');
@@ -380,6 +394,9 @@ export function WeeklySchedulesPanel({
                   setFormUserId(id);
                   const u = userOptions.find((x) => x.id === id);
                   if (u) setFormName(u.name);
+                  if (!fixedStoreId && u && 'defaultStoreId' in u && u.defaultStoreId) {
+                    setFormStoreId(u.defaultStoreId);
+                  }
                 }}
               >
                 {userOptions.length === 0 ? (
@@ -415,8 +432,8 @@ export function WeeklySchedulesPanel({
                 ))}
               </Select>
               <p className="mt-1 text-xs text-slate-500">
-                Unidade padrão ao preencher a escala. O horário vale para a pessoa em todas as
-                unidades; em dias pontuais o gestor pode trocar a unidade na tela Escalas.
+                Preferencialmente a unidade padrão do colaborador. O horário vale para a pessoa;
+                em dias pontuais o gestor pode trocar a unidade na tela Escalas.
               </p>
             </div>
             <div>

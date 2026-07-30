@@ -241,6 +241,8 @@ type CollabRow = {
   pis: string | null;
   admittedAt: Date | null;
   jobTitle: string | null;
+  /** Unidade padrão (entregadores); usado em Escalas / Horários. */
+  defaultStoreId: string | null;
   stores: Array<{ id: string; name: string }>;
 };
 
@@ -258,8 +260,14 @@ const collaboratorSelect = {
   },
   deliverer: {
     select: {
+      defaultStoreId: true,
       stores: {
-        select: { store: { select: { id: true, name: true } } },
+        select: {
+          storeId: true,
+          createdAt: true,
+          store: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'asc' as const },
       },
     },
   },
@@ -268,13 +276,30 @@ const collaboratorSelect = {
 function mapCollaboratorStores(
   row: {
     userStores: Array<{ store: { id: string; name: string } }>;
-    deliverer: { stores: Array<{ store: { id: string; name: string } }> } | null;
+    deliverer: {
+      stores: Array<{ store: { id: string; name: string } }>;
+    } | null;
   },
 ): Array<{ id: string; name: string }> {
   const byId = new Map<string, { id: string; name: string }>();
   for (const us of row.userStores) byId.set(us.store.id, us.store);
   for (const ds of row.deliverer?.stores ?? []) byId.set(ds.store.id, ds.store);
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+/** Unidade padrão efetiva: campo persistido ou primeira vinculação (createdAt ASC). */
+function effectiveDefaultStoreId(
+  row: {
+    role: UserRole;
+    deliverer: {
+      defaultStoreId: string | null;
+      stores: Array<{ storeId: string; createdAt: Date }>;
+    } | null;
+  },
+): string | null {
+  if (row.role !== UserRole.DELIVERER || !row.deliverer) return null;
+  if (row.deliverer.defaultStoreId) return row.deliverer.defaultStoreId;
+  return row.deliverer.stores[0]?.storeId ?? null;
 }
 
 function toCollabRow(
@@ -288,7 +313,14 @@ function toCollabRow(
     admittedAt: Date | null;
     jobTitle: string | null;
     userStores: Array<{ store: { id: string; name: string } }>;
-    deliverer: { stores: Array<{ store: { id: string; name: string } }> } | null;
+    deliverer: {
+      defaultStoreId: string | null;
+      stores: Array<{
+        storeId: string;
+        createdAt: Date;
+        store: { id: string; name: string };
+      }>;
+    } | null;
   },
 ): CollabRow {
   return {
@@ -300,8 +332,24 @@ function toCollabRow(
     pis: row.pis,
     admittedAt: row.admittedAt,
     jobTitle: row.jobTitle,
+    defaultStoreId: effectiveDefaultStoreId(row),
     stores: mapCollaboratorStores(row),
   };
+}
+
+/**
+ * Entregadores multi-loja só entram na grade da unidade padrão.
+ * Atendentes/gerentes continuam por vínculo UserStore.
+ */
+function filterDeliverersByDefaultStore(
+  rows: CollabRow[],
+  storeId: string | undefined,
+): CollabRow[] {
+  if (!storeId) return rows;
+  return rows.filter((c) => {
+    if (c.role !== UserRole.DELIVERER) return true;
+    return c.defaultStoreId === storeId;
+  });
 }
 
 @Injectable()
@@ -481,9 +529,10 @@ export class SchedulesService {
       if (self && !rows.some((r) => r.id === self.id)) {
         rows.push(self);
       }
-      const mapped = rows
-        .map(toCollabRow)
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      const mapped = filterDeliverersByDefaultStore(
+        rows.map(toCollabRow).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+        storeId,
+      );
       return includeInactiveWeekly
         ? mapped
         : this.excludeInactiveWeeklyUsers(user.organizationId, mapped);
@@ -528,7 +577,7 @@ export class SchedulesService {
       rows.push(...attendants);
     }
 
-    const mapped = rows.map(toCollabRow);
+    const mapped = filterDeliverersByDefaultStore(rows.map(toCollabRow), storeId);
     return includeInactiveWeekly
       ? mapped
       : this.excludeInactiveWeeklyUsers(user.organizationId, mapped);
@@ -859,7 +908,13 @@ export class SchedulesService {
       items: weeklies.map((w) => this.mapWeeklyDto(w)),
       eligibleUsers: collaborators
         .filter((c) => !hasWeekly.has(c.id))
-        .map((c) => ({ id: c.id, name: c.name, role: c.role, email: c.email })),
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          role: c.role,
+          email: c.email,
+          defaultStoreId: c.defaultStoreId,
+        })),
     };
   }
 

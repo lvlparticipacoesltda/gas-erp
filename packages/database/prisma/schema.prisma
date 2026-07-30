@@ -189,6 +189,7 @@ model Store {
   sales               Sale[]
   delivererStores     DelivererStore[]
   availableDeliverers Deliverer[]       @relation("DelivererAvailableStore")
+  defaultDeliverers    Deliverer[]       @relation("DelivererDefaultStore")
   purchaseInvoices    PurchaseInvoice[]
   paymentMethods      StorePaymentMethod[]
   customerProductPrices CustomerProductPrice[]
@@ -534,6 +535,12 @@ model Deliverer {
   status             DelivererStatus @default(AVAILABLE)
   /** Unidade em que o entregador está disponível no mapa (null se OFFLINE). */
   availableStoreId       String?
+  /**
+   * Unidade padrão para Escalas / Horários: o entregador só aparece na grade desta loja.
+   * Dias individuais ainda podem apontar outra unidade via WorkScheduleEntry.storeId.
+   * Null = fallback para a primeira unidade vinculada (createdAt ASC).
+   */
+  defaultStoreId         String?
   expoPushToken      String?
   pushTokenUpdatedAt DateTime?
   lastLatitude           Float?
@@ -548,12 +555,14 @@ model Deliverer {
 
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   availableStore   Store?           @relation("DelivererAvailableStore", fields: [availableStoreId], references: [id], onDelete: SetNull)
+  defaultStore     Store?           @relation("DelivererDefaultStore", fields: [defaultStoreId], references: [id], onDelete: SetNull)
   stores           DelivererStore[]
   sales            Sale[]           @relation("SaleDeliverer")
   salesCreated     Sale[]           @relation("SaleCreatedByDeliverer")
   deliveries       Delivery[]
 
   @@index([availableStoreId])
+  @@index([defaultStoreId])
 }
 
 model DelivererStore {

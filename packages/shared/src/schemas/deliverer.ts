@@ -10,10 +10,22 @@ export const createDelivererSchema = z
     phone: z.string().optional(),
     password: z.string().min(6).optional(),
     storeIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos uma unidade'),
+    /**
+     * Unidade padrão para Escalas / Horários. Deve estar em storeIds.
+     * Se omitido, usa a primeira unidade de storeIds.
+     */
+    defaultStoreId: z.string().min(1).optional(),
     status: z.enum(DELIVERER_STATUSES).optional(),
     ...userHrFieldsSchema.shape,
   })
   .superRefine((data, ctx) => {
+    if (data.defaultStoreId && !data.storeIds.includes(data.defaultStoreId)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A unidade padrão deve ser uma das unidades atendidas',
+        path: ['defaultStoreId'],
+      });
+    }
     if (data.userId) return;
     if (!data.name) {
       ctx.addIssue({ code: 'custom', message: 'Nome obrigatório', path: ['name'] });
@@ -26,22 +38,36 @@ export const createDelivererSchema = z
     }
   });
 
-export const updateDelivererSchema = z.object({
-  name: z.string().min(2).optional(),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  password: z.string().min(6).optional(),
-  storeIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos uma unidade').optional(),
-  status: z.enum(DELIVERER_STATUSES).optional(),
-  /**
-   * Unidade em que o entregador fica disponível no mapa.
-   * Obrigatório ao marcar AVAILABLE se o entregador atende mais de uma unidade.
-   */
-  availableStoreId: z.string().min(1).nullable().optional(),
-  /** Desativa o login no app (User.active) e marca entregador como offline. */
-  active: z.boolean().optional(),
-  ...userHrFieldsSchema.shape,
-});
+export const updateDelivererSchema = z
+  .object({
+    name: z.string().min(2).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    password: z.string().min(6).optional(),
+    storeIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos uma unidade').optional(),
+    status: z.enum(DELIVERER_STATUSES).optional(),
+    /**
+     * Unidade em que o entregador fica disponível no mapa.
+     * Obrigatório ao marcar AVAILABLE se o entregador atende mais de uma unidade.
+     */
+    availableStoreId: z.string().min(1).nullable().optional(),
+    /**
+     * Unidade padrão para Escalas / Horários. Deve estar nas unidades atendidas.
+     */
+    defaultStoreId: z.string().min(1).optional(),
+    /** Desativa o login no app (User.active) e marca entregador como offline. */
+    active: z.boolean().optional(),
+    ...userHrFieldsSchema.shape,
+  })
+  .superRefine((data, ctx) => {
+    if (data.defaultStoreId && data.storeIds && !data.storeIds.includes(data.defaultStoreId)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A unidade padrão deve ser uma das unidades atendidas',
+        path: ['defaultStoreId'],
+      });
+    }
+  });
 
 export type CreateDelivererInput = z.infer<typeof createDelivererSchema>;
 export type UpdateDelivererInput = z.infer<typeof updateDelivererSchema>;

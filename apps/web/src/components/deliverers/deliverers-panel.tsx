@@ -25,6 +25,8 @@ export interface DelivererRow {
   id: string;
   status: string;
   availableStoreId?: string | null;
+  /** Unidade padrão para Escalas / Horários. */
+  defaultStoreId?: string | null;
   user: {
     id: string;
     name: string;
@@ -85,6 +87,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
   const [canManage, setCanManage] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createStores, setCreateStores] = useState<Set<string>>(() => new Set());
+  const [createDefaultStoreId, setCreateDefaultStoreId] = useState(storeId ?? '');
   const [createError, setCreateError] = useState('');
   const [actionError, setActionError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -155,6 +158,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
     setCreateError('');
     setCreateForm(emptyCreateForm);
     setCreateStores(new Set(storeId ? [storeId] : []));
+    setCreateDefaultStoreId(storeId ?? '');
     setCreateOpen(true);
   }
 
@@ -171,11 +175,25 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
     });
   }
 
+  useEffect(() => {
+    if (createStores.size === 0) {
+      if (createDefaultStoreId) setCreateDefaultStoreId('');
+      return;
+    }
+    if (!createDefaultStoreId || !createStores.has(createDefaultStoreId)) {
+      setCreateDefaultStoreId([...createStores][0] ?? '');
+    }
+  }, [createStores, createDefaultStoreId]);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreateError('');
     if (createStores.size === 0) {
       setCreateError('Selecione ao menos uma unidade.');
+      return;
+    }
+    if (!createDefaultStoreId || !createStores.has(createDefaultStoreId)) {
+      setCreateError('Selecione a unidade padrão (Escalas).');
       return;
     }
     setCreating(true);
@@ -192,6 +210,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
             admittedAt: createForm.admittedAt || undefined,
             jobTitle: createForm.jobTitle || undefined,
             storeIds: [...createStores],
+            defaultStoreId: createDefaultStoreId,
           }),
         },
         getToken(),
@@ -339,6 +358,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
             <th className="p-3">Acesso app</th>
             <th className="p-3">Status</th>
             <th className="p-3 min-w-[12rem]">Unidades</th>
+            <th className="p-3 min-w-[8rem]">Unidade padrão</th>
             {canManage && <th className="p-3 text-right">Ação</th>}
           </tr>
         </thead>
@@ -363,6 +383,11 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
                   ? '—'
                   : d.stores.map((s) => s.store.name).join(', ')}
               </td>
+              <td className="p-3 text-slate-600">
+                {d.stores.find((s) => s.storeId === d.defaultStoreId)?.store.name
+                  ?? d.stores[0]?.store.name
+                  ?? '—'}
+              </td>
               {canManage && (
                 <td className="p-3">
                   <TableActions>
@@ -382,7 +407,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
           ))}
           {pageDeliverers.length === 0 && (
             <tr>
-              <td colSpan={canManage ? 7 : 6} className="p-6 text-center text-slate-400">
+              <td colSpan={canManage ? 8 : 7} className="p-6 text-center text-slate-400">
                 {listStoreId
                   ? 'Nenhum entregador vinculado a esta unidade.'
                   : 'Nenhum entregador encontrado.'}
@@ -509,6 +534,28 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
               ))}
             </div>
           </div>
+          <div>
+            <Label>Unidade padrão (Escalas)</Label>
+            <Select
+              value={createDefaultStoreId}
+              onChange={(e) => setCreateDefaultStoreId(e.target.value)}
+              required
+              disabled={createStores.size === 0}
+            >
+              <option value="">Selecione</option>
+              {stores
+                .filter((s) => createStores.has(s.id))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </Select>
+            <p className="mt-1 text-xs text-slate-500">
+              O entregador só aparece na Escala desta unidade. Em dias pontuais dá para
+              apontar outra unidade na própria escala.
+            </p>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={closeCreate} disabled={creating}>
               Cancelar
@@ -552,6 +599,13 @@ function EditDelivererModal({
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(deliverer.stores.map((s) => s.storeId)),
   );
+  const [defaultStoreId, setDefaultStoreId] = useState(
+    () =>
+      deliverer.defaultStoreId
+      ?? deliverer.stores[0]?.storeId
+      ?? preferredStoreId
+      ?? '',
+  );
   const [name, setName] = useState(deliverer.user.name);
   const [email, setEmail] = useState(deliverer.user.email);
   const [phone, setPhone] = useState(deliverer.user.phone ?? '');
@@ -573,10 +627,24 @@ function EditDelivererModal({
     });
   }
 
+  useEffect(() => {
+    if (selected.size === 0) {
+      if (defaultStoreId) setDefaultStoreId('');
+      return;
+    }
+    if (!defaultStoreId || !selected.has(defaultStoreId)) {
+      setDefaultStoreId([...selected][0] ?? '');
+    }
+  }, [selected, defaultStoreId]);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (selected.size === 0) {
       setError('Selecione ao menos uma unidade.');
+      return;
+    }
+    if (!defaultStoreId || !selected.has(defaultStoreId)) {
+      setError('Selecione a unidade padrão (Escalas).');
       return;
     }
     if (name.trim().length < 2) {
@@ -632,6 +700,7 @@ function EditDelivererModal({
             admittedAt: admittedAt || null,
             jobTitle: jobTitle || null,
             storeIds: [...selected],
+            defaultStoreId,
             status,
             active,
             ...(availableStoreId !== undefined ? { availableStoreId } : {}),
@@ -723,6 +792,29 @@ function EditDelivererModal({
               <p className="px-2 py-1.5 text-sm text-slate-400">Nenhuma unidade disponível.</p>
             )}
           </div>
+        </div>
+
+        <div>
+          <Label>Unidade padrão (Escalas)</Label>
+          <Select
+            value={defaultStoreId}
+            onChange={(e) => setDefaultStoreId(e.target.value)}
+            required
+            disabled={selected.size === 0}
+          >
+            <option value="">Selecione</option>
+            {stores
+              .filter((s) => selected.has(s.id))
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+          </Select>
+          <p className="mt-1 text-xs text-slate-500">
+            O entregador só aparece na Escala desta unidade. Em dias pontuais dá para
+            apontar outra unidade na própria escala.
+          </p>
         </div>
 
         <div>

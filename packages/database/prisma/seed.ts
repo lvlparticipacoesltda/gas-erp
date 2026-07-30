@@ -121,11 +121,13 @@ async function main() {
     where: { userId: delivererUser.id },
     update: {
       availableStoreId: stores[0].id,
+      defaultStoreId: stores[0].id,
     },
     create: {
       userId: delivererUser.id,
       status: DelivererStatus.AVAILABLE,
       availableStoreId: stores[0].id,
+      defaultStoreId: stores[0].id,
     },
   });
 
