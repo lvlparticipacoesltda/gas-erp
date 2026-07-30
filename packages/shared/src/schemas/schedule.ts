@@ -227,32 +227,24 @@ export const TIME_CLOCK_PUNCH_SLOT_LABELS: Record<TimeClockPunchSlotKey, string>
   sai2: 'SAÍ.2',
 };
 
-/** 1º CLOCK_IN → ENT.1, 1º CLOCK_OUT → SAÍ.1, 2º IN → ENT.2, 2º OUT → SAÍ.2. */
-export function assignTimeClockPunchSlots<T extends { id: string; type: TimeClockPunchType; punchedAt: string | Date }>(
+/** 1º CLOCK_IN → ENT.1, 1º CLOCK_OUT → SAÍ.1, 2º IN → ENT.2, 2º OUT → SAÍ.2 (ou `slot` explícito). */
+export function assignTimeClockPunchSlots<T extends { id: string; type: TimeClockPunchType; punchedAt: string | Date; slot?: string | null }>(
   punches: T[],
 ): Array<T & { slot: TimeClockPunchSlotKey; slotLabel: string }> {
-  const ordered = [...punches].sort(
+  const bySlot = resolveTimeClockSlotTimes(punches);
+  const out: Array<T & { slot: TimeClockPunchSlotKey; slotLabel: string }> = [];
+  for (const key of TIME_CLOCK_PUNCH_SLOTS) {
+    const punch = bySlot[key];
+    if (!punch) continue;
+    out.push({
+      ...punch,
+      slot: key,
+      slotLabel: TIME_CLOCK_PUNCH_SLOT_LABELS[key],
+    });
+  }
+  return out.sort(
     (a, b) => new Date(a.punchedAt).getTime() - new Date(b.punchedAt).getTime(),
   );
-  const ins = ordered.filter((p) => p.type === 'CLOCK_IN');
-  const outs = ordered.filter((p) => p.type === 'CLOCK_OUT');
-  const byId = new Map<string, TimeClockPunchSlotKey>();
-  if (ins[0]) byId.set(ins[0].id, 'ent1');
-  if (outs[0]) byId.set(outs[0].id, 'sai1');
-  if (ins[1]) byId.set(ins[1].id, 'ent2');
-  if (outs[1]) byId.set(outs[1].id, 'sai2');
-
-  return ordered
-    .map((punch) => {
-      const slot = byId.get(punch.id);
-      if (!slot) return null;
-      return {
-        ...punch,
-        slot,
-        slotLabel: TIME_CLOCK_PUNCH_SLOT_LABELS[slot],
-      };
-    })
-    .filter((row): row is T & { slot: TimeClockPunchSlotKey; slotLabel: string } => row != null);
 }
 
 export const TIME_CLOCK_DAY_STATUSES = [
@@ -278,6 +270,8 @@ export const timeClockPunchSchema = z.object({
   storeId: z.string().min(1),
   type: z.enum(TIME_CLOCK_PUNCH_TYPES),
   source: z.enum(TIME_CLOCK_SOURCES),
+  /** Slot do cartão (atendente pode escolher após ENT.1). */
+  slot: z.enum(TIME_CLOCK_PUNCH_SLOTS).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   accuracy: z.number().min(0).optional(),
@@ -285,6 +279,49 @@ export const timeClockPunchSchema = z.object({
   photoBase64: z.string().min(1).optional(),
 });
 export type TimeClockPunchInput = z.infer<typeof timeClockPunchSchema>;
+
+export function timeClockSlotPunchType(
+  slot: TimeClockPunchSlotKey,
+): TimeClockPunchType {
+  return slot === 'ent1' || slot === 'ent2' ? 'CLOCK_IN' : 'CLOCK_OUT';
+}
+
+/** Preenche slots preferindo `slot` gravado; legado cai no 1º/2º IN/OUT. */
+export function resolveTimeClockSlotTimes<
+  T extends { type: TimeClockPunchType; punchedAt: string | Date; slot?: string | null },
+>(punches: T[]): Record<TimeClockPunchSlotKey, T | null> {
+  const result: Record<TimeClockPunchSlotKey, T | null> = {
+    ent1: null,
+    sai1: null,
+    ent2: null,
+    sai2: null,
+  };
+  const ordered = [...punches].sort(
+    (a, b) => new Date(a.punchedAt).getTime() - new Date(b.punchedAt).getTime(),
+  );
+  const leftover: T[] = [];
+  for (const punch of ordered) {
+    const slot = punch.slot as TimeClockPunchSlotKey | null | undefined;
+    if (slot && TIME_CLOCK_PUNCH_SLOTS.includes(slot) && !result[slot]) {
+      result[slot] = punch;
+    } else {
+      leftover.push(punch);
+    }
+  }
+  const leftoverIns = leftover.filter((p) => p.type === 'CLOCK_IN');
+  const leftoverOuts = leftover.filter((p) => p.type === 'CLOCK_OUT');
+  let ii = 0;
+  let oi = 0;
+  for (const key of TIME_CLOCK_PUNCH_SLOTS) {
+    if (result[key]) continue;
+    if (key === 'ent1' || key === 'ent2') {
+      result[key] = leftoverIns[ii++] ?? null;
+    } else {
+      result[key] = leftoverOuts[oi++] ?? null;
+    }
+  }
+  return result;
+}
 
 const optionalHmOrNull = z.preprocess((value) => {
   if (value === undefined) return undefined;

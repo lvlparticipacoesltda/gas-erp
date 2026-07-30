@@ -26,6 +26,7 @@ import {
   isTimeClockDayComplete,
   isNonWorkingScheduleDay,
   parseHmToMinutes,
+  resolveTimeClockSlotTimes,
   scheduleMonthQuerySchema,
   timeClockCardsQuerySchema,
   timeClockDayPhotosQuerySchema,
@@ -33,6 +34,7 @@ import {
   timeClockMeQuerySchema,
   timeClockPunchSchema,
   timeClockReportQuerySchema,
+  timeClockSlotPunchType,
   todayDateKey,
   upsertScheduleDaySchema,
   upsertTimeClockDaySchema,
@@ -43,6 +45,7 @@ import {
   WEEKDAY_LABELS_SHORT,
   zonedTimeToUtc,
   type TimeClockDayStatus,
+  type TimeClockPunchSlotKey,
 } from '@gas-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertScreenPermission, assertStoreAccess } from '../../common/guards';
@@ -181,7 +184,12 @@ type PunchSlotBucket = {
 };
 
 function assignDayPunchSlots(
-  punches: Array<{ type: TimeClockPunchType; punchedAt: Date; source: string }>,
+  punches: Array<{
+    type: TimeClockPunchType;
+    punchedAt: Date;
+    source: string;
+    slot?: string | null;
+  }>,
 ): PunchSlotBucket {
   const empty: PunchSlotBucket = {
     ent1: null,
@@ -195,19 +203,16 @@ function assignDayPunchSlots(
   };
   if (punches.length === 0) return empty;
 
-  const ordered = [...punches].sort((a, b) => a.punchedAt.getTime() - b.punchedAt.getTime());
-  const ins = ordered.filter((p) => p.type === TimeClockPunchType.CLOCK_IN);
-  const outs = ordered.filter((p) => p.type === TimeClockPunchType.CLOCK_OUT);
-
+  const bySlot = resolveTimeClockSlotTimes(punches);
   return {
-    ent1: ins[0]?.punchedAt ?? null,
-    sai1: outs[0]?.punchedAt ?? null,
-    ent2: ins[1]?.punchedAt ?? null,
-    sai2: outs[1]?.punchedAt ?? null,
-    sourceEnt1: ins[0]?.source ?? null,
-    sourceSai1: outs[0]?.source ?? null,
-    sourceEnt2: ins[1]?.source ?? null,
-    sourceSai2: outs[1]?.source ?? null,
+    ent1: bySlot.ent1?.punchedAt ?? null,
+    sai1: bySlot.sai1?.punchedAt ?? null,
+    ent2: bySlot.ent2?.punchedAt ?? null,
+    sai2: bySlot.sai2?.punchedAt ?? null,
+    sourceEnt1: bySlot.ent1?.source ?? null,
+    sourceSai1: bySlot.sai1?.source ?? null,
+    sourceEnt2: bySlot.ent2?.source ?? null,
+    sourceSai2: bySlot.sai2?.source ?? null,
   };
 }
 
@@ -1229,6 +1234,7 @@ export class SchedulesService {
       select: {
         id: true,
         type: true,
+        slot: true,
         punchedAt: true,
         latitude: true,
         longitude: true,
@@ -1238,8 +1244,9 @@ export class SchedulesService {
       },
     });
 
+    const filled = resolveTimeClockSlotTimes(punches);
+    const dayComplete = Boolean(filled.ent1 && filled.sai1 && filled.ent2 && filled.sai2);
     const last = punches[punches.length - 1] ?? null;
-    const dayComplete = isTimeClockDayComplete(punches);
     const nextType: TimeClockPunchType | null = dayComplete
       ? null
       : !last || last.type === TimeClockPunchType.CLOCK_OUT
@@ -1345,27 +1352,62 @@ export class SchedulesService {
         punchedAt: { gte: dayStart, lt: dayEnd },
       },
       orderBy: { punchedAt: 'asc' },
-      select: { type: true, punchedAt: true },
+      select: { type: true, punchedAt: true, slot: true, source: true },
     });
 
-    if (isTimeClockDayComplete(dayPunches)) {
+    const filled = resolveTimeClockSlotTimes(dayPunches);
+    if (filled.ent1 && filled.sai1 && filled.ent2 && filled.sai2) {
       throw new BadRequestException(
         'Ponto do dia já está completo (ENT.1, SAÍ.1, ENT.2 e SAÍ.2). Não é possível registrar outra batida.',
       );
     }
 
-    const last = dayPunches[dayPunches.length - 1] ?? null;
-    const expected: TimeClockPunchType =
-      !last || last.type === TimeClockPunchType.CLOCK_OUT
-        ? TimeClockPunchType.CLOCK_IN
-        : TimeClockPunchType.CLOCK_OUT;
+    let punchSlot: TimeClockPunchSlotKey | null = (data.slot as TimeClockPunchSlotKey | undefined) ?? null;
 
-    if (data.type !== expected) {
-      throw new BadRequestException(
-        expected === TimeClockPunchType.CLOCK_IN
-          ? 'Próximo ponto deve ser Entrada.'
-          : 'Próximo ponto deve ser Saída.',
-      );
+    // Atendente (mobile): pode escolher slot após ENT.1; ENT.1 é obrigatório primeiro.
+    if (user.role === 'ATTENDANT' && data.source === 'MOBILE') {
+      if (!punchSlot) {
+        punchSlot = !filled.ent1 ? 'ent1' : null;
+      }
+      if (!punchSlot) {
+        throw new BadRequestException(
+          'Selecione o horário do cartão (SAÍ.1, ENT.2 ou SAÍ.2) para registrar o ponto.',
+        );
+      }
+      if (!filled.ent1 && punchSlot !== 'ent1') {
+        throw new BadRequestException('A primeira batida do dia deve ser ENT.1.');
+      }
+      if (filled[punchSlot]) {
+        throw new BadRequestException('Este horário do cartão já foi registrado hoje.');
+      }
+      const expectedType = timeClockSlotPunchType(punchSlot);
+      if (data.type !== expectedType) {
+        throw new BadRequestException(
+          expectedType === 'CLOCK_IN'
+            ? 'Este horário exige Entrada.'
+            : 'Este horário exige Saída.',
+        );
+      }
+    } else {
+      const last = dayPunches[dayPunches.length - 1] ?? null;
+      const expected: TimeClockPunchType =
+        !last || last.type === TimeClockPunchType.CLOCK_OUT
+          ? TimeClockPunchType.CLOCK_IN
+          : TimeClockPunchType.CLOCK_OUT;
+
+      if (data.type !== expected) {
+        throw new BadRequestException(
+          expected === TimeClockPunchType.CLOCK_IN
+            ? 'Próximo ponto deve ser Entrada.'
+            : 'Próximo ponto deve ser Saída.',
+        );
+      }
+
+      // Sequencial legado: grava o slot correspondente.
+      if (!filled.ent1) punchSlot = 'ent1';
+      else if (!filled.sai1) punchSlot = 'sai1';
+      else if (!filled.ent2) punchSlot = 'ent2';
+      else if (!filled.sai2) punchSlot = 'sai2';
     }
 
     let distanceMeters: number | null = null;
@@ -1415,6 +1457,7 @@ export class SchedulesService {
         storeId: data.storeId,
         userId: user.id,
         type: data.type as TimeClockPunchType,
+        slot: punchSlot,
         latitude: data.latitude ?? null,
         longitude: data.longitude ?? null,
         accuracy: data.accuracy ?? null,
@@ -1425,6 +1468,7 @@ export class SchedulesService {
       select: {
         id: true,
         type: true,
+        slot: true,
         punchedAt: true,
         latitude: true,
         longitude: true,
@@ -1461,6 +1505,7 @@ export class SchedulesService {
       select: {
         id: true,
         type: true,
+        slot: true,
         punchedAt: true,
         source: true,
         photoBytes: true,
@@ -1580,6 +1625,7 @@ export class SchedulesService {
           type: true,
           punchedAt: true,
           source: true,
+          slot: true,
         },
       }),
     ]);
@@ -1754,6 +1800,7 @@ export class SchedulesService {
           type: true,
           punchedAt: true,
           source: true,
+          slot: true,
         },
       }),
       this.prisma.timeClockPunch.findMany({

@@ -999,6 +999,8 @@ model TimeClockPunch {
   storeId        String
   userId         String
   type           TimeClockPunchType
+  /** Slot do cartão: ent1 | sai1 | ent2 | sai2 (permite pular slots). */
+  slot           String?
   punchedAt      DateTime           @default(now())
   latitude       Float?
   longitude      Float?

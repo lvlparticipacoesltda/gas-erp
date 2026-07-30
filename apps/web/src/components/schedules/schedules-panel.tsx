@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SCHEDULE_DAY_TYPE_LABELS,
+  WEEKDAY_LABELS_SHORT,
   canManageSchedules,
   isNonWorkingScheduleDay,
   type AuthUser,
@@ -441,14 +442,26 @@ export function SchedulesPanel({
 
         <FilterField label="Mês">
           <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" onClick={() => shiftMonth(-1)}>
-              ‹
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => shiftMonth(-1)}
+              aria-label="Mês anterior"
+              title="Mês anterior"
+            >
+              ↓
             </Button>
             <span className="min-w-[140px] text-center text-sm font-medium">
               {MONTH_NAMES[month - 1]} / {year}
             </span>
-            <Button type="button" variant="secondary" onClick={() => shiftMonth(1)}>
-              ›
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => shiftMonth(1)}
+              aria-label="Próximo mês"
+              title="Próximo mês"
+            >
+              ↑
             </Button>
           </div>
         </FilterField>
@@ -514,14 +527,21 @@ export function SchedulesPanel({
                   <th className="sticky left-0 z-10 border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-left font-medium">
                     Colaborador
                   </th>
-                  {days.map((d) => (
-                    <th
-                      key={d}
-                      className="border-b border-slate-200 px-1 py-2 text-center font-medium"
-                    >
-                      {d}
-                    </th>
-                  ))}
+                  {days.map((d) => {
+                    const weekday = new Date(year, month - 1, d).getDay();
+                    const weekdayLabel = WEEKDAY_LABELS_SHORT[weekday]?.toLowerCase() ?? '';
+                    return (
+                      <th
+                        key={d}
+                        className="border-b border-slate-200 px-1 py-2 text-center font-medium"
+                      >
+                        <div className="leading-tight">{d}</div>
+                        <div className="text-[9px] font-normal tracking-wide text-slate-400">
+                          {weekdayLabel}
+                        </div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>

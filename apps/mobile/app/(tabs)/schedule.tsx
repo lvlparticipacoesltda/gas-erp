@@ -20,7 +20,6 @@ import {
   TIME_CLOCK_PHOTO_UPLOAD_MAX_BYTES,
   haversineDistanceMeters,
   isNonWorkingScheduleDay,
-  isTimeClockDayComplete,
   type ScheduleDayType,
   type TimeClockPunchType,
 } from '@gas-erp/shared';
@@ -34,6 +33,7 @@ import {
   nextPunchSlot,
   punchTimeClock,
   PUNCH_SLOT_LABELS,
+  timeClockSlotPunchType,
   type PunchSlotKey,
   type ScheduleEntryDto,
   type TimeClockMe,
@@ -108,6 +108,7 @@ export default function ScheduleScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [distanceM, setDistanceM] = useState<number | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<PunchSlotKey | null>(null);
   const lastGeoRef = useRef<{
     pos: Location.LocationObject;
     dist: number;
@@ -251,6 +252,8 @@ export default function ScheduleScreen() {
     return mapPunchesToSlots(punch.punches);
   }, [punch]);
 
+  const isAttendant = user?.role === 'ATTENDANT';
+
   const dayComplete = useMemo(() => {
     if (!punch) return false;
     if (punch.dayComplete != null) return punch.dayComplete;
@@ -259,13 +262,45 @@ export default function ScheduleScreen() {
     );
   }, [punch, punchSlots]);
 
-  const activePunchSlot = useMemo(
+  const sequentialSlot = useMemo(
     () => (punch ? nextPunchSlot(punch.punches) : 'ent1'),
     [punch],
   );
 
+  // Atendente: ENT.1 obrigatório; depois escolhe o slot vazio.
+  useEffect(() => {
+    if (!isAttendant) {
+      setSelectedSlot(null);
+      return;
+    }
+    if (dayComplete) {
+      setSelectedSlot(null);
+      return;
+    }
+    if (!punchSlots.ent1) {
+      setSelectedSlot('ent1');
+      return;
+    }
+    setSelectedSlot((prev) => {
+      if (prev && !punchSlots[prev]) return prev;
+      return null;
+    });
+  }, [isAttendant, dayComplete, punchSlots]);
+
+  const activePunchSlot = isAttendant
+    ? (selectedSlot ?? (!punchSlots.ent1 ? 'ent1' : null))
+    : sequentialSlot;
+
+  const activePunchType = activePunchSlot
+    ? timeClockSlotPunchType(activePunchSlot)
+    : punch?.nextType ?? null;
+
   const canSubmitPunch =
-    canPunch && !dayComplete && punch?.nextType != null && !punchSyncing;
+    canPunch
+    && !dayComplete
+    && activePunchSlot != null
+    && activePunchType != null
+    && !punchSyncing;
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
@@ -383,6 +418,7 @@ export default function ScheduleScreen() {
   function applyOptimisticPunch(
     current: TimeClockMe,
     type: TimeClockPunchType,
+    slot: PunchSlotKey,
     dist: number | null,
   ): TimeClockMe {
     const punches = [
@@ -393,9 +429,11 @@ export default function ScheduleScreen() {
         punchedAt: new Date().toISOString(),
         distanceMeters: dist,
         source: 'MOBILE' as const,
+        slot,
       },
     ];
-    const complete = isTimeClockDayComplete(punches);
+    const slots = mapPunchesToSlots(punches);
+    const complete = Boolean(slots.ent1 && slots.sai1 && slots.ent2 && slots.sai2);
     return {
       ...current,
       punches,
@@ -405,7 +443,9 @@ export default function ScheduleScreen() {
   }
 
   async function submitPunch() {
-    if (!storeId || !punch || !punch.nextType || dayComplete || punchSyncing) return;
+    if (!storeId || !punch || !activePunchSlot || !activePunchType || dayComplete || punchSyncing) {
+      return;
+    }
     if (!photoBase64) {
       setError('Tire uma foto para validar o ponto.');
       return;
@@ -422,23 +462,26 @@ export default function ScheduleScreen() {
         );
       }
 
-      const type = punch.nextType;
+      const type = activePunchType;
+      const slot = activePunchSlot;
       const sid = storeId;
       const snapshot = punch;
       const b64 = photoBase64.replace(/^data:image\/\w+;base64,/, '');
 
       // Feedback imediato — upload segue em background; compressão é no servidor.
-      setPunch(applyOptimisticPunch(punch, type, geo.dist));
+      setPunch(applyOptimisticPunch(punch, type, slot, geo.dist));
       setPhotoUri(null);
       setPhotoBase64(null);
       setPunchBusy(false);
       setPunchSyncing(true);
+      if (isAttendant) setSelectedSlot(null);
 
       void (async () => {
         try {
           await punchTimeClock({
             storeId: sid,
             type,
+            slot,
             latitude: geo.pos.coords.latitude,
             longitude: geo.pos.coords.longitude,
             accuracy: geo.pos.coords.accuracy ?? undefined,
@@ -681,16 +724,32 @@ export default function ScheduleScreen() {
           ) : null}
           <Text style={styles.hint}>
             Disponível a até {TIME_CLOCK_GEOFENCE_METERS} m da unidade. Foto obrigatória.
+            {isAttendant
+              ? ' Após ENT.1, toque no horário desejado (pode pular SAÍ.1 / ENT.2).'
+              : ''}
           </Text>
 
           <View style={styles.slotsGrid}>
             {(['ent1', 'sai1', 'ent2', 'sai2'] as PunchSlotKey[]).map((key) => {
               const time = punchSlots[key];
+              const isFilled = Boolean(time);
+              const canSelect =
+                isAttendant
+                && !dayComplete
+                && !punchSyncing
+                && !isFilled
+                && (key === 'ent1' || Boolean(punchSlots.ent1));
               const isNext = !dayComplete && activePunchSlot === key && !time;
+              const Cell = canSelect ? Pressable : View;
               return (
-                <View
+                <Cell
                   key={key}
-                  style={[styles.slotCell, isNext && styles.slotCellNext]}
+                  style={[
+                    styles.slotCell,
+                    isNext && styles.slotCellNext,
+                    canSelect && styles.slotCellSelectable,
+                  ]}
+                  onPress={canSelect ? () => setSelectedSlot(key) : undefined}
                 >
                   <Text style={[styles.slotLabel, isNext && styles.slotLabelNext]}>
                     {PUNCH_SLOT_LABELS[key]}
@@ -698,7 +757,7 @@ export default function ScheduleScreen() {
                   <Text style={[styles.slotTime, time ? styles.slotTimeFilled : null]}>
                     {time ?? '--:--'}
                   </Text>
-                </View>
+                </Cell>
               );
             })}
           </View>
@@ -707,8 +766,11 @@ export default function ScheduleScreen() {
             <Text style={styles.punchStatus}>Ponto do dia completo</Text>
           ) : punch ? (
             <Text style={styles.punchStatus}>
-              Próximo: {punch.nextType === 'CLOCK_OUT' ? 'Saída' : 'Entrada'}
-              {activePunchSlot ? ` · ${PUNCH_SLOT_LABELS[activePunchSlot]}` : ''}
+              {activePunchSlot
+                ? `Próximo: ${activePunchType === 'CLOCK_OUT' ? 'Saída' : 'Entrada'} · ${PUNCH_SLOT_LABELS[activePunchSlot]}`
+                : isAttendant
+                  ? 'Toque em SAÍ.1, ENT.2 ou SAÍ.2 para escolher o próximo ponto'
+                  : 'Próximo ponto'}
             </Text>
           ) : null}
           {punchSyncing ? (
@@ -756,7 +818,8 @@ export default function ScheduleScreen() {
                   <ActivityIndicator color={colors.primaryText} />
                 ) : (
                   <Text style={styles.primaryBtnText}>
-                    {punch?.nextType === 'CLOCK_OUT' ? 'Registrar saída' : 'Registrar entrada'}
+                    {activePunchType === 'CLOCK_OUT' ? 'Registrar saída' : 'Registrar entrada'}
+                    {activePunchSlot ? ` (${PUNCH_SLOT_LABELS[activePunchSlot]})` : ''}
                   </Text>
                 )}
               </Pressable>
@@ -1095,6 +1158,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     gap: 2,
+  },
+  slotCellSelectable: {
+    borderStyle: 'dashed' as const,
   },
   slotCellNext: {
     borderColor: colors.primary,

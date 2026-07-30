@@ -11,7 +11,8 @@ function TabsNav({ isAttendant }: { isAttendant: boolean }) {
   const { pending } = useDeliveriesContext();
   return (
     <Tabs
-      tabBar={(props) => <ExpandableTabBar {...props} />}
+      initialRouteName={isAttendant ? 'schedule' : 'index'}
+      tabBar={isAttendant ? () => null : (props) => <ExpandableTabBar {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,

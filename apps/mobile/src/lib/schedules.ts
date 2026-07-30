@@ -1,7 +1,10 @@
 import { api } from './api';
 import {
   isTimeClockDayComplete,
+  resolveTimeClockSlotTimes,
+  timeClockSlotPunchType,
   type ScheduleDayType,
+  type TimeClockPunchSlotKey,
   type TimeClockPunchType,
 } from '@gas-erp/shared';
 
@@ -41,6 +44,7 @@ export interface TimeClockMe {
     punchedAt: string;
     distanceMeters: number | null;
     source: string;
+    slot?: string | null;
   }>;
   schedule: Omit<ScheduleEntryDto, 'date'> | null;
   geofenceMeters: number;
@@ -64,6 +68,7 @@ export function fetchMyTimeClock(storeId: string, date?: string) {
 export function punchTimeClock(input: {
   storeId: string;
   type: TimeClockPunchType;
+  slot?: TimeClockPunchSlotKey;
   latitude: number;
   longitude: number;
   accuracy?: number;
@@ -75,6 +80,7 @@ export function punchTimeClock(input: {
       storeId: input.storeId,
       type: input.type,
       source: 'MOBILE',
+      slot: input.slot,
       latitude: input.latitude,
       longitude: input.longitude,
       accuracy: input.accuracy,
@@ -83,7 +89,7 @@ export function punchTimeClock(input: {
   });
 }
 
-export type PunchSlotKey = 'ent1' | 'sai1' | 'ent2' | 'sai2';
+export type PunchSlotKey = TimeClockPunchSlotKey;
 
 export const PUNCH_SLOT_LABELS: Record<PunchSlotKey, string> = {
   ent1: 'ENT.1',
@@ -92,17 +98,12 @@ export const PUNCH_SLOT_LABELS: Record<PunchSlotKey, string> = {
   sai2: 'SAÍ.2',
 };
 
-/** Mapeia batidas do dia para os 4 slots do cartão (1º IN, 1º OUT, 2º IN, 2º OUT). */
+/** Mapeia batidas do dia para os 4 slots do cartão. */
 export function mapPunchesToSlots(
   punches: TimeClockMe['punches'],
 ): Record<PunchSlotKey, string | null> {
-  const ordered = [...punches].sort(
-    (a, b) => new Date(a.punchedAt).getTime() - new Date(b.punchedAt).getTime(),
-  );
-  const ins = ordered.filter((p) => p.type === 'CLOCK_IN');
-  const outs = ordered.filter((p) => p.type === 'CLOCK_OUT');
-
-  const fmt = (iso?: string) => {
+  const bySlot = resolveTimeClockSlotTimes(punches);
+  const fmt = (iso?: string | Date | null) => {
     if (!iso) return null;
     return new Date(iso).toLocaleTimeString('pt-BR', {
       timeZone: 'America/Sao_Paulo',
@@ -113,14 +114,14 @@ export function mapPunchesToSlots(
   };
 
   return {
-    ent1: fmt(ins[0]?.punchedAt),
-    sai1: fmt(outs[0]?.punchedAt),
-    ent2: fmt(ins[1]?.punchedAt),
-    sai2: fmt(outs[1]?.punchedAt),
+    ent1: fmt(bySlot.ent1?.punchedAt),
+    sai1: fmt(bySlot.sai1?.punchedAt),
+    ent2: fmt(bySlot.ent2?.punchedAt),
+    sai2: fmt(bySlot.sai2?.punchedAt),
   };
 }
 
-/** Qual slot será preenchido na próxima batida (null = dia completo). */
+/** Qual slot será preenchido na próxima batida sequencial (null = dia completo). */
 export function nextPunchSlot(punches: TimeClockMe['punches']): PunchSlotKey | null {
   if (isTimeClockDayComplete(punches)) return null;
   const slots = mapPunchesToSlots(punches);
@@ -130,3 +131,5 @@ export function nextPunchSlot(punches: TimeClockMe['punches']): PunchSlotKey | n
   if (!slots.sai2) return 'sai2';
   return null;
 }
+
+export { timeClockSlotPunchType };
