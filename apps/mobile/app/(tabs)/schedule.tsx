@@ -604,7 +604,7 @@ export default function ScheduleScreen() {
           </View>
           <View style={styles.summaryCard}>
             <Ionicons name="time-outline" size={22} color={colors.warning} />
-            <Text style={styles.summaryLabel}>Meias jornadas</Text>
+            <Text style={styles.summaryLabel}>Atestados</Text>
             <Text style={styles.summaryValue}>{summary.half} dias</Text>
           </View>
           <View style={styles.summaryCard}>

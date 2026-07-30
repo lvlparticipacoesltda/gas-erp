@@ -80,7 +80,7 @@ function cellLabel(entry: ScheduleEntry | undefined) {
   if (entry.startTime && entry.endTime) {
     return `${entry.startTime.slice(0, 5)}-${entry.endTime.slice(0, 5)}`;
   }
-  return entry.dayType === 'HALF_DAY' ? '½' : 'T';
+  return entry.dayType === 'HALF_DAY' ? 'At' : 'T';
 }
 
 export function SchedulesPanel({
@@ -588,7 +588,7 @@ export function SchedulesPanel({
               <span className="h-3 w-3 rounded bg-emerald-200" /> Trabalho
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-amber-200" /> Meia jornada
+              <span className="h-3 w-3 rounded bg-amber-200" /> Atestado
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-3 w-3 rounded bg-slate-200" /> Folga

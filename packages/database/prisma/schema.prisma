@@ -116,6 +116,7 @@ enum PurchaseInvoiceStatus {
 
 enum ScheduleDayType {
   WORK
+  /// Exibido como "Atestado" (label); valor interno permanece HALF_DAY.
   HALF_DAY
   DAY_OFF
   VACATION

@@ -6,7 +6,7 @@ export type ScheduleDayType = (typeof SCHEDULE_DAY_TYPES)[number];
 
 export const SCHEDULE_DAY_TYPE_LABELS: Record<ScheduleDayType, string> = {
   WORK: 'Trabalho',
-  HALF_DAY: 'Meia jornada',
+  HALF_DAY: 'Atestado',
   DAY_OFF: 'Folga',
   VACATION: 'Férias',
 };
