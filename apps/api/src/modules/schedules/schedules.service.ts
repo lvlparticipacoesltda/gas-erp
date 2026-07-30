@@ -437,15 +437,25 @@ export class SchedulesService {
   }
 
   /** Lista colaboradores da loja conforme papel e ACL do visualizador. */
+  /** Escopo de loja para listagens: unidade específica, org (master) ou lojas do usuário. */
+  private storeScopeSome(user: AuthUser, storeId?: string) {
+    if (storeId) return { storeId };
+    if (user.role === 'ORG_MASTER' || user.role === 'PLATFORM_ADMIN') {
+      return { store: { organizationId: user.organizationId } };
+    }
+    return { storeId: { in: user.storeIds } };
+  }
+
   private async listCollaborators(
     user: AuthUser,
-    storeId: string,
+    storeId: string | undefined,
     roleFilter: 'deliverers' | 'attendants' | 'all',
     opts?: { includeInactiveWeekly?: boolean },
   ): Promise<CollabRow[]> {
     const wantDeliverers = roleFilter === 'deliverers' || roleFilter === 'all';
     const wantAttendants = roleFilter === 'attendants' || roleFilter === 'all';
     const includeInactiveWeekly = opts?.includeInactiveWeekly === true;
+    const storeSome = this.storeScopeSome(user, storeId);
 
     // Atendente: só entregadores da unidade + a própria pessoa (se ativa).
     if (user.role === 'ATTENDANT') {
@@ -455,7 +465,7 @@ export class SchedulesService {
               organizationId: user.organizationId,
               role: UserRole.DELIVERER,
               active: true,
-              deliverer: { stores: { some: { storeId } } },
+              deliverer: { stores: { some: storeSome } },
             },
             select: collaboratorSelect,
             orderBy: { name: 'asc' },
@@ -496,7 +506,7 @@ export class SchedulesService {
           organizationId: user.organizationId,
           role: UserRole.DELIVERER,
           active: true,
-          deliverer: { stores: { some: { storeId } } },
+          deliverer: { stores: { some: storeSome } },
         },
         select: collaboratorSelect,
         orderBy: { name: 'asc' },
@@ -510,7 +520,7 @@ export class SchedulesService {
           organizationId: user.organizationId,
           role: { in: [UserRole.ATTENDANT, UserRole.STORE_MANAGER] },
           active: true,
-          userStores: { some: { storeId } },
+          userStores: { some: storeSome },
         },
         select: collaboratorSelect,
         orderBy: { name: 'asc' },
@@ -800,7 +810,7 @@ export class SchedulesService {
   async listWeeklies(user: AuthUser, query: unknown) {
     this.assertCanManage(user);
     const params = weeklyScheduleListQuerySchema.parse(query);
-    assertStoreAccess(user, params.storeId);
+    if (params.storeId) assertStoreAccess(user, params.storeId);
 
     const collaborators = await this.listCollaborators(user, params.storeId, 'all', {
       includeInactiveWeekly: true,

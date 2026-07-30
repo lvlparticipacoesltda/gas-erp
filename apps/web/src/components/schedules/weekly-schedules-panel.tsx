@@ -103,8 +103,8 @@ export function WeeklySchedulesPanel({
   showStoreFilter?: boolean;
 }) {
   const canEdit = canManageSchedules(user.role);
-  const [storeId, setStoreId] = useState(fixedStoreId ?? stores?.[0]?.id ?? '');
-  const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
+  const [storeId, setStoreId] = useState(fixedStoreId ?? '');
+  const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('all');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<WeeklyItem[]>([]);
   const [eligible, setEligible] = useState<EligibleUser[]>([]);
@@ -130,13 +130,13 @@ export function WeeklySchedulesPanel({
   }, [fixedStoreId]);
 
   useEffect(() => {
-    if (!fixedStoreId && stores?.length && !stores.some((s) => s.id === storeId)) {
-      setStoreId(stores[0].id);
+    if (!fixedStoreId && storeId && stores?.length && !stores.some((s) => s.id === storeId)) {
+      setStoreId('');
     }
   }, [fixedStoreId, stores, storeId]);
 
   const load = useCallback(async () => {
-    if (!storeId) {
+    if (fixedStoreId && !storeId) {
       setLoading(false);
       setError('Selecione uma unidade');
       return;
@@ -144,7 +144,8 @@ export function WeeklySchedulesPanel({
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ storeId, status });
+      const params = new URLSearchParams({ status });
+      if (storeId) params.set('storeId', storeId);
       if (q.trim()) params.set('q', q.trim());
       const data = await api<{ items: WeeklyItem[]; eligibleUsers: EligibleUser[] }>(
         `/schedules/weeklies?${params}`,
@@ -160,7 +161,7 @@ export function WeeklySchedulesPanel({
     } finally {
       setLoading(false);
     }
-  }, [storeId, status, q]);
+  }, [fixedStoreId, storeId, status, q]);
 
   useEffect(() => {
     void load();
@@ -171,7 +172,7 @@ export function WeeklySchedulesPanel({
     setFormUserId(eligible[0]?.id ?? '');
     setFormName(eligible[0]?.name ?? '');
     setFormActive(true);
-    setFormStoreId(storeId);
+    setFormStoreId(storeId || stores?.[0]?.id || '');
     setDays(emptyWeek());
     setApplyMsg(null);
     setMode('form');
@@ -585,6 +586,7 @@ export function WeeklySchedulesPanel({
         {showStoreFilter && stores ? (
           <FilterField label="Filtrar unidade">
             <Select value={storeId} onChange={(e) => setStoreId(e.target.value)}>
+              <option value="">Todos</option>
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -598,9 +600,9 @@ export function WeeklySchedulesPanel({
             value={status}
             onChange={(e) => setStatus(e.target.value as 'active' | 'inactive' | 'all')}
           >
+            <option value="all">Todos</option>
             <option value="active">Ativos</option>
             <option value="inactive">Inativos</option>
-            <option value="all">Todos</option>
           </Select>
         </FilterField>
         <FilterField label="Buscar">
@@ -637,7 +639,7 @@ export function WeeklySchedulesPanel({
               {items.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                    Nenhum horário cadastrado nesta unidade.
+                    Nenhum horário cadastrado{storeId ? ' nesta unidade' : ''}.
                   </td>
                 </tr>
               ) : (

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { optionalId } from './helpers';
 
 export const SCHEDULE_DAY_TYPES = ['WORK', 'HALF_DAY', 'DAY_OFF', 'VACATION'] as const;
 export type ScheduleDayType = (typeof SCHEDULE_DAY_TYPES)[number];
@@ -138,9 +139,10 @@ export const upsertWeeklyScheduleSchema = z.object({
 export type UpsertWeeklyScheduleInput = z.infer<typeof upsertWeeklyScheduleSchema>;
 
 export const weeklyScheduleListQuerySchema = z.object({
-  storeId: z.string().min(1),
+  /** Opcional: sem storeId lista horários de todas as unidades acessíveis. */
+  storeId: optionalId,
   /** active | inactive | all */
-  status: z.enum(['active', 'inactive', 'all']).default('active'),
+  status: z.enum(['active', 'inactive', 'all']).default('all'),
   q: z.string().max(120).optional(),
 });
 export type WeeklyScheduleListQuery = z.infer<typeof weeklyScheduleListQuerySchema>;
