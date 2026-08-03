@@ -82,6 +82,7 @@ MVP **em produção** e funcional. Além do ciclo inicial (vendas, resumo diári
 | Fornecedores + notas de compra (entrada de estoque) | ✅ |
 | Formas de pagamento por loja + taxas + receita líquida | ✅ |
 | Custo fornecedor + margem bruta (produtos, resumo, relatório) | ✅ |
+| **Gastos da empresa** (painel de custos, master + financeiro) + custo/lucro líquido real | ✅ |
 | Mapa de entregadores (presença GPS + disponibilidade) | ✅ |
 | Entregador multi-unidade (`DelivererStore`) | ✅ |
 | Push notifications (Expo + FCM) | ✅ Nova rota / cancelamento / lembrete pendente |
@@ -116,6 +117,7 @@ Documentação: [docs/development.md](docs/development.md) · [docs/deployment.m
 - Clientes **por loja**, endereços, preços negociados por produto, histórico paginado
 - Produtos e estoque por loja (listagens paginadas, custo fornecedor e margem)
 - **Fornecedores** e **Compras** (notas de entrada de estoque)
+- **Gastos da empresa** — `/store/[storeId]/expenses` (master/financeiro): lançamento por competência, categorias, parcelas mensais, pago/pendente, gráficos e CSV. Despesas sem unidade são rateadas entre as lojas por faturamento e entram no **custo líquido** do dashboard
 - **Formas de pagamento** — `/store/[storeId]/settings/payment-methods` (taxas e receita líquida)
 - **Relatórios** — vendas, compras, estoque + exportação CSV
 - Transferências entre unidades
@@ -132,12 +134,14 @@ Documentação: [docs/development.md](docs/development.md) · [docs/deployment.m
 | `/master` | ORG_MASTER |
 | `/master/users`, `/master/stores`, `/master/deliverers` | ORG_MASTER |
 | `/master/deliverers/map` | ORG_MASTER — mapa consolidado |
+| `/master/expenses` | ORG_MASTER / FINANCE — gastos da empresa consolidados |
 | `/master/purchases`, `/master/purchases/new` | ORG_MASTER — compras consolidadas + entrada de botijões por unidade |
 | `/master/settings` | ORG_MASTER — Minha conta |
 | `/master/go-to-store` | ORG_MASTER — escolher loja |
 | `/store/[storeId]/daily-summary` | Resumo diário (tela inicial da loja) |
 | `/store/[storeId]/suppliers`, `/purchases`, `/reports` | Conforme permissão |
 | `/store/[storeId]/deliverers/map` | Mapa de entregadores |
+| `/store/[storeId]/expenses` | Gastos da empresa na unidade (master/financeiro) |
 | `/store/[storeId]/settings/payment-methods` | Formas de pagamento (gerente/financeiro) |
 | `/store/[storeId]/*` | Usuários com acesso à loja |
 | `/settings` | Redirect conforme papel |
@@ -167,7 +171,7 @@ Guia completo: [docs/deployment.md](docs/deployment.md)
 
 ## Migrations (banco)
 
-21 migrations até `20260701120000_deliverer_gps_stale_reminder`. Ver lista completa em [docs/development.md](docs/development.md#migrations-aplicadas).
+Migrations até `20260803150000_expenses`. Ver lista completa em [docs/development.md](docs/development.md#migrations-aplicadas).
 
 Aplicar em produção: `pnpm db:deploy` (também roda no `release_command` do Fly via `scripts/fly-release.sh`).
 

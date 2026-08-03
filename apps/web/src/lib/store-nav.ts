@@ -2,6 +2,7 @@ import type { StoreScreenKey } from '@gas-erp/shared';
 import {
   canAccessHorarios,
   canManagePaymentMethods,
+  canViewExpenses,
   canViewTimeClockLog,
   hasScreenPermission,
 } from '@gas-erp/shared';
@@ -59,6 +60,11 @@ export const STORE_NAV_GROUPS: StoreNavGroup[] = [
     ],
   },
   {
+    id: 'financeiro',
+    label: 'Financeiro',
+    items: [{ segment: 'expenses', label: 'Gastos da empresa' }],
+  },
+  {
     id: 'relatorios',
     label: 'Relatórios',
     items: [{ screen: 'store.reports', segment: 'reports', label: 'Relatórios' }],
@@ -77,7 +83,9 @@ export const STORE_NAV_ITEMS: StoreNavItem[] = [
 ];
 
 export function canAccessStoreNavItem(user: AuthUser, item: StoreNavItem): boolean {
+  // Itens sem chave de tela têm acesso definido por papel.
   if (!item.screen) {
+    if (item.segment === 'expenses') return canViewExpenses(user.role);
     return item.segment === 'settings/payment-methods' && canManagePaymentMethods(user.role);
   }
   if (item.screen === 'store.schedules.horarios') {

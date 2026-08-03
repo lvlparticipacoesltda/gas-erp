@@ -23,6 +23,8 @@ interface StoreStat {
   totalCost?: number;
   grossProfit?: number;
   totalProcessingFees?: number;
+  operatingExpenses?: number;
+  netCost?: number;
   netProfit?: number;
 }
 
@@ -55,6 +57,7 @@ export default function MasterDashboardPage() {
   const revenueLabel = isRange ? 'Faturamento no período' : 'Faturamento';
   const showFinancial = data?.summary?.totalCost != null && data?.summary?.grossProfit != null;
   const showNetFinancial = showFinancial && data?.summary?.netRevenue != null;
+  const showExpenses = showNetFinancial && data?.summary?.operatingExpenses != null;
 
   if (loading && !data) return <PageLoader label="Carregando visão geral…" />;
 
@@ -134,6 +137,18 @@ export default function MasterDashboardPage() {
                               <div className="text-slate-500">Taxas pagamento</div>
                               <div className="font-semibold">{formatCurrency(s.totalProcessingFees ?? 0)}</div>
                             </div>
+                            {showExpenses && (
+                              <>
+                                <div>
+                                  <div className="text-slate-500">Despesas</div>
+                                  <div className="font-semibold text-rose-600">{formatCurrency(s.operatingExpenses ?? 0)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-500">Custo líquido</div>
+                                  <div className="font-semibold">{formatCurrency(s.netCost ?? 0)}</div>
+                                </div>
+                              </>
+                            )}
                             <div>
                               <div className="text-slate-500">Lucro líquido</div>
                               <div className="font-semibold">{formatCurrency(s.netProfit ?? 0)}</div>

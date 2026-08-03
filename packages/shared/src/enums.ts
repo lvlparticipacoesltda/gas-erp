@@ -147,6 +147,47 @@ export const STOCK_TRANSFER_STATUS_LABELS: Record<string, string> = {
   COMPLETED: 'Concluída',
 };
 
+export const EXPENSE_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Pendente',
+  PAID: 'Pago',
+  CANCELLED: 'Cancelado',
+};
+
+/** Formas de pagamento sugeridas para gastos da empresa (texto livre é aceito). */
+export const EXPENSE_PAYMENT_LABELS = [
+  'PIX',
+  'Boleto',
+  'Cartão',
+  'Débito',
+  'Dinheiro',
+  'Transferência',
+  'Débito automático',
+  'DAS',
+  'Cheque',
+] as const;
+
+/**
+ * Categorias semeadas em toda organização que ainda não tem nenhuma.
+ * `icon` é o nome do ícone `lucide-react`; `color` alimenta o badge e o gráfico de rosca.
+ */
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  { name: 'Aluguel', icon: 'building-2', color: '#f97316' },
+  { name: 'Água', icon: 'droplets', color: '#0ea5e9' },
+  { name: 'Luz', icon: 'zap', color: '#eab308' },
+  { name: 'Internet e telefone', icon: 'wifi', color: '#8b5cf6' },
+  { name: 'Folha de pagamento', icon: 'users', color: '#3b82f6' },
+  { name: 'Benefícios', icon: 'ticket', color: '#06b6d4' },
+  { name: 'Impostos e taxas', icon: 'landmark', color: '#ef4444' },
+  { name: 'Manutenção de veículos', icon: 'wrench', color: '#64748b' },
+  { name: 'Combustível', icon: 'fuel', color: '#dc2626' },
+  { name: 'Contabilidade', icon: 'calculator', color: '#14b8a6' },
+  { name: 'Marketing', icon: 'megaphone', color: '#ec4899' },
+  { name: 'Outros', icon: 'circle-ellipsis', color: '#94a3b8' },
+] as const;
+
+/** Cor de fallback para categoria sem cor definida. */
+export const EXPENSE_CATEGORY_FALLBACK_COLOR = '#94a3b8';
+
 export const ROLE_LABELS: Record<string, string> = {
   PLATFORM_ADMIN: 'Admin Plataforma',
   ORG_MASTER: 'Master',

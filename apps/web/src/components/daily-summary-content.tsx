@@ -14,6 +14,10 @@ export interface DailySummaryData {
   grossProfit?: number;
   grossMarginPercent?: number | null;
   totalProcessingFees?: number;
+  operatingExpenses?: number;
+  operatingExpensesDirect?: number;
+  operatingExpensesShared?: number;
+  netCost?: number;
   netRevenue?: number;
   netProfit?: number;
   netMarginPercent?: number | null;
@@ -124,6 +128,8 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
   const paymentEntries = data.paymentsByMethod;
   const showFinancial = data.totalCost != null && data.grossProfit != null;
   const showNetFinancial = showFinancial && data.netRevenue != null && data.netProfit != null;
+  // Despesas da empresa só chegam para master e financeiro.
+  const showExpenses = showNetFinancial && data.operatingExpenses != null;
 
   const stock = data.stockGlp;
   const gdp = data.gasDoPovo;
@@ -213,6 +219,24 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
         {showNetFinancial && (
           <>
             <Card><div className="text-sm text-slate-500">Taxas pagamento {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.totalProcessingFees ?? 0)}</div></Card>
+            {showExpenses && (
+              <>
+                <Card>
+                  <div className="text-sm text-slate-500">Despesas da empresa {periodLabel}</div>
+                  <div className="text-2xl font-bold text-rose-600">{formatCurrency(data.operatingExpenses!)}</div>
+                  {(data.operatingExpensesShared ?? 0) > 0 && (
+                    <div className="mt-1 text-xs text-slate-400">
+                      inclui {formatCurrency(data.operatingExpensesShared!)} rateado
+                    </div>
+                  )}
+                </Card>
+                <Card>
+                  <div className="text-sm text-slate-500">Custo líquido {periodLabel}</div>
+                  <div className="text-2xl font-bold">{formatCurrency(data.netCost!)}</div>
+                  <div className="mt-1 text-xs text-slate-400">CMV + taxas + despesas</div>
+                </Card>
+              </>
+            )}
             <Card><div className="text-sm text-slate-500">Faturamento líquido {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.netRevenue!)}</div></Card>
             <Card><div className="text-sm text-slate-500">Lucro líquido {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.netProfit!)}</div></Card>
             <Card><div className="text-sm text-slate-500">Margem líquida {periodLabel}</div><div className="text-2xl font-bold">{data.netMarginPercent != null ? `${data.netMarginPercent}%` : '—'}</div></Card>

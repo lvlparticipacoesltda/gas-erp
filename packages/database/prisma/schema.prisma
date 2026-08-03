@@ -127,6 +127,12 @@ enum TimeClockPunchType {
   CLOCK_OUT
 }
 
+enum ExpenseStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
 enum TimeClockSource {
   WEB
   MOBILE
@@ -152,6 +158,8 @@ model Organization {
   workScheduleEntries WorkScheduleEntry[]
   workScheduleWeeklies WorkScheduleWeekly[]
   timeClockPunches    TimeClockPunch[]
+  expenseCategories   ExpenseCategory[]
+  expenses            Expense[]
 }
 
 model Store {
@@ -197,6 +205,7 @@ model Store {
   workScheduleEntries WorkScheduleEntry[]
   workScheduleWeeklies WorkScheduleWeekly[]
   timeClockPunches    TimeClockPunch[]
+  expenses            Expense[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -269,6 +278,8 @@ model User {
   sessions            UserSession[]
   trustedDevices      TrustedDevice[]
   devicePairingCodes  DevicePairingCode[]
+  expensesCreated     Expense[]           @relation("ExpenseCreatedBy")
+  expensesUpdated     Expense[]           @relation("ExpenseUpdatedBy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -445,6 +456,7 @@ model Supplier {
 
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   purchaseInvoices PurchaseInvoice[]
+  expenses         Expense[]
 
   @@index([organizationId])
   @@index([legalName])
@@ -1017,4 +1029,81 @@ model TimeClockPunch {
 
   @@index([storeId, userId, punchedAt])
   @@index([organizationId, punchedAt])
+}
+
+/** Categoria de gasto da empresa (aluguel, folha, impostos…). Escopo da organização. */
+model ExpenseCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  /** Nome do ícone `lucide-react` exibido no painel (ex.: "zap"). */
+  icon           String?
+  /** Cor hex usada no badge e no gráfico de rosca (ex.: "#f97316"). */
+  color          String?
+  /** Semeada pelo sistema — não pode ser excluída, só inativada. */
+  system         Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, active])
+}
+
+/**
+ * Gasto da empresa (contas a pagar simplificadas).
+ *
+ * O resultado é apurado por **competência**: `expenseDate` define o mês em que o gasto
+ * reduz o lucro líquido, independentemente de já ter sido pago.
+ */
+model Expense {
+  id             String        @id @default(cuid())
+  organizationId String
+  /** null = despesa da organização; é rateada entre as unidades por faturamento. */
+  storeId        String?
+  categoryId     String
+  description    String
+  /** Data de competência — define o mês do resultado. */
+  expenseDate    DateTime      @db.Date
+  dueDate        DateTime?     @db.Date
+  paidAt         DateTime?     @db.Date
+  amount         Decimal       @db.Decimal(12, 2)
+  status         ExpenseStatus @default(PENDING)
+  /** Fornecedor cadastrado (opcional). */
+  supplierId     String?
+  /** Fornecedor avulso, quando não há cadastro. */
+  supplierName   String?
+  /**
+   * Forma de pagamento como texto (PIX, Boleto, DAS…).
+   * Não é FK para `StorePaymentMethod` porque aquele modelo é por loja e a despesa
+   * da organização não tem loja. Ver nota "MÓDULO FINANCEIRO ADIADO" em shared/enums.
+   */
+  paymentLabel   String?
+  notes          String?
+  /** Agrupa as parcelas geradas de uma vez. */
+  recurrenceGroupId String?
+  installment       Int?
+  installments      Int?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store?          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category     ExpenseCategory @relation(fields: [categoryId], references: [id])
+  supplier     Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy    User?           @relation("ExpenseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, expenseDate])
+  @@index([storeId, expenseDate])
+  @@index([categoryId])
+  @@index([status])
+  @@index([supplierId])
+  @@index([recurrenceGroupId])
 }

@@ -46,6 +46,7 @@ export const MASTER_NAV_GROUPS: MasterNavGroup[] = [
     id: 'financeiro',
     label: 'Financeiro',
     items: [
+      { href: '/master/expenses', label: 'Gastos da empresa' },
       { href: '/master/purchases', label: 'Compras' },
       { href: '/master/stock/transfers', label: 'Transferências' },
       { href: '/master/reports', label: 'Relatórios' },

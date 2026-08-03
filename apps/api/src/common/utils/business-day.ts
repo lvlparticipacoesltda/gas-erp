@@ -74,6 +74,30 @@ export function resolveDashboardDateRange(
   return { start: today.start, end: today.end, dateFrom: today.dateKey, dateTo: today.dateKey };
 }
 
+/**
+ * Colunas `@db.Date` (ex.: `Expense.expenseDate`) não têm hora: o Postgres devolve
+ * meia-noite **UTC**. Filtrá-las com os limites do dia operacional (UTC-3) desloca
+ * o resultado em um dia, então a comparação usa meia-noite UTC.
+ */
+export function dateKeyToUtcDate(dateKey: string): Date {
+  assertValidDateKey(dateKey);
+  const [y, mo, d] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(y, mo - 1, d));
+}
+
+/** Intervalo `[gte, lt)` para colunas `@db.Date`, inclusivo nas duas pontas do calendário. */
+export function dateOnlyRangeBounds(
+  fromDateKey: string,
+  toDateKey: string,
+): { gte: Date; lt: Date } {
+  assertValidDateKey(fromDateKey);
+  assertValidDateKey(toDateKey);
+  return {
+    gte: dateKeyToUtcDate(fromDateKey),
+    lt: dateKeyToUtcDate(addDaysToDateKey(toDateKey, 1)),
+  };
+}
+
 /** Autoteste rápido usado no health check. */
 export function verifyBusinessDayRanges(): { ok: boolean; sample: string } {
   const sample = getBusinessDayBounds('2026-06-30');

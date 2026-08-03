@@ -84,13 +84,21 @@ Exclusões são **irreversíveis**. A UI exige confirmação explícita.
 | Aprovar/rejeitar venda criada no app | `ORG_MASTER`, `STORE_MANAGER`, `ATTENDANT`, `PLATFORM_ADMIN` (`canApproveMobileSales`) |
 | Cancelar venda finalizada (Portaria/Entregue) | `canManageSales` |
 | Ver custo fornecedor e margem bruta | `ORG_MASTER`, `STORE_MANAGER`, `FINANCE`, `PLATFORM_ADMIN` (`canViewFinancialMargins`) |
+| Ver e lançar gastos da empresa | `ORG_MASTER`, `FINANCE`, `PLATFORM_ADMIN` (`canViewExpenses`) |
 | Configurar formas de pagamento e taxas | `ORG_MASTER`, `STORE_MANAGER`, `FINANCE`, `PLATFORM_ADMIN` (`canManagePaymentMethods`) |
 | Iniciar rota de entrega (`IN_PROGRESS`) | Apenas o entregador dono (app mobile) |
 | Concluir entrega (`DELIVERED`) | Entregador dono ou equipe da loja |
 | Marcar entregador disponível / indisponível (mapa) | Gerente, master ou atendente com `store.deliverers.map` (`canToggleDelivererAvailability`) |
 | Criar venda no app mobile | Papel `DELIVERER` |
 
-Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canApproveMobileSales`, `canManageDeliverers`, `canViewFinancialMargins`, `canManagePaymentMethods`, `canToggleDelivererAvailability`, `hasScreenPermission`.
+Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canApproveMobileSales`, `canManageDeliverers`, `canViewFinancialMargins`, `canViewExpenses`, `canManagePaymentMethods`, `canToggleDelivererAvailability`, `hasScreenPermission`.
+
+### Gastos da empresa
+
+O painel de custos (`/master/expenses` e `/store/[storeId]/expenses`) **não** é chave de tela: o
+acesso vem do papel, via `canViewExpenses`. Gerente e atendente continuam vendo CMV e margem bruta,
+mas não o custo fixo da empresa — nem na tela, nem nos campos `operatingExpenses`/`netCost` do
+dashboard, que a API omite para quem não tem o papel.
 
 ## Onde é aplicado
 
