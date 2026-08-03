@@ -95,7 +95,8 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 | Módulo | Descrição | Dependências |
 |--------|-----------|--------------|
 | **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub em `packages/shared/src/fiscal/`) | Escolha de provedor |
-| **Contas a pagar** | Títulos de fornecedores vinculados a `PurchaseInvoice` | Fiscal parcial |
+| **Gastos da empresa** | ✅ Entregue — painel de custos (`Expense`/`ExpenseCategory`), competência, rateio e custo/lucro líquido no dashboard | — |
+| **Contas a pagar** | Títulos de fornecedores vinculados a `PurchaseInvoice` (o painel de gastos já cobre a parte não-fornecedor) | Fiscal parcial |
 | **Contas a receber** | Títulos de vendas a prazo / fiado | Formas de pagamento ✅ |
 | **Fluxo de caixa** | Consolidação entradas/saídas por loja e período | Contas a pagar/receber |
 | **DRE simplificado** | Receita líquida, CMV, margem (base já existe no resumo) | Custo fornecedor ✅ |

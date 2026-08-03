@@ -88,6 +88,33 @@ Operações escopadas por loja (`X-Store-Id` ou `storeId`).
 - `PATCH /purchase-invoices/:id` — atualizar
 - `DELETE /purchase-invoices/:id` — cancelar
 
+### Expenses (gastos da empresa)
+
+Acesso restrito a `ORG_MASTER`, `FINANCE` e `PLATFORM_ADMIN` (`canViewExpenses`); demais papéis
+recebem **403**. Master enxerga a organização inteira; financeiro, as lojas às quais tem acesso
+**mais** as despesas sem unidade.
+
+Filtros comuns a `GET /expenses`, `/summary` e `/export`: `storeId` (use `org` para apenas as
+despesas da organização), `categoryId`, `status`, `dateFrom`, `dateTo`, `search`.
+
+- `GET /expenses?...&page=&pageSize=` — lista paginada; além do envelope padrão devolve
+  `filteredTotal` (soma de todo o filtro, não só da página)
+- `GET /expenses/summary?...` — `total`, `paid`, `pending`, `byCategory[]`, `byStore[]` e
+  `byMonth[]` (6 meses até o mês de `dateTo`)
+- `GET /expenses/export?...` — download CSV
+- `GET /expenses/:id` — detalhe
+- `POST /expenses` — criar. `storeId` ausente = despesa da organização. `installments > 1` gera uma
+  linha por mês (mesmo valor), agrupadas por `recurrenceGroupId`
+- `PATCH /expenses/:id` — atualizar
+- `POST /expenses/:id/pay` — marca como pago (`paidAt` opcional; padrão = hoje)
+- `DELETE /expenses/:id` — exclusão permanente
+- `GET|POST /expenses/categories`, `PATCH|DELETE /expenses/categories/:id` — categorias da
+  organização (semeadas na primeira leitura). Categoria do sistema ou já usada é **inativada**, não
+  excluída
+
+O período usa **competência** (`expenseDate`), não a data de pagamento: o gasto entra no resultado do
+mês em que ocorreu, esteja pago ou pendente.
+
 ### Sales
 
 - `GET /sales?storeId=...&status=...&page=...&pageSize=...&backdatePending=true&mobilePending=true` — lista paginada (20 padrão)
@@ -202,6 +229,18 @@ Requer FCM configurado — ver [mobile-push-fcm.md](mobile-push-fcm.md).
 Período: dia único (`date`) ou intervalo inclusivo (`dateFrom` + `dateTo`). Fuso: `America/Sao_Paulo` (UTC-3 fixo). Agregações usam **`saleDate`**; exclui `backdateApproval` e `mobileApproval` pendentes/rejeitados.
 
 Inclui `deliveryMetrics` (espera, rota, por entregador) e totais financeiros com **receita líquida** (após taxas de pagamento) e **margem bruta** (quando custo fornecedor configurado).
+
+Para quem tem `canViewExpenses` (master e financeiro), a resposta também traz o custo operacional:
+
+| Campo | Significado |
+|-------|-------------|
+| `operatingExpenses` | Despesas da empresa no período, por competência, já rateadas |
+| `operatingExpensesDirect` | Parcela lançada diretamente nas unidades do escopo |
+| `operatingExpensesShared` | Parcela vinda de despesas sem unidade, rateada por faturamento |
+| `netCost` | `totalCost` (CMV) + `totalProcessingFees` + `operatingExpenses` |
+
+`netProfit` passa a ser `revenue − netCost`. Sem acesso a despesas (ex.: gerente de loja), o
+`netCost` continua sendo apenas CMV + taxas — o custo fixo da empresa não é exposto.
 
 ## Notifications (master)
 
