@@ -3,28 +3,40 @@ import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   aggregateDelivererRouteStats,
+  allocateSharedExpenses,
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
   COUNTED_MOBILE_APPROVALS,
   COUNTED_SALE_STATUSES,
   DashboardDateQuery,
   PAYMENT_METHOD_LABELS,
+  canViewExpenses,
   canViewFinancialMargins,
   computeGrossMarginPercent,
   computeGrossProfit,
+  computeNetCost,
   computeNetMarginPercent,
   computeNetProfit,
+  computeNetProfitFromNetCost,
   computeNetRevenue,
   computeSaleCogs,
   formatDashboardDateRangeLabel,
   toNumber,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
-import { resolveDashboardDateRange } from '../../common/utils/business-day';
+import {
+  dateOnlyRangeBounds,
+  resolveDashboardDateRange,
+} from '../../common/utils/business-day';
 import {
   SALE_STOCK_CANCEL_RESTORE_REASON,
   SALE_STOCK_OUT_REASON,
 } from '../stock/stock.service';
+
+/** Arredondamento monetário — evita ruído de ponto flutuante ao somar rateios. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 type DashboardPayload = {
   date: string;
@@ -35,6 +47,14 @@ type DashboardPayload = {
   grossProfit?: number;
   grossMarginPercent?: number | null;
   totalProcessingFees?: number;
+  /** Despesas da empresa no período (competência), já com o rateio aplicado. */
+  operatingExpenses?: number;
+  /** Parcela lançada diretamente nas unidades do escopo. */
+  operatingExpensesDirect?: number;
+  /** Parcela vinda de despesas da organização, rateada por faturamento. */
+  operatingExpensesShared?: number;
+  /** CMV + taxas de pagamento + despesas operacionais. */
+  netCost?: number;
   netRevenue?: number;
   netProfit?: number;
   netMarginPercent?: number | null;
@@ -153,6 +173,7 @@ export class DashboardService {
 
     const storeIds = stores.map((store) => store.id);
     const showFinancial = canViewFinancialMargins(user.role);
+    const showExpenses = showFinancial && canViewExpenses(user.role);
 
     const sharedSaleWhere = {
       storeId: { in: storeIds },
@@ -162,51 +183,67 @@ export class DashboardService {
       status: { in: [...COUNTED_SALE_STATUSES] as SaleStatus[] },
     };
 
-    const [salesGrouped, activeDeliveries, summary, saleItemsByStore, paymentsByStore] =
-      await Promise.all([
-        storeIds.length
-          ? this.prisma.sale.groupBy({
-              by: ['storeId'],
-              where: sharedSaleWhere,
-              _sum: { total: true },
-              _count: { _all: true },
-            })
-          : Promise.resolve([]),
-        storeIds.length
-          ? this.prisma.delivery.findMany({
-              where: {
-                status: { in: ['PENDING', 'IN_PROGRESS'] },
-                sale: {
-                  storeId: { in: storeIds },
-                  saleDate: { gte: start, lt: end },
-                  backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
-                  mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
-                },
+    const [
+      salesGrouped,
+      activeDeliveries,
+      summary,
+      saleItemsByStore,
+      paymentsByStore,
+      operatingExpenses,
+    ] = await Promise.all([
+      storeIds.length
+        ? this.prisma.sale.groupBy({
+            by: ['storeId'],
+            where: sharedSaleWhere,
+            _sum: { total: true },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      storeIds.length
+        ? this.prisma.delivery.findMany({
+            where: {
+              status: { in: ['PENDING', 'IN_PROGRESS'] },
+              sale: {
+                storeId: { in: storeIds },
+                saleDate: { gte: start, lt: end },
+                backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+                mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
               },
-              select: { sale: { select: { storeId: true } } },
-            })
-          : Promise.resolve([]),
-        this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true, user),
-        showFinancial && storeIds.length
-          ? this.prisma.saleItem.findMany({
-              where: { sale: sharedSaleWhere },
-              select: {
-                quantity: true,
-                unitCost: true,
-                sale: { select: { storeId: true } },
-              },
-            })
-          : Promise.resolve([]),
-        showFinancial && storeIds.length
-          ? this.prisma.salePayment.findMany({
-              where: { sale: sharedSaleWhere },
-              select: {
-                processingFee: true,
-                sale: { select: { storeId: true } },
-              },
-            })
-          : Promise.resolve([]),
-      ]);
+            },
+            select: { sale: { select: { storeId: true } } },
+          })
+        : Promise.resolve([]),
+      this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true, user),
+      showFinancial && storeIds.length
+        ? this.prisma.saleItem.findMany({
+            where: { sale: sharedSaleWhere },
+            select: {
+              quantity: true,
+              unitCost: true,
+              sale: { select: { storeId: true } },
+            },
+          })
+        : Promise.resolve([]),
+      showFinancial && storeIds.length
+        ? this.prisma.salePayment.findMany({
+            where: { sale: sharedSaleWhere },
+            select: {
+              processingFee: true,
+              sale: { select: { storeId: true } },
+            },
+          })
+        : Promise.resolve([]),
+      showExpenses
+        ? this.computeOperatingExpenses(
+            user.organizationId,
+            storeIds,
+            start,
+            end,
+            dateFrom,
+            dateTo,
+          )
+        : Promise.resolve(null),
+    ]);
 
     const salesByStoreId = new Map(salesGrouped.map((row) => [row.storeId, row]));
     const activeDeliveriesByStoreId = new Map<string, number>();
@@ -244,11 +281,15 @@ export class DashboardService {
               const grossProfit = computeGrossProfit(salesTotal, totalCost);
               const totalProcessingFees = feesByStoreId.get(store.id) ?? 0;
               const netRevenue = computeNetRevenue(salesTotal, totalProcessingFees);
-              const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
+              const storeExpenses = operatingExpenses?.byStore.get(store.id) ?? 0;
+              const netCost = computeNetCost(totalCost, totalProcessingFees, storeExpenses);
+              const netProfit = computeNetProfitFromNetCost(salesTotal, netCost);
               return {
                 totalCost,
                 grossProfit,
                 totalProcessingFees,
+                ...(operatingExpenses ? { operatingExpenses: storeExpenses } : {}),
+                netCost,
                 netRevenue,
                 netProfit,
               };
@@ -281,6 +322,98 @@ export class DashboardService {
         error instanceof Error ? error.message : 'Período inválido',
       );
     }
+  }
+
+  /**
+   * Despesas da empresa alocadas às unidades do escopo, por competência.
+   *
+   * Despesas lançadas sem unidade pertencem à organização e são rateadas entre
+   * todas as lojas ativas na proporção do faturamento do período — sem o rateio,
+   * o custo fixo corporativo não apareceria no resultado de unidade nenhuma.
+   */
+  private async computeOperatingExpenses(
+    organizationId: string,
+    storeIds: string[],
+    start: Date,
+    end: Date,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<{
+    direct: number;
+    shared: number;
+    total: number;
+    byStore: Map<string, number>;
+  }> {
+    const expenseDate = dateOnlyRangeBounds(dateFrom, dateTo);
+    const activeStores = await this.prisma.store.findMany({
+      where: { organizationId, active: true },
+      select: { id: true },
+    });
+    const activeStoreIds = activeStores.map((store) => store.id);
+
+    const [directRows, sharedAgg, revenueRows] = await Promise.all([
+      storeIds.length
+        ? this.prisma.expense.groupBy({
+            by: ['storeId'],
+            where: {
+              organizationId,
+              storeId: { in: storeIds },
+              expenseDate,
+              status: { not: 'CANCELLED' },
+            },
+            _sum: { amount: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.expense.aggregate({
+        where: {
+          organizationId,
+          storeId: null,
+          expenseDate,
+          status: { not: 'CANCELLED' },
+        },
+        _sum: { amount: true },
+      }),
+      activeStoreIds.length
+        ? this.prisma.sale.groupBy({
+            by: ['storeId'],
+            where: {
+              storeId: { in: activeStoreIds },
+              saleDate: { gte: start, lt: end },
+              backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
+              mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
+              status: { in: [...COUNTED_SALE_STATUSES] as SaleStatus[] },
+            },
+            _sum: { total: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const revenueByStoreId = new Map(
+      revenueRows.map((row) => [row.storeId, toNumber(row._sum.total)]),
+    );
+    const allocation = allocateSharedExpenses(
+      toNumber(sharedAgg._sum.amount),
+      activeStoreIds.map((id) => [id, revenueByStoreId.get(id) ?? 0] as const),
+    );
+
+    const directByStoreId = new Map(
+      directRows.map((row) => [row.storeId, toNumber(row._sum.amount)]),
+    );
+
+    const byStore = new Map<string, number>();
+    let direct = 0;
+    let shared = 0;
+    for (const storeId of storeIds) {
+      const directValue = directByStoreId.get(storeId) ?? 0;
+      const sharedValue = allocation.get(storeId) ?? 0;
+      direct += directValue;
+      shared += sharedValue;
+      byStore.set(storeId, round2(directValue + sharedValue));
+    }
+
+    direct = round2(direct);
+    shared = round2(shared);
+    return { direct, shared, total: round2(direct + shared), byStore };
   }
 
   private emptyDashboard(dateFrom: string, dateTo: string): DashboardPayload {
@@ -340,6 +473,8 @@ export class DashboardService {
     };
 
     const showFinancial = canViewFinancialMargins(user.role);
+    // Gerente vê CMV e margem, mas não o custo fixo da empresa — só master e financeiro.
+    const showExpenses = showFinancial && canViewExpenses(user.role);
 
     const [
       saleAgg,
@@ -352,6 +487,7 @@ export class DashboardService {
       gdpMethods,
       stockBalances,
       stockMovements,
+      operatingExpenses,
     ] = await Promise.all([
       this.prisma.sale.aggregate({
         where: saleWhere,
@@ -470,6 +606,16 @@ export class DashboardService {
           product: { select: { id: true, name: true, sku: true, productType: true } },
         },
       }),
+      showExpenses
+        ? this.computeOperatingExpenses(
+            user.organizationId,
+            storeIds,
+            start,
+            end,
+            dateFrom,
+            dateTo,
+          )
+        : Promise.resolve(null),
     ]);
 
     const revenue = toNumber(saleAgg._sum.total);
@@ -875,12 +1021,27 @@ export class DashboardService {
             0,
           );
           const netRevenue = computeNetRevenue(revenue, totalProcessingFees);
-          const netProfit = computeNetProfit(grossProfit, totalProcessingFees);
+          // Sem acesso a despesas, o custo líquido continua sendo só CMV + taxas
+          // (comportamento anterior); com acesso, entra o custo fixo da empresa.
+          const netCost = computeNetCost(
+            totalCost,
+            totalProcessingFees,
+            operatingExpenses?.total ?? 0,
+          );
+          const netProfit = computeNetProfitFromNetCost(revenue, netCost);
           return {
             totalCost,
             grossProfit,
             grossMarginPercent: computeGrossMarginPercent(totalCost, grossProfit),
             totalProcessingFees,
+            ...(operatingExpenses
+              ? {
+                  operatingExpenses: operatingExpenses.total,
+                  operatingExpensesDirect: operatingExpenses.direct,
+                  operatingExpensesShared: operatingExpenses.shared,
+                }
+              : {}),
+            netCost,
             netRevenue,
             netProfit,
             netMarginPercent: computeNetMarginPercent(totalCost, netProfit),
