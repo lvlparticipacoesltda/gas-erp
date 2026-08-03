@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "react-native": "./src/index.ts",
   "scripts": {
-    "build": "tsc && node scripts/verify-business-day.mjs && node scripts/verify-time-clock-totals.mjs",
+    "build": "tsc && node scripts/verify-business-day.mjs && node scripts/verify-time-clock-totals.mjs && node scripts/verify-expense-financials.mjs",
     "dev": "tsc --watch"
   },
   "dependencies": {

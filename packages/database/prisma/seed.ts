@@ -148,6 +148,39 @@ async function main() {
   );
   const category = categories[0];
 
+  // Categorias de gastos da empresa. Espelha DEFAULT_EXPENSE_CATEGORIES de
+  // @gas-erp/shared (o pacote database não depende de shared).
+  const expenseCategories = [
+    { name: 'Aluguel', icon: 'building-2', color: '#f97316' },
+    { name: 'Água', icon: 'droplets', color: '#0ea5e9' },
+    { name: 'Luz', icon: 'zap', color: '#eab308' },
+    { name: 'Internet e telefone', icon: 'wifi', color: '#8b5cf6' },
+    { name: 'Folha de pagamento', icon: 'users', color: '#3b82f6' },
+    { name: 'Benefícios', icon: 'ticket', color: '#06b6d4' },
+    { name: 'Impostos e taxas', icon: 'landmark', color: '#ef4444' },
+    { name: 'Manutenção de veículos', icon: 'wrench', color: '#64748b' },
+    { name: 'Combustível', icon: 'fuel', color: '#dc2626' },
+    { name: 'Contabilidade', icon: 'calculator', color: '#14b8a6' },
+    { name: 'Marketing', icon: 'megaphone', color: '#ec4899' },
+    { name: 'Outros', icon: 'circle-ellipsis', color: '#94a3b8' },
+  ];
+  await Promise.all(
+    expenseCategories.map((cat, index) =>
+      prisma.expenseCategory.upsert({
+        where: { organizationId_name: { organizationId: org.id, name: cat.name } },
+        update: { icon: cat.icon, color: cat.color, sortOrder: index, active: true },
+        create: {
+          organizationId: org.id,
+          name: cat.name,
+          icon: cat.icon,
+          color: cat.color,
+          sortOrder: index,
+          system: true,
+        },
+      }),
+    ),
+  );
+
   const customer = await prisma.customer.upsert({
     where: { id: 'seed-customer-1' },
     update: {},

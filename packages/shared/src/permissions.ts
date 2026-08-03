@@ -111,6 +111,18 @@ export function canViewFinancialMargins(role: string): boolean {
   );
 }
 
+/**
+ * Painel de gastos da empresa — apenas master e financeiro.
+ *
+ * Não é chave de tela: gerente e atendente não enxergam o custo fixo da empresa,
+ * mesmo tendo acesso a CMV/margem (`canViewFinancialMargins`).
+ */
+export function canViewExpenses(role: string): boolean {
+  return role === 'ORG_MASTER' || role === 'FINANCE' || role === 'PLATFORM_ADMIN';
+}
+
+export const canManageExpenses = canViewExpenses;
+
 /** Configuração de formas de pagamento e taxas — master, gerente e financeiro. */
 export function canManagePaymentMethods(role: string): boolean {
   return (
