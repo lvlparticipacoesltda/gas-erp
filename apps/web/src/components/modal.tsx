@@ -57,12 +57,16 @@ export function Modal({
         aria-modal="true"
         aria-labelledby="modal-title"
         className={cn(
-          'flex max-h-[90vh] w-full flex-col rounded-xl bg-white shadow-xl',
+          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl bg-white shadow-xl',
           SIZES[size],
           className,
         )}
         onClick={(event) => event.stopPropagation()}
       >
+        {/* Faixa da marca no topo. Sem raio próprio: quem arredonda é o
+            `overflow-hidden` do modal, senão a curva de 12px estoura numa
+            faixa de 4px e vaza pelos cantos. */}
+        <div aria-hidden className="h-1 shrink-0 bg-brand" />
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-6 py-4">
           <div className="min-w-0">
             <h2 id="modal-title" className="text-lg font-bold text-slate-900">
