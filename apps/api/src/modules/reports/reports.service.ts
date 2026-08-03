@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PaymentMethod, Prisma, SaleStatus, PurchaseInvoiceStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
+import { formatCsvMoney, formatDateKey, toCsv } from '../../common/utils/csv';
 import {
   aggregateDelivererRouteStats,
   AuthUser,
@@ -808,30 +809,6 @@ export class ReportsService {
 }
 
 /* ----------------------------- CSV helpers ----------------------------- */
-
-/** Escapa um valor para CSV com separador ";" (padrão Excel pt-BR). */
-function csvCell(value: string | number): string {
-  const text = String(value ?? '');
-  if (/[";\n\r]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
-
-/** Gera CSV nativo (sem libs) com BOM UTF-8 e separador ";". */
-function toCsv(headers: string[], rows: (string | number)[][]): string {
-  const lines = [headers, ...rows].map((row) => row.map(csvCell).join(';'));
-  return `\uFEFF${lines.join('\r\n')}\r\n`;
-}
-
-/** Valor monetário com vírgula decimal (sem símbolo), p/ Excel pt-BR. */
-function formatCsvMoney(value: number): string {
-  return value.toFixed(2).replace('.', ',');
-}
-
-function formatDateKey(dateKey: string): string {
-  return dateKey.split('-').reverse().join('/');
-}
 
 function buildFilename(prefix: string, dateFrom: string, dateTo: string): string {
   const range = dateFrom === dateTo ? dateFrom : `${dateFrom}_a_${dateTo}`;

@@ -10,6 +10,7 @@ import { CustomersModule } from './modules/customers/customers.module';
 import { ProductsModule } from './modules/products/products.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { PurchaseInvoicesModule } from './modules/purchase-invoices/purchase-invoices.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 import { StockModule } from './modules/stock/stock.module';
 import { StockTransfersModule } from './modules/stock-transfers/stock-transfers.module';
 import { SalesModule } from './modules/sales/sales.module';
@@ -41,6 +42,7 @@ import { RealtimeModule } from './common/realtime/realtime.module';
     ProductsModule,
     SuppliersModule,
     PurchaseInvoicesModule,
+    ExpensesModule,
     StockModule,
     StockTransfersModule,
     SalesModule,
