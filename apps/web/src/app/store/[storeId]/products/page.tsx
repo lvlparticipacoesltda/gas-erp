@@ -9,7 +9,7 @@ import { Modal } from '@/components/modal';
 import { PaginatedSection } from '@/components/paginated-section';
 import { DEFAULT_TABLE_PAGE_SIZE } from '@/components/pagination';
 import { TableAction, TableActions } from '@/components/table-actions';
-import { Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { Alert, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -309,7 +309,7 @@ export default function ProductsPage() {
       >
         <form onSubmit={handleCreate} className="space-y-3">
           {formError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
+            <Alert>{formError}</Alert>
           ) : null}
           {formFields(form, setForm)}
           <div className="flex justify-end gap-2 pt-2">
@@ -332,7 +332,7 @@ export default function ProductsPage() {
       >
         <form onSubmit={handleUpdate} className="space-y-3">
           {formError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
+            <Alert>{formError}</Alert>
           ) : null}
           {formFields(editForm, setEditForm)}
           <div className="flex justify-end gap-2 pt-2">

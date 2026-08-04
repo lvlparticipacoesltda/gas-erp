@@ -16,6 +16,8 @@ import {
   totalPagesFor,
 } from '@/components/pagination';
 import { TableAction, TableActions } from '@/components/table-actions';
+import { useConfirm } from '@/components/confirm-dialog';
+import { useToast } from '@/components/toast';
 import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { invalidateStoresCache } from '@/components/app-shell';
 import { api, getToken } from '@/lib/api';
@@ -121,6 +123,8 @@ export default function MasterStoresPage() {
   const [formError, setFormError] = useState('');
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE);
   const [draftFilters, setDraftFilters] = useState({ search: '', active: '' });
@@ -230,14 +234,14 @@ export default function MasterStoresPage() {
 
   async function handleDeactivate(store: Store) {
     if (!store.active) return;
-    if (
-      !window.confirm(
-        `Inativar a loja "${store.name}"?\n\nUsuários vinculados não poderão operar nesta unidade, mas ela continuará listada como inativa.`,
-      )
-    ) {
-      return;
-    }
-    setFormError('');
+    const ok = await confirm({
+      title: `Inativar ${store.name}`,
+      description:
+        'Usuários vinculados não poderão operar nesta unidade, mas ela continuará listada como inativa.',
+      confirmLabel: 'Inativar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api(
         `/stores/${store.id}`,
@@ -245,27 +249,35 @@ export default function MasterStoresPage() {
         getToken(),
       );
       if (editing?.id === store.id) closeModal();
+      toast.success('Loja inativada.', store.name);
       await load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Erro ao inativar loja');
+      // Toast e não `formError`: a ação parte da linha da tabela, e aquele
+      // texto só é renderizado dentro do modal — a falha ficava invisível.
+      toast.error(err instanceof Error ? err.message : 'Erro ao inativar loja');
     }
   }
 
   async function handleDelete(store: Store) {
-    if (
-      !window.confirm(
-        `Excluir permanentemente a loja "${store.name}"?\n\nTodos os dados desta unidade serão apagados: vendas, clientes, estoque, entregas, notas de compra e transferências. Esta ação não pode ser desfeita.`,
-      )
-    ) {
-      return;
-    }
-    setFormError('');
+    const ok = await confirm({
+      title: `Excluir ${store.name}`,
+      description: (
+        <>
+          Todos os dados desta unidade serão apagados: vendas, clientes, estoque, entregas, notas de
+          compra e transferências. <strong className="font-semibold">Não pode ser desfeito.</strong>
+        </>
+      ),
+      confirmLabel: 'Excluir tudo',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api(`/stores/${store.id}`, { method: 'DELETE' }, getToken());
       if (editing?.id === store.id) closeModal();
+      toast.success('Loja excluída.', store.name);
       await load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Erro ao excluir loja');
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir loja');
     }
   }
 
@@ -274,9 +286,12 @@ export default function MasterStoresPage() {
     if (!editing) return;
 
     if (editing.active && !editForm.active) {
-      const ok = confirm(
-        `Desativar a loja "${editing.name}"?\n\nUsuários vinculados não poderão operar nesta unidade.`,
-      );
+      const ok = await confirm({
+        title: `Desativar ${editing.name}`,
+        description: 'Usuários vinculados não poderão operar nesta unidade.',
+        confirmLabel: 'Desativar',
+        tone: 'danger',
+      });
       if (!ok) return;
     }
 

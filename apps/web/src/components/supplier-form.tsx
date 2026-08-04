@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
+import { Alert, Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { SUPPLIER_TYPES, SUPPLIER_TYPE_LABELS } from '@gas-erp/shared';
 
@@ -124,7 +124,7 @@ export function SupplierForm({
 
       <Card>
         {error && (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <Alert className="mb-4">{error}</Alert>
         )}
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid gap-4 md:grid-cols-3">

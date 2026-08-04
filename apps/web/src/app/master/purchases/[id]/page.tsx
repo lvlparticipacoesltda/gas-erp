@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
-import { Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
+import { useConfirm } from '@/components/confirm-dialog';
+import { Alert, Badge, Button, Card, Input, Label, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { PURCHASE_INVOICE_STATUS_LABELS } from '@gas-erp/shared';
@@ -60,6 +61,7 @@ export default function MasterPurchaseDetailPage() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const confirm = useConfirm();
 
   function applyInvoice(inv: Invoice) {
     setInvoice(inv);
@@ -103,7 +105,14 @@ export default function MasterPurchaseDetailPage() {
   }
 
   async function handleCancel() {
-    if (!window.confirm('Cancelar esta nota? O estoque dos itens será estornado.')) return;
+    const ok = await confirm({
+      title: 'Cancelar nota',
+      description: 'O estoque dos itens desta nota será estornado.',
+      confirmLabel: 'Cancelar nota',
+      cancelLabel: 'Voltar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setError('');
     setCancelling(true);
     try {
@@ -117,7 +126,7 @@ export default function MasterPurchaseDetailPage() {
   }
 
   if (error && !invoice) {
-    return <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>;
+    return <Alert>{error}</Alert>;
   }
 
   if (!invoice) {
@@ -148,7 +157,7 @@ export default function MasterPurchaseDetailPage() {
       />
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <Alert className="mb-4">{error}</Alert>
       )}
 
       <Card className="mb-6">

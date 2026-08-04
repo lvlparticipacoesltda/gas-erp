@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { MapPin, RefreshCw } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { DelivererMapCard, DelivererOfflineCard } from '@/components/deliverer-map-card';
+import { Alert } from '@/components/ui';
 import { api, getStoredUser, getToken, refreshStoredUser } from '@/lib/api';
 import type { AuthUser, DelivererPosition } from '@gas-erp/shared';
 import { canToggleDelivererAvailability, getDelivererAvailabilityLock } from '@gas-erp/shared';
@@ -256,9 +257,7 @@ export function DeliverersMapView({
       <aside className="flex h-[min(55vh,520px)] w-full shrink-0 flex-col border-t border-slate-200 bg-white shadow-xl lg:h-full lg:w-[min(100%,400px)] lg:max-w-md lg:border-l lg:border-t-0">
         <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
           {actionError && (
-            <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-              {actionError}
-            </p>
+            <Alert className="mb-3">{actionError}</Alert>
           )}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

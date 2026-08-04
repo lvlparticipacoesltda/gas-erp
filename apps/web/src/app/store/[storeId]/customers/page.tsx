@@ -13,6 +13,8 @@ import { Modal } from '@/components/modal';
 import { PaginatedSection } from '@/components/paginated-section';
 import { DEFAULT_TABLE_PAGE_SIZE, Pagination } from '@/components/pagination';
 import { TableAction, TableActions } from '@/components/table-actions';
+import { useConfirm } from '@/components/confirm-dialog';
+import { useToast } from '@/components/toast';
 import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -273,6 +275,8 @@ export default function CustomersPage() {
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
+  const confirm = useConfirm();
+  const toast = useToast();
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -385,42 +389,50 @@ export default function CustomersPage() {
 
   async function handleDeactivate(customer: Customer) {
     if (customer.active === false) return;
-    if (
-      !window.confirm(
-        `Inativar o cliente "${customer.name}"?\n\nEle deixará de aparecer nas buscas, mas o histórico de pedidos será mantido.`,
-      )
-    ) {
-      return;
-    }
-    setFormError('');
+    const ok = await confirm({
+      title: `Inativar ${customer.name}`,
+      description:
+        'O cliente deixará de aparecer nas buscas, mas o histórico de pedidos será mantido.',
+      confirmLabel: 'Inativar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api(`/customers/${customer.id}?storeId=${storeId}`, {
         method: 'PATCH',
         body: JSON.stringify({ active: false }),
       }, getToken());
       if (editing?.id === customer.id) closeModal();
+      toast.success('Cliente inativado.', customer.name);
       await load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Erro ao inativar cliente');
+      // Toast e não `formError`: a ação parte da linha da tabela, e aquele
+      // texto só é renderizado dentro do modal — a falha ficava invisível.
+      toast.error(err instanceof Error ? err.message : 'Erro ao inativar cliente');
     }
   }
 
   async function handleDelete(customer: Customer) {
-    if (
-      !window.confirm(
-        `Excluir permanentemente o cliente "${customer.name}"?\n\nEsta ação não pode ser desfeita. O cadastro será removido do sistema.`,
-      )
-    ) {
-      return;
-    }
-    setFormError('');
+    const ok = await confirm({
+      title: `Excluir ${customer.name}`,
+      description: (
+        <>
+          O cadastro será removido do sistema.{' '}
+          <strong className="font-semibold">Não pode ser desfeito.</strong>
+        </>
+      ),
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api(`/customers/${customer.id}?storeId=${storeId}`, { method: 'DELETE' }, getToken());
       if (editing?.id === customer.id) closeModal();
       if (historyCustomer?.id === customer.id) setHistoryCustomer(null);
+      toast.success('Cliente excluído.', customer.name);
       await load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Erro ao excluir cliente');
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir cliente');
     }
   }
 
@@ -429,9 +441,13 @@ export default function CustomersPage() {
     if (!editing) return;
 
     if (editing.active !== false && !editForm.active) {
-      const ok = confirm(
-        `Inativar o cliente "${editing.name}"?\n\nEle deixará de aparecer nas buscas, mas o histórico de pedidos será mantido.`,
-      );
+      const ok = await confirm({
+        title: `Inativar ${editing.name}`,
+        description:
+          'O cliente deixará de aparecer nas buscas, mas o histórico de pedidos será mantido.',
+        confirmLabel: 'Inativar',
+        tone: 'danger',
+      });
       if (!ok) return;
     }
 

@@ -7,7 +7,7 @@ import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedList } from '@/components/paginated-list';
 import { SalesReportPanel } from '@/components/sales-report-panel';
-import { Button, Card, PageHeader, Table } from '@/components/ui';
+import { Alert, Button, Card, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
@@ -152,7 +152,7 @@ export default function ReportsPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        <Alert className="mb-4">{error}</Alert>
       )}
 
       {tab === 'sales' && storeId && <SalesReportPanel storeId={storeId} />}

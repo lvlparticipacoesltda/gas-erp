@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
-import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { useConfirm } from '@/components/confirm-dialog';
+import { Alert, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import {
   PAYMENT_FEE_MODE_LABELS,
@@ -33,6 +34,7 @@ export function PaymentMethodsContent() {
   const [methods, setMethods] = useState<StorePaymentMethodRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const confirm = useConfirm();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -105,7 +107,13 @@ export function PaymentMethodsContent() {
   }
 
   async function deleteMethod(row: StorePaymentMethodRow) {
-    if (!window.confirm(`Excluir "${row.label}"?`)) return;
+    const ok = await confirm({
+      title: `Excluir ${row.label}`,
+      description: 'A forma de pagamento deixa de aparecer nas novas vendas.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setSavingId(row.id);
     setError('');
     setMessage('');
@@ -146,7 +154,7 @@ export function PaymentMethodsContent() {
         subtitle="Taxas de processamento e formas customizadas por loja"
       />
 
-      {error && <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {error && <Alert className="mb-4">{error}</Alert>}
       {message && <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>}
 
       <Card className="overflow-x-auto">

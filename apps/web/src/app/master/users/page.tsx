@@ -7,6 +7,8 @@ import { FilterPanel } from '@/components/filter-panel';
 import { PaginatedSection } from '@/components/paginated-section';
 import { Modal } from '@/components/modal';
 import { TableAction, TableActions } from '@/components/table-actions';
+import { useConfirm } from '@/components/confirm-dialog';
+import { useToast } from '@/components/toast';
 import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { ROLE_LABELS, USER_ROLES, type PaginatedResponse } from '@gas-erp/shared';
@@ -90,6 +92,8 @@ export default function MasterUsersPage() {
     jobTitle: '',
   });
   const [formError, setFormError] = useState('');
+  const confirm = useConfirm();
+  const toast = useToast();
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -223,14 +227,14 @@ export default function MasterUsersPage() {
 
   async function handleDeactivate(user: UserRow) {
     if (!user.active) return;
-    if (
-      !window.confirm(
-        `Inativar o usuário "${user.name}"?\n\nEle não poderá mais fazer login no sistema, mas continuará listado como inativo.`,
-      )
-    ) {
-      return;
-    }
-    setFormError('');
+    const ok = await confirm({
+      title: `Inativar ${user.name}`,
+      description:
+        'A pessoa não poderá mais fazer login no sistema, mas continuará listada como inativa.',
+      confirmLabel: 'Inativar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api(
         `/users/${user.id}`,
@@ -238,27 +242,35 @@ export default function MasterUsersPage() {
         getToken(),
       );
       if (editing?.id === user.id) closeModal();
+      toast.success('Usuário inativado.', user.name);
       await loadUsers();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Erro ao inativar usuário');
+      // Toast e não `formError`: a ação parte da linha da tabela, e aquele
+      // texto só é renderizado dentro do modal — a falha ficava invisível.
+      toast.error(err instanceof Error ? err.message : 'Erro ao inativar usuário');
     }
   }
 
   async function handleDelete(user: UserRow) {
-    if (
-      !window.confirm(
-        `Excluir permanentemente o usuário "${user.name}"?\n\nEsta ação não pode ser desfeita. O cadastro será removido do sistema.`,
-      )
-    ) {
-      return;
-    }
-    setFormError('');
+    const ok = await confirm({
+      title: `Excluir ${user.name}`,
+      description: (
+        <>
+          O cadastro será removido do sistema.{' '}
+          <strong className="font-semibold">Não pode ser desfeito.</strong>
+        </>
+      ),
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api(`/users/${user.id}`, { method: 'DELETE' }, getToken());
       if (editing?.id === user.id) closeModal();
+      toast.success('Usuário excluído.', user.name);
       await loadUsers();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Erro ao excluir usuário');
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir usuário');
     }
   }
 
@@ -267,9 +279,12 @@ export default function MasterUsersPage() {
     if (!editing) return;
 
     if (editing.active && !editForm.active) {
-      const ok = confirm(
-        `Desativar o usuário "${editing.name}"?\n\nEle não poderá mais fazer login no sistema.`,
-      );
+      const ok = await confirm({
+        title: `Desativar ${editing.name}`,
+        description: 'A pessoa não poderá mais fazer login no sistema.',
+        confirmLabel: 'Desativar',
+        tone: 'danger',
+      });
       if (!ok) return;
     }
 

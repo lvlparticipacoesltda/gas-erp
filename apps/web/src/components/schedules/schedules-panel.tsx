@@ -11,7 +11,7 @@ import {
 } from '@gas-erp/shared';
 import { api, getToken } from '@/lib/api';
 import { FilterBar, FilterField } from '@/components/filters';
-import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { Alert, Button, Card, Input, Label, Select } from '@/components/ui';
 import { PageLoader } from '@/components/brand-loader';
 import { cn } from '@/lib/utils';
 
@@ -509,9 +509,7 @@ export function SchedulesPanel({
       </FilterBar>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
+        <Alert>{error}</Alert>
       ) : null}
 
       {loading ? (

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
-import { Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { Alert, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { FilterBar, FilterField } from '@/components/filters';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -225,7 +225,7 @@ export default function StockPage() {
       <Card className="mb-8">
         <h2 className="mb-4 font-semibold">Ajustar estoque</h2>
         {formError && (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
+          <Alert className="mb-4">{formError}</Alert>
         )}
         {formSuccess && (
           <p className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{formSuccess}</p>

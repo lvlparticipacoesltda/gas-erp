@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Input, Label, Select, Table } from '@/components/ui';
+import { useConfirm } from '@/components/confirm-dialog';
+import { Alert, Button, Input, Label, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import type { CustomerProductPriceRow, PaginatedResponse } from '@gas-erp/shared';
@@ -24,6 +25,7 @@ export function CustomerProductPricesEditor({ customerId, storeId }: CustomerPro
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const confirm = useConfirm();
   const [message, setMessage] = useState('');
   const [draft, setDraft] = useState({ productId: '', price: 0 });
 
@@ -108,7 +110,13 @@ export function CustomerProductPricesEditor({ customerId, storeId }: CustomerPro
   }
 
   async function handleRemove(productId: string) {
-    if (!window.confirm('Remover preço especial deste produto?')) return;
+    const ok = await confirm({
+      title: 'Remover preço especial',
+      description: 'O produto volta a usar o preço padrão da loja para este cliente.',
+      confirmLabel: 'Remover',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setSaving(true);
     setError('');
     setMessage('');
@@ -135,7 +143,7 @@ export function CustomerProductPricesEditor({ customerId, storeId }: CustomerPro
       </p>
 
       {error && (
-        <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <Alert className="mt-3">{error}</Alert>
       )}
       {message && (
         <p className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{message}</p>

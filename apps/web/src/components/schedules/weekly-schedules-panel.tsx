@@ -9,7 +9,8 @@ import {
 } from '@gas-erp/shared';
 import { api, getToken } from '@/lib/api';
 import { FilterBar, FilterField } from '@/components/filters';
-import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { useConfirm } from '@/components/confirm-dialog';
+import { Alert, Button, Card, Input, Label, Select } from '@/components/ui';
 import { PageLoader } from '@/components/brand-loader';
 import { cn } from '@/lib/utils';
 
@@ -117,6 +118,7 @@ export function WeeklySchedulesPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
 
   const [mode, setMode] = useState<'list' | 'form'>('list');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -284,7 +286,13 @@ export function WeeklySchedulesPanel({
 
   async function removeWeekly(userId: string) {
     if (!canEdit) return;
-    if (!window.confirm('Remover este horário semanal? A escala já gerada não será apagada.')) return;
+    const ok = await confirm({
+      title: 'Remover horário semanal',
+      description: 'A escala já gerada a partir dele não será apagada.',
+      confirmLabel: 'Remover',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setSaving(true);
     try {
       await api(`/schedules/weeklies/${userId}`, { method: 'DELETE' }, getToken());
@@ -372,9 +380,7 @@ export function WeeklySchedulesPanel({
         </div>
 
         {error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
+          <Alert>{error}</Alert>
         ) : null}
         {applyMsg ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -635,9 +641,7 @@ export function WeeklySchedulesPanel({
       </FilterBar>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
+        <Alert>{error}</Alert>
       ) : null}
 
       <Card className="overflow-hidden p-0">
