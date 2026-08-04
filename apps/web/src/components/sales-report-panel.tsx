@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PageLoader } from '@/components/brand-loader';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { PaginatedList } from '@/components/paginated-list';
-import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { Alert, Button, Card, Input, Label, Select } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
 import { formatCurrency } from '@/lib/utils';
@@ -378,7 +378,7 @@ export function SalesReportPanel({
       </Card>
 
       {error && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        <Alert>{error}</Alert>
       )}
 
       {data && (

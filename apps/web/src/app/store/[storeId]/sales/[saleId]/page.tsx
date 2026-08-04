@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
-import { Badge, Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
+import { Alert, Badge, Button, Card, Input, Label, PageHeader, Select } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import { formatSaleAddress, parsePrice } from '@/lib/sale-utils';
@@ -440,7 +440,7 @@ export default function SaleDetailPage() {
         )}
 
         {error && (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <Alert className="mb-4">{error}</Alert>
         )}
 
         <div className="grid gap-6 lg:grid-cols-2">

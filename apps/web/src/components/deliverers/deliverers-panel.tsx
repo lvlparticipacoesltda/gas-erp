@@ -12,7 +12,9 @@ import {
   totalPagesFor,
 } from '@/components/pagination';
 import { TableAction, TableActions } from '@/components/table-actions';
-import { Badge, Button, Input, Label, Select, Table } from '@/components/ui';
+import { useConfirm } from '@/components/confirm-dialog';
+import { useToast } from '@/components/toast';
+import { Alert, Badge, Button, Input, Label, Select, Table } from '@/components/ui';
 import { api, getStoredUser, getToken } from '@/lib/api';
 import { canManageDeliverers, DELIVERER_STATUS_LABELS, type AuthUser } from '@gas-erp/shared';
 
@@ -90,6 +92,8 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
   const [createDefaultStoreId, setCreateDefaultStoreId] = useState(storeId ?? '');
   const [createError, setCreateError] = useState('');
   const [actionError, setActionError] = useState('');
+  const confirm = useConfirm();
+  const toast = useToast();
   const [creating, setCreating] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE);
@@ -226,13 +230,14 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
 
   async function handleDeactivate(deliverer: DelivererRow) {
     if (!deliverer.user.active) return;
-    if (
-      !window.confirm(
-        `Inativar o entregador "${deliverer.user.name}"?\n\nEle não poderá mais usar o aplicativo, mas continuará listado como inativo.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Inativar ${deliverer.user.name}`,
+      description:
+        'A pessoa não poderá mais usar o aplicativo, mas continuará listada como inativa.',
+      confirmLabel: 'Inativar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setActionError('');
     try {
       await api(
@@ -241,6 +246,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
         getToken(),
       );
       if (editing?.id === deliverer.id) setEditing(null);
+      toast.success('Entregador inativado.', deliverer.user.name);
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Erro ao inativar entregador');
@@ -248,17 +254,23 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
   }
 
   async function handleDelete(deliverer: DelivererRow) {
-    if (
-      !window.confirm(
-        `Excluir permanentemente o entregador "${deliverer.user.name}"?\n\nO cadastro será removido. As vendas antigas permanecem, mas sem vínculo com este entregador.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Excluir ${deliverer.user.name}`,
+      description: (
+        <>
+          O cadastro será removido. As vendas antigas permanecem, mas sem vínculo com este
+          entregador. <strong className="font-semibold">Não pode ser desfeito.</strong>
+        </>
+      ),
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setActionError('');
     try {
       await api(`/deliverers/${deliverer.id}`, { method: 'DELETE' }, getToken());
       if (editing?.id === deliverer.id) setEditing(null);
+      toast.success('Entregador excluído.', deliverer.user.name);
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Erro ao excluir entregador');
@@ -272,9 +284,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
   return (
     <>
       {actionError && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {actionError}
-        </p>
+        <Alert className="mb-4">{actionError}</Alert>
       )}
 
       <FilterPanel onSearch={applyFilters} onReset={resetFilters}>
@@ -427,9 +437,7 @@ export function DeliverersPanel({ storeId, showStoreFilter = false }: Deliverers
       >
         <form onSubmit={handleCreate} className="space-y-3">
           {createError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {createError}
-            </p>
+            <Alert>{createError}</Alert>
           ) : null}
           <div>
             <Label>Nome</Label>

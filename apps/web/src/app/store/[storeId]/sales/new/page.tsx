@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader } from '@/components/brand-loader';
-import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { Alert, Button, Card, Input, Label, Select } from '@/components/ui';
 import { CustomerAddressFields, type CustomerAddressForm } from '@/components/customer-address-fields';
 import { CustomerPicker, type CustomerPickerValue } from '@/components/customer-picker';
 import { CustomerLastOrderCard } from '@/components/customer-last-order-card';
@@ -580,9 +580,12 @@ export default function NewSalePage() {
         <h1 className="text-2xl font-bold text-slate-900">Nova venda</h1>
 
         {/* Stepper */}
-        <div className="my-6 flex items-center gap-2">
+        {/* `items-start` em vez de `items-center`: cada etapa tem altura
+            diferente (a 1ª ganha o nome do cliente embaixo), e centralizar
+            desalinhava as esferas entre si. */}
+        <div className="my-6 flex items-start gap-2">
           {STEPS.map((s, i) => (
-            <div key={s.n} className="flex flex-1 items-center gap-2">
+            <div key={s.n} className="flex flex-1 items-start gap-2">
               <button
                 type="button"
                 onClick={() => s.n < step && setStep(s.n as Step)}
@@ -610,14 +613,22 @@ export default function NewSalePage() {
                 )}
               </button>
               {i < STEPS.length - 1 && (
-                <div className={`hidden h-0.5 flex-1 sm:block ${s.n < step ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+                // A esfera tem 40px (`h-10`): `mt-5` leva a linha até o centro
+                // dela e `-translate-y-1/2` desconta a própria espessura. Antes
+                // a linha era centralizada na altura toda do botão (esfera +
+                // rótulo) e caía abaixo das esferas.
+                <div
+                  className={`mt-5 hidden h-0.5 flex-1 -translate-y-1/2 sm:block ${
+                    s.n < step ? 'bg-emerald-400' : 'bg-slate-200'
+                  }`}
+                />
               )}
             </div>
           ))}
         </div>
 
         {error && (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <Alert className="mb-4">{error}</Alert>
         )}
 
         {/* Step 1 — Cliente */}

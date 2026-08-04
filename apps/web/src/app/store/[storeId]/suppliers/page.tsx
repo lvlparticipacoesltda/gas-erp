@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
 import { PaginatedSection } from '@/components/paginated-section';
+import { useConfirm } from '@/components/confirm-dialog';
+import { useToast } from '@/components/toast';
 import { Button, Card, Input, PageHeader, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { SUPPLIER_TYPE_LABELS, type PaginatedResponse } from '@gas-erp/shared';
@@ -31,6 +33,8 @@ export default function SuppliersPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [ready, setReady] = useState(false);
+  const confirm = useConfirm();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -65,9 +69,23 @@ export default function SuppliersPage() {
   }, [debouncedSearch, page]);
 
   async function handleDelete(supplier: Supplier) {
-    if (!window.confirm(`Remover o fornecedor "${supplier.tradeName || supplier.legalName}"?`)) return;
-    await api(`/suppliers/${supplier.id}`, { method: 'DELETE' }, getToken());
-    load();
+    const name = supplier.tradeName || supplier.legalName;
+    const ok = await confirm({
+      title: `Remover ${name}`,
+      description: 'As notas de compra já lançadas para este fornecedor são mantidas.',
+      confirmLabel: 'Remover',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    // Antes o DELETE não tinha tratamento: quando a API recusava, a tela ficava
+    // igual e o usuário achava que tinha removido.
+    try {
+      await api(`/suppliers/${supplier.id}`, { method: 'DELETE' }, getToken());
+      toast.success('Fornecedor removido.', name);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao remover fornecedor');
+    }
   }
 
   if (!ready) {

@@ -1,5 +1,7 @@
 'use client';
 
+import { Alert } from '@/components/ui';
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageLoader } from '@/components/brand-loader';
@@ -73,7 +75,7 @@ export default function EditSupplierPage() {
   }, [id]);
 
   if (error) {
-    return <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>;
+    return <Alert>{error}</Alert>;
   }
 
   if (!values) {

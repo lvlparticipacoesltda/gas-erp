@@ -6,21 +6,73 @@ export function Button({
   children,
   className,
   variant = 'primary',
+  loading = false,
+  disabled,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'secondary' | 'danger';
+  /** Mostra spinner e trava o botão — evita duplo envio no clique ansioso. */
+  loading?: boolean;
+}) {
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition',
+        // `min-h-10` garante o alvo de toque mínimo mesmo com rótulo curto.
+        'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2',
+        'disabled:cursor-not-allowed disabled:opacity-60',
         variant === 'primary' && 'bg-brand text-white hover:bg-brand-dark',
         variant === 'secondary' && 'border border-slate-200 bg-white hover:bg-slate-50',
         variant === 'danger' && 'bg-red-600 text-white hover:bg-red-700',
         className,
       )}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
     >
+      {loading && <Spinner />}
       {children}
     </button>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+      <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const ALERT_TONES = {
+  error: 'border-red-200 bg-red-50 text-red-700',
+  warning: 'border-amber-200 bg-amber-50 text-amber-800',
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  info: 'border-slate-200 bg-slate-50 text-slate-700',
+} as const;
+
+/**
+ * Mensagem fixa dentro da tela (erro de formulário, aviso de contexto).
+ * `role="alert"` faz o leitor de tela anunciar — antes o texto aparecia em
+ * silêncio para quem não enxerga a caixa vermelha.
+ */
+export function Alert({
+  children,
+  tone = 'error',
+  className,
+}: {
+  children: ReactNode;
+  tone?: keyof typeof ALERT_TONES;
+  className?: string;
+}) {
+  return (
+    <div
+      role={tone === 'error' ? 'alert' : 'status'}
+      className={cn('rounded-lg border px-4 py-3 text-sm', ALERT_TONES[tone], className)}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -33,7 +85,7 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
     return (
       <input
         ref={ref}
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted"
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
         {...props}
       />
     );
@@ -43,7 +95,7 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className="w-full cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted"
+      className="w-full cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-muted disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
       {...props}
     />
   );
@@ -73,8 +125,10 @@ export function NavLink({ href, children, active }: { href: string; children: Re
   return (
     <Link
       href={href}
+      aria-current={active ? 'page' : undefined}
       className={cn(
         'block rounded-lg px-3 py-2 text-sm font-medium transition',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
         active ? 'bg-brand-muted text-brand-dark' : 'text-slate-600 hover:bg-slate-50',
       )}
     >

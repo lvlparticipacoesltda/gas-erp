@@ -516,7 +516,9 @@ export class SchedulesService {
     const includeInactiveWeekly = opts?.includeInactiveWeekly === true;
     const storeSome = this.storeScopeSome(user, storeId);
 
-    // Atendente: só entregadores da unidade + a própria pessoa (se ativa).
+    // Atendente: entregadores e demais atendentes da unidade. A própria pessoa
+    // entra à parte porque pode não ter vínculo de loja registrado — sem isso
+    // ela sumiria da própria escala. Gerentes seguem fora desta visão.
     if (user.role === 'ATTENDANT') {
       const deliverers = wantDeliverers
         ? await this.prisma.user.findMany({
@@ -530,13 +532,25 @@ export class SchedulesService {
             orderBy: { name: 'asc' },
           })
         : [];
+      const attendants = wantAttendants
+        ? await this.prisma.user.findMany({
+            where: {
+              organizationId: user.organizationId,
+              role: UserRole.ATTENDANT,
+              active: true,
+              userStores: { some: storeSome },
+            },
+            select: collaboratorSelect,
+            orderBy: { name: 'asc' },
+          })
+        : [];
       const self = wantAttendants
         ? await this.prisma.user.findFirst({
             where: { id: user.id, active: true },
             select: collaboratorSelect,
           })
         : null;
-      const rows = [...deliverers];
+      const rows = [...deliverers, ...attendants];
       if (self && !rows.some((r) => r.id === self.id)) {
         rows.push(self);
       }

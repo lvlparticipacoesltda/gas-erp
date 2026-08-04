@@ -8,7 +8,7 @@ import { PageLoader } from '@/components/brand-loader';
 import { DailySummaryContent, type DailySummaryData } from '@/components/daily-summary-content';
 import { DailySummaryDateFilter } from '@/components/daily-summary-date-filter';
 import { LoadingOverlay } from '@/components/loading-overlay';
-import { PageHeader } from '@/components/ui';
+import { Alert, PageHeader } from '@/components/ui';
 import { useLiveQuery } from '@/hooks/use-live-query';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
@@ -60,7 +60,7 @@ export default function DailySummaryPage() {
       />
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        <Alert className="mb-4">{error}</Alert>
       )}
 
       {data && (

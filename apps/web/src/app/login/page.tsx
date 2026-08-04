@@ -59,8 +59,10 @@ function LoginForm() {
 
   return (
     <Card className="w-full max-w-md">
+      {/* A marca é o primeiro elemento da tela: centralizada ela ancora o card,
+          alinhada à esquerda ficava desencostada do resto do conteúdo. */}
       <div className="mb-6">
-        <Logo tagline="Painel de gestão" />
+        <Logo tagline="Painel de gestão" className="items-center text-center" />
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
