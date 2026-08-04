@@ -1,27 +1,18 @@
 'use client';
 
 import { useState } from 'react';
+import { ColorPicker } from '@/components/color-picker';
+import { useConfirm } from '@/components/confirm-dialog';
 import { Modal } from '@/components/modal';
-import { Button, Input, Label } from '@/components/ui';
+import { useToast } from '@/components/toast';
+import { Alert, Button, Input, Label } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { CategoryIcon } from './category-icon';
 import type { ExpenseCategory, ExpenseSummary } from './types';
 
-const COLOR_CHOICES = [
-  '#f97316',
-  '#0ea5e9',
-  '#eab308',
-  '#8b5cf6',
-  '#3b82f6',
-  '#06b6d4',
-  '#ef4444',
-  '#64748b',
-  '#14b8a6',
-  '#ec4899',
-  '#22c55e',
-  '#94a3b8',
-];
+/** Cor inicial de uma categoria nova — o usuário escolhe qualquer tom no picker. */
+const DEFAULT_COLOR = '#f97316';
 
 /** Cartões por categoria com o total do período + gestão de categorias. */
 export function ExpenseCategoryCards({
@@ -36,9 +27,12 @@ export function ExpenseCategoryCards({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ExpenseCategory | null>(null);
   const [name, setName] = useState('');
-  const [color, setColor] = useState(COLOR_CHOICES[0]);
+  const [color, setColor] = useState(DEFAULT_COLOR);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const totalsByCategory = new Map(
     (summary?.byCategory ?? []).map((row) => [row.categoryId, row]),
@@ -47,7 +41,7 @@ export function ExpenseCategoryCards({
   function openNew() {
     setEditing(null);
     setName('');
-    setColor(COLOR_CHOICES[0]);
+    setColor(DEFAULT_COLOR);
     setError('');
     setOpen(true);
   }
@@ -55,7 +49,7 @@ export function ExpenseCategoryCards({
   function openEdit(category: ExpenseCategory) {
     setEditing(category);
     setName(category.name);
-    setColor(category.color ?? COLOR_CHOICES[0]);
+    setColor(category.color ?? DEFAULT_COLOR);
     setError('');
     setOpen(true);
   }
@@ -72,6 +66,7 @@ export function ExpenseCategoryCards({
         await api('/expenses/categories', { method: 'POST', body }, getToken());
       }
       setOpen(false);
+      toast.success(editing ? 'Categoria atualizada.' : 'Categoria criada.', name.trim());
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível salvar a categoria.');
@@ -82,11 +77,23 @@ export function ExpenseCategoryCards({
 
   async function handleRemove() {
     if (!editing) return;
-    if (!window.confirm(`Remover a categoria "${editing.name}"?`)) return;
+    const ok = await confirm({
+      title: 'Remover categoria',
+      description: (
+        <>
+          A categoria <strong className="font-semibold text-slate-800">{editing.name}</strong> sai
+          da lista. Os gastos já lançados nela não são apagados.
+        </>
+      ),
+      confirmLabel: 'Remover',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setSaving(true);
     try {
       await api(`/expenses/categories/${editing.id}`, { method: 'DELETE' }, getToken());
       setOpen(false);
+      toast.success('Categoria removida.');
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível remover a categoria.');
@@ -150,27 +157,10 @@ export function ExpenseCategoryCards({
           </div>
           <div>
             <Label>Cor</Label>
-            <div className="flex flex-wrap gap-2">
-              {COLOR_CHOICES.map((choice) => (
-                <button
-                  key={choice}
-                  type="button"
-                  aria-label={`Cor ${choice}`}
-                  onClick={() => setColor(choice)}
-                  className={`h-8 w-8 rounded-full border-2 transition ${
-                    color === choice ? 'border-slate-900 scale-110' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: choice }}
-                />
-              ))}
-            </div>
+            <ColorPicker value={color} onChange={setColor} />
           </div>
 
-          {error && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </p>
-          )}
+          {error && <Alert>{error}</Alert>}
 
           <div className="flex justify-between gap-2 pt-2">
             {editing ? (
@@ -189,7 +179,7 @@ export function ExpenseCategoryCards({
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" loading={saving}>
                 {saving ? 'Salvando…' : 'Salvar'}
               </Button>
             </div>

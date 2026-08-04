@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '@/components/modal';
 import { SupplierPicker, type PurchaseSupplier } from '@/components/supplier-picker';
-import { Button, Input, Label, Select } from '@/components/ui';
+import { Alert, Button, Input, Label, Select } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { EXPENSE_PAYMENT_LABELS } from '@gas-erp/shared';
 import type { Expense, ExpenseCategory, ExpenseScope, StoreOption } from './types';
@@ -327,9 +327,7 @@ export function ExpenseFormModal({
         </div>
 
         {error && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
+          <Alert>{error}</Alert>
         )}
 
         <div className="flex justify-end gap-2 pt-2">

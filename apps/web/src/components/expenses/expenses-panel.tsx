@@ -5,7 +5,9 @@ import { ChevronLeft, ChevronRight, Download, Pencil, Plus, Trash2, Wallet } fro
 import { PageLoader } from '@/components/brand-loader';
 import { FilterPanel } from '@/components/filter-panel';
 import { PaginatedSection } from '@/components/paginated-section';
-import { Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
+import { useConfirm } from '@/components/confirm-dialog';
+import { useToast } from '@/components/toast';
+import { Alert, Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -93,6 +95,9 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
 
+  const confirm = useConfirm();
+  const toast = useToast();
+
   const query = useMemo(() => {
     const { dateFrom, dateTo } = monthBounds(month);
     const params = new URLSearchParams({ dateFrom, dateTo });
@@ -166,21 +171,32 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
   async function handlePay(expense: Expense) {
     try {
       await api(`/expenses/${expense.id}/pay`, { method: 'POST', body: '{}' }, getToken());
+      toast.success('Gasto marcado como pago.', expense.description);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível marcar como pago.');
+      toast.error(err instanceof Error ? err.message : 'Não foi possível marcar como pago.');
     }
   }
 
   async function handleDelete(expense: Expense) {
-    if (!window.confirm(`Excluir o gasto "${expense.description}"? Esta ação é irreversível.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Excluir gasto',
+      description: (
+        <>
+          <strong className="font-semibold text-slate-800">{expense.description}</strong> —{' '}
+          {formatCurrency(expense.amount)}. Esta ação é irreversível.
+        </>
+      ),
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api(`/expenses/${expense.id}`, { method: 'DELETE' }, getToken());
+      toast.success('Gasto excluído.');
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível excluir o gasto.');
+      toast.error(err instanceof Error ? err.message : 'Não foi possível excluir o gasto.');
     }
   }
 
@@ -306,15 +322,12 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
         </div>
       </FilterPanel>
 
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
+      {error && <Alert className="mb-4">{error}</Alert>}
 
-      {/* Coluna direita com largura fixa: a tabela tem 9 colunas e precisa de
-          todo o espaço restante, senão Status e Ações saem da área visível. */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
+      {/* A coluna de resumo só aparece em 2xl: abaixo disso ela roubava os ~290px
+          de que a tabela de 8 colunas precisa, e Status/Ações saíam da área
+          visível atrás de um scroll horizontal. */}
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0">
           <PaginatedSection
             loading={loading}
@@ -324,19 +337,22 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
               total,
               pageSize: PAGE_SIZE,
               onPageChange: setPage,
+              // `px-2` alinha o "Exibindo…" com o padding das células, senão o
+              // texto encosta na borda do card e destoa da coluna acima.
+              className: 'mt-3 px-2',
             }}
           >
             <Table>
               <thead className="bg-slate-50 text-left">
                 <tr>
-                  <th className="p-3">Data</th>
-                  <th className="p-3">Descrição</th>
-                  <th className="p-3">Categoria</th>
-                  {scope.mode === 'master' && <th className="p-3">Unidade</th>}
-                  <th className="p-3">Pagamento</th>
-                  <th className="p-3 text-right">Valor</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Ações</th>
+                  <th className="px-2 py-3">Data</th>
+                  <th className="px-2 py-3">Descrição</th>
+                  <th className="px-2 py-3">Categoria</th>
+                  {scope.mode === 'master' && <th className="px-2 py-3">Unidade</th>}
+                  <th className="px-2 py-3">Pagamento</th>
+                  <th className="px-2 py-3">Valor</th>
+                  <th className="px-2 py-3">Status</th>
+                  <th className="px-2 py-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -349,8 +365,8 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
                 ) : (
                   expenses.map((expense) => (
                     <tr key={expense.id} className="border-t border-slate-100">
-                      <td className="whitespace-nowrap p-3">{formatDate(`${expense.expenseDate}T12:00:00`)}</td>
-                      <td className="p-3">
+                      <td className="whitespace-nowrap px-2 py-3">{formatDate(`${expense.expenseDate}T12:00:00`)}</td>
+                      <td className="px-2 py-3">
                         <div className="font-medium text-slate-800">{expense.description}</div>
                         {/* Fornecedor e vencimento como linha secundária: são opcionais e
                             não justificam colunas próprias numa tabela já larga. */}
@@ -363,7 +379,7 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
                           </div>
                         )}
                       </td>
-                      <td className="p-3">
+                      <td className="px-2 py-3">
                         <span className="inline-flex items-center gap-1.5">
                           <CategoryIcon
                             icon={expense.category.icon}
@@ -374,24 +390,24 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
                         </span>
                       </td>
                       {scope.mode === 'master' && (
-                        <td className="p-3 text-slate-600">
+                        <td className="px-2 py-3 text-slate-600">
                           {expense.store?.name ?? (
                             <span className="text-slate-400">Empresa (rateado)</span>
                           )}
                         </td>
                       )}
-                      <td className="p-3">
+                      <td className="px-2 py-3">
                         {expense.paymentLabel ? <Badge>{expense.paymentLabel}</Badge> : '—'}
                       </td>
-                      <td className="whitespace-nowrap p-3 text-right font-semibold tabular-nums">
+                      <td className="whitespace-nowrap px-2 py-3 font-semibold tabular-nums">
                         {formatCurrency(expense.amount)}
                       </td>
-                      <td className="p-3">
+                      <td className="px-2 py-3">
                         <Badge tone={statusTone(expense.status)}>
                           {EXPENSE_STATUS_LABELS[expense.status]}
                         </Badge>
                       </td>
-                      <td className="p-3">
+                      <td className="px-2 py-3">
                         <div className="flex justify-end gap-1">
                           {expense.status === 'PENDING' && (
                             <button
@@ -431,10 +447,12 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
               {expenses.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
-                    <td colSpan={scope.mode === 'master' ? 5 : 4} className="p-3">
-                      Total do período
-                    </td>
-                    <td className="whitespace-nowrap p-3 text-right tabular-nums">
+                    {/* Células vazias no lugar das colunas que o total não usa:
+                        assim o rótulo cai sob "Descrição" e o valor sob "Valor". */}
+                    <td className="px-2 py-3" />
+                    <td className="px-2 py-3">Total do período</td>
+                    <td colSpan={scope.mode === 'master' ? 3 : 2} className="px-2 py-3" />
+                    <td className="whitespace-nowrap px-2 py-3 tabular-nums">
                       {formatCurrency(filteredTotal)}
                     </td>
                     <td colSpan={2} />
@@ -445,23 +463,30 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
           </PaginatedSection>
         </div>
 
-        <aside className="space-y-4">
-          <Card>
+        {/* Empilhado abaixo da tabela os cartões se espalham em grade; virando
+            coluna lateral em 2xl, voltam a ficar um sob o outro. */}
+        <aside className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-1">
+          {/* Ocupando a largura toda, o resumo vira uma faixa de três números —
+              como cartão de uma coluna só ele ficava com metade vazia ao lado
+              do gráfico de categorias. */}
+          <Card className="sm:col-span-2 lg:col-span-3 2xl:col-span-1">
             <div className="text-sm font-semibold text-slate-700">Resumo do período</div>
-            <div className="mt-3 text-sm text-slate-500">Total de gastos</div>
-            <div className="text-3xl font-extrabold text-rose-600">
-              {formatCurrency(summary?.total ?? 0)}
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid gap-4 md:grid-cols-3 2xl:grid-cols-2">
+              <div className="2xl:col-span-2">
+                <div className="text-sm text-slate-500">Total de gastos</div>
+                <div className="text-3xl font-extrabold text-rose-600">
+                  {formatCurrency(summary?.total ?? 0)}
+                </div>
+              </div>
               <div>
                 <div className="text-xs text-slate-500">Pago</div>
-                <div className="font-semibold text-emerald-600">
+                <div className="text-lg font-semibold text-emerald-600 2xl:text-base">
                   {formatCurrency(summary?.paid ?? 0)}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-slate-500">Pendente</div>
-                <div className="font-semibold text-amber-600">
+                <div className="text-lg font-semibold text-amber-600 2xl:text-base">
                   {formatCurrency(summary?.pending ?? 0)}
                 </div>
               </div>
