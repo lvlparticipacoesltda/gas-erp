@@ -153,8 +153,10 @@ export function AppShell({ children, mode }: { children: React.ReactNode; mode: 
   return (
     <div className="min-h-screen">
       <aside className="border-r border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-64 lg:flex-col">
-        <div className="border-b border-slate-200 p-4">
-          <Logo size="sm" />
+        {/* Cabeçalho da barra lateral centralizado: a logo ocupa pouco mais da
+            metade dos 16rem e encostada à esquerda deixava um vazio à direita. */}
+        <div className="border-b border-slate-200 p-4 text-center">
+          <Logo size="sm" className="items-center" />
           <div className="mt-2 text-xs text-slate-500">{ROLE_LABELS[user.role] ?? user.role}</div>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
