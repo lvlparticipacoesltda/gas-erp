@@ -24,9 +24,8 @@ import {
   getTotalDeliveryTimeSeconds,
   toNumber,
   canViewFinancialMargins,
-  computeGrossMarginPercent,
   computeGrossProfit,
-  computeNetMarginPercent,
+  computeMarginPercent,
   computeNetProfit,
   computeNetRevenue,
   computeSaleCogs,
@@ -141,11 +140,11 @@ function mapSaleToReportRow(sale: SaleForReport, showFinancial: boolean): SalesR
       ? {
           totalCost,
           grossProfit,
-          grossMarginPercent: computeGrossMarginPercent(totalCost, grossProfit),
+          grossMarginPercent: computeMarginPercent(total, grossProfit),
           totalProcessingFees,
           netRevenue,
           netProfit,
-          netMarginPercent: computeNetMarginPercent(totalCost, netProfit),
+          netMarginPercent: computeMarginPercent(total, netProfit),
         }
       : {}),
     deliveryStatus: delivery?.status ?? null,
@@ -356,11 +355,11 @@ export class ReportsService {
           return {
             totalCost,
             grossProfit,
-            grossMarginPercent: computeGrossMarginPercent(totalCost, grossProfit),
+            grossMarginPercent: computeMarginPercent(totalRevenue, grossProfit),
             totalProcessingFees,
             netRevenue,
             netProfit,
-            netMarginPercent: computeNetMarginPercent(totalCost, netProfit),
+            netMarginPercent: computeMarginPercent(totalRevenue, netProfit),
           };
         })()
       : {};

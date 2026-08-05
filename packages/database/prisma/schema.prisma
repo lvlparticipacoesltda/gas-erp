@@ -1058,13 +1058,13 @@ model ExpenseCategory {
  * Gasto da empresa (contas a pagar simplificadas).
  *
  * O resultado é apurado por **competência**: `expenseDate` define o mês em que o gasto
- * reduz o lucro líquido, independentemente de já ter sido pago.
+ * reduz o lucro líquido, independentemente de já ter sido pago. Todo gasto pertence a
+ * uma unidade — é custo direto dela no resultado.
  */
 model Expense {
   id             String        @id @default(cuid())
   organizationId String
-  /** null = despesa da organização; é rateada entre as unidades por faturamento. */
-  storeId        String?
+  storeId        String
   categoryId     String
   description    String
   /** Data de competência — define o mês do resultado. */
@@ -1079,8 +1079,8 @@ model Expense {
   supplierName   String?
   /**
    * Forma de pagamento como texto (PIX, Boleto, DAS…).
-   * Não é FK para `StorePaymentMethod` porque aquele modelo é por loja e a despesa
-   * da organização não tem loja. Ver nota "MÓDULO FINANCEIRO ADIADO" em shared/enums.
+   * Não é FK para `StorePaymentMethod` porque aquele modelo cobre o recebimento na
+   * venda, não o pagamento da despesa. Ver "MÓDULO FINANCEIRO ADIADO" em shared/enums.
    */
   paymentLabel   String?
   notes          String?
@@ -1094,7 +1094,7 @@ model Expense {
   updatedAt      DateTime      @updatedAt
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  store        Store?          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store        Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   category     ExpenseCategory @relation(fields: [categoryId], references: [id])
   supplier     Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   createdBy    User?           @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)

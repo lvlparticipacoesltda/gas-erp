@@ -18,6 +18,7 @@ import { DeliverersModule } from './modules/deliverers/deliverers.module';
 import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { ResultsModule } from './modules/results/results.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
 import { HealthModule } from './modules/health/health.module';
@@ -50,6 +51,7 @@ import { RealtimeModule } from './common/realtime/realtime.module';
     DeliveriesModule,
     DashboardModule,
     ReportsModule,
+    ResultsModule,
     NotificationsModule,
     SchedulesModule,
     HealthModule,

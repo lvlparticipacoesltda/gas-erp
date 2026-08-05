@@ -24,7 +24,7 @@ export interface Expense {
   installment: number | null;
   installments: number | null;
   category: { id: string; name: string; icon: string | null; color: string | null };
-  store: { id: string; name: string; code: string } | null;
+  store: { id: string; name: string; code: string };
 }
 
 export interface ExpenseSummary {
@@ -41,7 +41,7 @@ export interface ExpenseSummary {
     total: number;
     count: number;
   }[];
-  byStore: { storeId: string | null; name: string; total: number; count: number }[];
+  byStore: { storeId: string; name: string; total: number; count: number }[];
   byMonth: { month: string; total: number }[];
 }
 

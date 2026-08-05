@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatPercent } from '@/lib/utils';
 import { EXPENSE_CATEGORY_FALLBACK_COLOR } from '@gas-erp/shared';
 import type { ExpenseSummary } from './types';
 
@@ -78,7 +78,7 @@ export function ExpensesByCategoryChart({ summary }: { summary: ExpenseSummary }
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-slate-700">{row.name}</span>
                 <span className="text-xs text-slate-500">
-                  {formatCurrency(row.total)} ({percent.toFixed(1)}%)
+                  {formatCurrency(row.total)} ({formatPercent(percent)})
                 </span>
               </span>
             </li>

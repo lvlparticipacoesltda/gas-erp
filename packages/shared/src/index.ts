@@ -11,6 +11,7 @@ export * from './product-type';
 export * from './schemas/supplier';
 export * from './schemas/purchase-invoice';
 export * from './schemas/report';
+export * from './schemas/result';
 export * from './schemas/expense';
 export * from './expense-financials';
 export * from './schemas/sale';

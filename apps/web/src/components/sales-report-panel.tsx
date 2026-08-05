@@ -7,7 +7,7 @@ import { PaginatedList } from '@/components/paginated-list';
 import { Alert, Button, Card, Input, Label, Select } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { buildDashboardDateQuery } from '@/lib/dashboard-date';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatPercent } from '@/lib/utils';
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
@@ -115,7 +115,7 @@ function cellValue(row: SalesReportRow, key: keyof SalesReportRow): string {
     || key === 'totalProcessingFees' || key === 'netRevenue' || key === 'netProfit') {
     return formatCurrency(Number(value));
   }
-  if (key === 'grossMarginPercent' || key === 'netMarginPercent') return value != null ? `${value}%` : '—';
+  if (key === 'grossMarginPercent' || key === 'netMarginPercent') return formatPercent(Number(value));
   if (key === 'gasDoPovoBenefit') return value ? 'Sim' : 'Não';
   return String(value);
 }

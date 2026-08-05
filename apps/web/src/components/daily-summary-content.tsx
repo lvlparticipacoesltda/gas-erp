@@ -2,7 +2,7 @@
 
 import { Card, Table } from '@/components/ui';
 import { PaginatedList } from '@/components/paginated-list';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, formatPercent } from '@/lib/utils';
 import { formatWaitTime } from '@gas-erp/shared';
 
 export interface DailySummaryData {
@@ -15,8 +15,6 @@ export interface DailySummaryData {
   grossMarginPercent?: number | null;
   totalProcessingFees?: number;
   operatingExpenses?: number;
-  operatingExpensesDirect?: number;
-  operatingExpensesShared?: number;
   netCost?: number;
   netRevenue?: number;
   netProfit?: number;
@@ -106,6 +104,12 @@ export interface DailySummaryData {
       glpQuantity: number;
       gdpQuantity: number;
       gdpRevenue: number;
+      revenue: number;
+      avgTicket: number | null;
+      cashAmount: number;
+      pixAmount: number;
+      cardAmount: number;
+      otherAmount: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
       avgTotalDeliveryTimeSeconds: number | null;
@@ -118,6 +122,17 @@ interface DailySummaryContentProps {
   showStoreInSlowDeliveries?: boolean;
 }
 
+/**
+ * Vermelho só no negativo — o positivo continua na cor normal do texto.
+ *
+ * Prejuízo e margem negativa são a exceção que precisa saltar aos olhos; pintar
+ * também o lucro de verde encheria a tela de cor e tiraria justamente o destaque do
+ * número ruim. `null` (métrica não apurada) fica neutro.
+ */
+function negativeTone(value: number | null | undefined): string {
+  return value != null && value < 0 ? 'text-rose-600' : '';
+}
+
 export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySummaryContentProps) {
   const metrics = data.deliveryMetrics;
   const isRange = Boolean(data.dateFrom && data.dateTo && data.dateFrom !== data.dateTo);
@@ -125,6 +140,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
   const showStoreColumn =
     showStoreInSlowDeliveries ??
     (metrics?.slowDeliveries.some((d) => d.storeName) ?? false);
+  // Fiado, cheque e afins são raros: a coluna só aparece quando houve algum, senão
+  // seria uma coluna de zeros numa tabela que já é larga.
+  const showOtherReceipts = metrics?.byDeliverer.some((d) => d.otherAmount > 0) ?? false;
   const paymentEntries = data.paymentsByMethod;
   const showFinancial = data.totalCost != null && data.grossProfit != null;
   const showNetFinancial = showFinancial && data.netRevenue != null && data.netProfit != null;
@@ -212,8 +230,8 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
         {showFinancial && (
           <>
             <Card><div className="text-sm text-slate-500">CMV {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.totalCost!)}</div></Card>
-            <Card><div className="text-sm text-slate-500">Lucro bruto {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.grossProfit!)}</div></Card>
-            <Card><div className="text-sm text-slate-500">Margem bruta {periodLabel}</div><div className="text-2xl font-bold">{data.grossMarginPercent != null ? `${data.grossMarginPercent}%` : '—'}</div></Card>
+            <Card><div className="text-sm text-slate-500">Lucro bruto {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.grossProfit))}>{formatCurrency(data.grossProfit!)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Margem bruta {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.grossMarginPercent))}>{formatPercent(data.grossMarginPercent)}</div></Card>
           </>
         )}
         {showNetFinancial && (
@@ -224,11 +242,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 <Card>
                   <div className="text-sm text-slate-500">Despesas da empresa {periodLabel}</div>
                   <div className="text-2xl font-bold text-rose-600">{formatCurrency(data.operatingExpenses!)}</div>
-                  {(data.operatingExpensesShared ?? 0) > 0 && (
-                    <div className="mt-1 text-xs text-slate-400">
-                      inclui {formatCurrency(data.operatingExpensesShared!)} rateado
-                    </div>
-                  )}
+                  <div className="mt-1 text-xs text-slate-400">custos diretos do período</div>
                 </Card>
                 <Card>
                   <div className="text-sm text-slate-500">Custo líquido {periodLabel}</div>
@@ -237,9 +251,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 </Card>
               </>
             )}
-            <Card><div className="text-sm text-slate-500">Faturamento líquido {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.netRevenue!)}</div></Card>
-            <Card><div className="text-sm text-slate-500">Lucro líquido {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.netProfit!)}</div></Card>
-            <Card><div className="text-sm text-slate-500">Margem líquida {periodLabel}</div><div className="text-2xl font-bold">{data.netMarginPercent != null ? `${data.netMarginPercent}%` : '—'}</div></Card>
+            <Card><div className="text-sm text-slate-500">Faturamento líquido {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.netRevenue))}>{formatCurrency(data.netRevenue!)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Lucro líquido {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.netProfit))}>{formatCurrency(data.netProfit!)}</div></Card>
+            <Card><div className="text-sm text-slate-500">Margem líquida {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.netMarginPercent))}>{formatPercent(data.netMarginPercent)}</div></Card>
           </>
         )}
       </div>
@@ -253,6 +267,12 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 <thead className="bg-slate-50 text-left">
                   <tr>
                     <th className="p-3">Entregador</th>
+                    <th className="p-3 text-right">Faturamento</th>
+                    <th className="p-3 text-right">Ticket médio</th>
+                    <th className="p-3 text-right">Dinheiro</th>
+                    <th className="p-3 text-right">PIX</th>
+                    <th className="p-3 text-right">Cartão</th>
+                    {showOtherReceipts && <th className="p-3 text-right">Outros</th>}
                     <th className="p-3 text-right">GLP entregue</th>
                     <th className="p-3 text-right">Gás do Povo</th>
                     <th className="p-3 text-right">Valor Gás do Povo</th>
@@ -267,6 +287,16 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                   {rows.map((d) => (
                     <tr key={d.delivererId} className="border-t border-slate-100">
                       <td className="p-3">{d.delivererName}</td>
+                      <td className="p-3 text-right font-semibold tabular-nums">{formatCurrency(d.revenue)}</td>
+                      <td className="p-3 text-right tabular-nums text-slate-600">
+                        {d.avgTicket == null ? '—' : formatCurrency(d.avgTicket)}
+                      </td>
+                      <td className="p-3 text-right tabular-nums">{formatCurrency(d.cashAmount)}</td>
+                      <td className="p-3 text-right tabular-nums">{formatCurrency(d.pixAmount)}</td>
+                      <td className="p-3 text-right tabular-nums">{formatCurrency(d.cardAmount)}</td>
+                      {showOtherReceipts && (
+                        <td className="p-3 text-right tabular-nums">{formatCurrency(d.otherAmount)}</td>
+                      )}
                       <td className="p-3 text-right font-semibold tabular-nums text-brand-dark">{d.glpQuantity}</td>
                       <td className="p-3 text-right font-semibold tabular-nums text-emerald-700">{d.gdpQuantity}</td>
                       <td className="p-3 text-right tabular-nums text-emerald-700">{formatCurrency(d.gdpRevenue)}</td>
@@ -317,10 +347,14 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                       <td className="p-3">{formatCurrency(entry.totalCost ?? 0)}</td>
                     )}
                     {showFinancial && (
-                      <td className="p-3">{formatCurrency(entry.grossProfit ?? 0)}</td>
+                      <td className={cn('p-3', negativeTone(entry.grossProfit))}>
+                        {formatCurrency(entry.grossProfit ?? 0)}
+                      </td>
                     )}
                     {showFinancial && (
-                      <td className="p-3">{formatCurrency(entry.netProfit ?? entry.grossProfit ?? 0)}</td>
+                      <td className={cn('p-3', negativeTone(entry.netProfit ?? entry.grossProfit))}>
+                        {formatCurrency(entry.netProfit ?? entry.grossProfit ?? 0)}
+                      </td>
                     )}
                   </tr>
                 ))}
