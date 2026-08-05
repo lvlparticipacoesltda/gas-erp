@@ -9,6 +9,25 @@ export function formatCurrency(value: number | string) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value));
 }
 
+/**
+ * Percentual em pt-BR, com duas casas decimais.
+ *
+ * Duas casas é a precisão que a API já entrega (`computeMarginPercent` arredonda para
+ * duas), então a tela mostra o número apurado sem arredondar de novo. As casas são
+ * fixas de propósito: `10%` e `10,5%` numa mesma coluna desalinham a leitura, `10,00%`
+ * e `10,50%` não.
+ *
+ * `null`/`undefined` viram travessão: a API devolve `null` quando não houve
+ * faturamento no período, e 0% ali afirmaria algo que não foi apurado.
+ */
+export function formatPercent(value: number | null | undefined) {
+  if (value == null) return '—';
+  return `${new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)}%`;
+}
+
 export function formatDate(value: string | Date) {
   return new Intl.DateTimeFormat('pt-BR').format(new Date(value));
 }
