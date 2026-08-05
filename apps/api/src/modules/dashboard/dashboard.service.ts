@@ -31,6 +31,28 @@ import {
   SALE_STOCK_OUT_REASON,
 } from '../stock/stock.service';
 
+/**
+ * Agrupa a forma de pagamento nas três que interessam ao acerto do entregador.
+ *
+ * A loja pode cadastrar quantas formas quiser, mas na tabela por entregador o que
+ * importa é o que ele traz de volta: dinheiro e PIX chegam na mão dele, cartão cai
+ * direto para a empresa. O resto (fiado, cheque, Gás do Povo) fica em "outros" — o
+ * Gás do Povo já tem coluna própria na mesma tabela.
+ */
+function receiptBucket(method: string): 'cash' | 'pix' | 'card' | 'other' {
+  switch (method) {
+    case 'CASH':
+      return 'cash';
+    case 'PIX':
+      return 'pix';
+    case 'CREDIT_CARD':
+    case 'DEBIT_CARD':
+      return 'card';
+    default:
+      return 'other';
+  }
+}
+
 /** Arredondamento monetário — evita ruído de ponto flutuante ao somar valores. */
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
@@ -146,6 +168,14 @@ type DashboardPayload = {
       glpQuantity: number;
       gdpQuantity: number;
       gdpRevenue: number;
+      /** Faturamento das vendas cuja entrega ele concluiu. */
+      revenue: number;
+      /** Faturamento ÷ vendas entregues. `null` quando não entregou nada. */
+      avgTicket: number | null;
+      cashAmount: number;
+      pixAmount: number;
+      cardAmount: number;
+      otherAmount: number;
       avgWaitTimeSeconds: number | null;
       avgRouteDurationSeconds: number | null;
       avgTotalDeliveryTimeSeconds: number | null;
@@ -491,6 +521,8 @@ export class DashboardService {
       this.prisma.sale.findMany({
         where: saleWhere,
         select: {
+          // `id` casa a venda com a entrega concluída, base dos números por entregador.
+          id: true,
           status: true,
           delivererId: true,
           gasDoPovoBenefit: true,
@@ -565,6 +597,31 @@ export class DashboardService {
     const glpQuantityByDelivererId = new Map<string, number>();
     const gdpQuantityByDelivererId = new Map<string, number>();
     const gdpRevenueByDelivererId = new Map<string, number>();
+
+    /**
+     * Quem de fato entregou cada venda.
+     *
+     * Os indicadores financeiros se atrelam à **entrega concluída**, não à venda
+     * atribuída: rota cancelada ou ainda em rua não faturou nada para o entregador.
+     * Por isso a chave vem da `Delivery` (status `DELIVERED`) e não de
+     * `Sale.delivererId`.
+     */
+    const deliveredSaleToDelivererId = new Map<string, string>();
+    for (const delivery of deliveries) {
+      if (delivery.status === 'DELIVERED' && delivery.delivererId) {
+        deliveredSaleToDelivererId.set(delivery.saleId, delivery.delivererId);
+      }
+    }
+
+    type DelivererFinancials = {
+      revenue: number;
+      deliveredSales: number;
+      cash: number;
+      pix: number;
+      card: number;
+      other: number;
+    };
+    const financialsByDelivererId = new Map<string, DelivererFinancials>();
 
     for (const sale of salesForGdpGlp) {
       const saleGlpQty = sale.items.reduce(
@@ -646,6 +703,24 @@ export class DashboardService {
           id,
           (gdpRevenueByDelivererId.get(id) ?? 0) + saleGdpRevenue,
         );
+      }
+
+      const deliveredBy = deliveredSaleToDelivererId.get(sale.id);
+      if (deliveredBy) {
+        const acc = financialsByDelivererId.get(deliveredBy) ?? {
+          revenue: 0,
+          deliveredSales: 0,
+          cash: 0,
+          pix: 0,
+          card: 0,
+          other: 0,
+        };
+        acc.revenue += toNumber(sale.total);
+        acc.deliveredSales += 1;
+        for (const payment of sale.payments) {
+          acc[receiptBucket(payment.method)] += toNumber(payment.amount);
+        }
+        financialsByDelivererId.set(deliveredBy, acc);
       }
     }
 
@@ -767,12 +842,25 @@ export class DashboardService {
         })),
     );
 
-    const byDeliverer = routeStats.byDeliverer.map((row) => ({
-      ...row,
-      glpQuantity: glpQuantityByDelivererId.get(row.delivererId) ?? 0,
-      gdpQuantity: gdpQuantityByDelivererId.get(row.delivererId) ?? 0,
-      gdpRevenue: gdpRevenueByDelivererId.get(row.delivererId) ?? 0,
-    }));
+    const byDeliverer = routeStats.byDeliverer.map((row) => {
+      const financials = financialsByDelivererId.get(row.delivererId);
+      const revenue = round2(financials?.revenue ?? 0);
+      const deliveredSales = financials?.deliveredSales ?? 0;
+      return {
+        ...row,
+        glpQuantity: glpQuantityByDelivererId.get(row.delivererId) ?? 0,
+        gdpQuantity: gdpQuantityByDelivererId.get(row.delivererId) ?? 0,
+        gdpRevenue: gdpRevenueByDelivererId.get(row.delivererId) ?? 0,
+        revenue,
+        // Divide pelas vendas que faturaram, não por `completedCount`: rota concluída
+        // de venda depois cancelada conta como realizada e não entra no faturamento.
+        avgTicket: deliveredSales > 0 ? round2(revenue / deliveredSales) : null,
+        cashAmount: round2(financials?.cash ?? 0),
+        pixAmount: round2(financials?.pix ?? 0),
+        cardAmount: round2(financials?.card ?? 0),
+        otherAmount: round2(financials?.other ?? 0),
+      };
+    });
 
     const soldByProductId = new Map<string, { qty: number; revenue: number }>();
     for (const group of itemGroups) {
