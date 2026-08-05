@@ -139,7 +139,7 @@ export function NavLink({ href, children, active }: { href: string; children: Re
 
 export function Table({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+    <div className="table-scroll overflow-x-auto rounded-xl border border-slate-200 bg-white">
       {/* `className` serve a tabelas com colunas fixas, que precisam de
           `border-separate` para o `position: sticky` das células funcionar. */}
       <table className={cn('min-w-full text-sm', className)}>{children}</table>
