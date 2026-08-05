@@ -3,7 +3,6 @@ import { SaleStatus } from '@gas-erp/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   aggregateDelivererRouteStats,
-  allocateSharedExpenses,
   AuthUser,
   COUNTED_BACKDATE_APPROVALS,
   COUNTED_MOBILE_APPROVALS,
@@ -12,10 +11,9 @@ import {
   PAYMENT_METHOD_LABELS,
   canViewExpenses,
   canViewFinancialMargins,
-  computeGrossMarginPercent,
   computeGrossProfit,
+  computeMarginPercent,
   computeNetCost,
-  computeNetMarginPercent,
   computeNetProfit,
   computeNetProfitFromNetCost,
   computeNetRevenue,
@@ -33,7 +31,7 @@ import {
   SALE_STOCK_OUT_REASON,
 } from '../stock/stock.service';
 
-/** Arredondamento monetário — evita ruído de ponto flutuante ao somar rateios. */
+/** Arredondamento monetário — evita ruído de ponto flutuante ao somar valores. */
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -47,12 +45,8 @@ type DashboardPayload = {
   grossProfit?: number;
   grossMarginPercent?: number | null;
   totalProcessingFees?: number;
-  /** Despesas da empresa no período (competência), já com o rateio aplicado. */
+  /** Custos diretos das unidades do escopo no período (competência). */
   operatingExpenses?: number;
-  /** Parcela lançada diretamente nas unidades do escopo. */
-  operatingExpensesDirect?: number;
-  /** Parcela vinda de despesas da organização, rateada por faturamento. */
-  operatingExpensesShared?: number;
   /** CMV + taxas de pagamento + despesas operacionais. */
   netCost?: number;
   netRevenue?: number;
@@ -234,14 +228,7 @@ export class DashboardService {
           })
         : Promise.resolve([]),
       showExpenses
-        ? this.computeOperatingExpenses(
-            user.organizationId,
-            storeIds,
-            start,
-            end,
-            dateFrom,
-            dateTo,
-          )
+        ? this.computeOperatingExpenses(user.organizationId, storeIds, dateFrom, dateTo)
         : Promise.resolve(null),
     ]);
 
@@ -325,95 +312,40 @@ export class DashboardService {
   }
 
   /**
-   * Despesas da empresa alocadas às unidades do escopo, por competência.
+   * Despesas das unidades do escopo no período, por competência (`expenseDate`).
    *
-   * Despesas lançadas sem unidade pertencem à organização e são rateadas entre
-   * todas as lojas ativas na proporção do faturamento do período — sem o rateio,
-   * o custo fixo corporativo não apareceria no resultado de unidade nenhuma.
+   * Toda despesa pertence a uma unidade — é custo direto dela. Pendentes entram no
+   * resultado junto com as pagas; o que fica de fora é apenas o cancelado.
    */
   private async computeOperatingExpenses(
     organizationId: string,
     storeIds: string[],
-    start: Date,
-    end: Date,
     dateFrom: string,
     dateTo: string,
-  ): Promise<{
-    direct: number;
-    shared: number;
-    total: number;
-    byStore: Map<string, number>;
-  }> {
-    const expenseDate = dateOnlyRangeBounds(dateFrom, dateTo);
-    const activeStores = await this.prisma.store.findMany({
-      where: { organizationId, active: true },
-      select: { id: true },
-    });
-    const activeStoreIds = activeStores.map((store) => store.id);
-
-    const [directRows, sharedAgg, revenueRows] = await Promise.all([
-      storeIds.length
-        ? this.prisma.expense.groupBy({
-            by: ['storeId'],
-            where: {
-              organizationId,
-              storeId: { in: storeIds },
-              expenseDate,
-              status: { not: 'CANCELLED' },
-            },
-            _sum: { amount: true },
-          })
-        : Promise.resolve([]),
-      this.prisma.expense.aggregate({
-        where: {
-          organizationId,
-          storeId: null,
-          expenseDate,
-          status: { not: 'CANCELLED' },
-        },
-        _sum: { amount: true },
-      }),
-      activeStoreIds.length
-        ? this.prisma.sale.groupBy({
-            by: ['storeId'],
-            where: {
-              storeId: { in: activeStoreIds },
-              saleDate: { gte: start, lt: end },
-              backdateApproval: { in: COUNTED_BACKDATE_APPROVALS },
-              mobileApproval: { in: COUNTED_MOBILE_APPROVALS },
-              status: { in: [...COUNTED_SALE_STATUSES] as SaleStatus[] },
-            },
-            _sum: { total: true },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const revenueByStoreId = new Map(
-      revenueRows.map((row) => [row.storeId, toNumber(row._sum.total)]),
-    );
-    const allocation = allocateSharedExpenses(
-      toNumber(sharedAgg._sum.amount),
-      activeStoreIds.map((id) => [id, revenueByStoreId.get(id) ?? 0] as const),
-    );
-
-    const directByStoreId = new Map(
-      directRows.map((row) => [row.storeId, toNumber(row._sum.amount)]),
-    );
+  ): Promise<{ total: number; byStore: Map<string, number> }> {
+    const rows = storeIds.length
+      ? await this.prisma.expense.groupBy({
+          by: ['storeId'],
+          where: {
+            organizationId,
+            storeId: { in: storeIds },
+            expenseDate: dateOnlyRangeBounds(dateFrom, dateTo),
+            status: { not: 'CANCELLED' },
+          },
+          _sum: { amount: true },
+        })
+      : [];
 
     const byStore = new Map<string, number>();
-    let direct = 0;
-    let shared = 0;
-    for (const storeId of storeIds) {
-      const directValue = directByStoreId.get(storeId) ?? 0;
-      const sharedValue = allocation.get(storeId) ?? 0;
-      direct += directValue;
-      shared += sharedValue;
-      byStore.set(storeId, round2(directValue + sharedValue));
+    let total = 0;
+    for (const row of rows) {
+      if (!row.storeId) continue;
+      const value = round2(toNumber(row._sum.amount));
+      byStore.set(row.storeId, value);
+      total += value;
     }
 
-    direct = round2(direct);
-    shared = round2(shared);
-    return { direct, shared, total: round2(direct + shared), byStore };
+    return { total: round2(total), byStore };
   }
 
   private emptyDashboard(dateFrom: string, dateTo: string): DashboardPayload {
@@ -607,14 +539,7 @@ export class DashboardService {
         },
       }),
       showExpenses
-        ? this.computeOperatingExpenses(
-            user.organizationId,
-            storeIds,
-            start,
-            end,
-            dateFrom,
-            dateTo,
-          )
+        ? this.computeOperatingExpenses(user.organizationId, storeIds, dateFrom, dateTo)
         : Promise.resolve(null),
     ]);
 
@@ -1032,19 +957,13 @@ export class DashboardService {
           return {
             totalCost,
             grossProfit,
-            grossMarginPercent: computeGrossMarginPercent(totalCost, grossProfit),
+            grossMarginPercent: computeMarginPercent(revenue, grossProfit),
             totalProcessingFees,
-            ...(operatingExpenses
-              ? {
-                  operatingExpenses: operatingExpenses.total,
-                  operatingExpensesDirect: operatingExpenses.direct,
-                  operatingExpensesShared: operatingExpenses.shared,
-                }
-              : {}),
+            ...(operatingExpenses ? { operatingExpenses: operatingExpenses.total } : {}),
             netCost,
             netRevenue,
             netProfit,
-            netMarginPercent: computeNetMarginPercent(totalCost, netProfit),
+            netMarginPercent: computeMarginPercent(revenue, netProfit),
           };
         })()
       : {};

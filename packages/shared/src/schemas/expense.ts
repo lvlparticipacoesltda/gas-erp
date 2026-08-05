@@ -20,8 +20,8 @@ export type ExpenseStatusValue = (typeof EXPENSE_STATUSES)[number];
 
 export const createExpenseSchema = z
   .object({
-    /** Ausente/vazio = despesa da organização (rateada entre as unidades). */
-    storeId: optionalId,
+    /** Toda despesa é custo direto de uma unidade. */
+    storeId: z.string().min(1, 'Unidade obrigatória'),
     categoryId: z.string().min(1, 'Categoria obrigatória'),
     description: z.string().min(1, 'Descrição obrigatória'),
     /** Competência: define o mês em que o gasto afeta o resultado. */
@@ -43,10 +43,7 @@ export const createExpenseSchema = z
   });
 
 export const updateExpenseSchema = z.object({
-  storeId: z.preprocess(
-    (value) => (value === '' ? null : value),
-    z.string().min(1).nullable().optional(),
-  ),
+  storeId: z.string().min(1, 'Unidade obrigatória').optional(),
   categoryId: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   expenseDate: dateKey.optional(),
@@ -75,7 +72,6 @@ export const payExpenseSchema = z.object({
 });
 
 export const expenseFiltersSchema = z.object({
-  /** `org` filtra apenas despesas sem unidade. */
   storeId: z.string().optional(),
   categoryId: z.string().optional(),
   status: z.enum(EXPENSE_STATUSES).optional(),
@@ -107,6 +103,3 @@ export type PayExpenseInput = z.infer<typeof payExpenseSchema>;
 export type ExpenseFilters = z.infer<typeof expenseFiltersSchema>;
 export type CreateExpenseCategoryInput = z.infer<typeof createExpenseCategorySchema>;
 export type UpdateExpenseCategoryInput = z.infer<typeof updateExpenseCategorySchema>;
-
-/** Query `storeId=org` → apenas despesas da organização (sem unidade). */
-export const EXPENSE_STORE_FILTER_ORG = 'org';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { Download, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { FilterPanel } from '@/components/filter-panel';
 import { PaginatedSection } from '@/components/paginated-section';
@@ -10,11 +10,7 @@ import { useToast } from '@/components/toast';
 import { Alert, Badge, Button, Card, Input, Label, PageHeader, Select, Table } from '@/components/ui';
 import { api, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import {
-  EXPENSE_STATUS_LABELS,
-  EXPENSE_STORE_FILTER_ORG,
-  type PaginatedResponse,
-} from '@gas-erp/shared';
+import { EXPENSE_STATUS_LABELS, type PaginatedResponse } from '@gas-erp/shared';
 import { CategoryIcon } from './category-icon';
 import { ExpenseCategoryCards } from './expense-category-manager';
 import { ExpensesByCategoryChart, ExpensesTrendChart } from './expense-charts';
@@ -250,28 +246,32 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
         onReset={resetFilters}
         searching={loading}
       >
-        <div>
-          <Label>Mês / Ano</Label>
-          <div className="flex items-center gap-1">
-            <button
+        <div className="min-w-0">
+          <Label>Mês</Label>
+          <div className="flex w-full min-w-0 items-center gap-2">
+            <Button
               type="button"
-              aria-label="Mês anterior"
+              variant="secondary"
+              className="shrink-0 px-3"
               onClick={() => setMonth(shiftMonth(month, -1))}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+              aria-label="Mês anterior"
+              title="Mês anterior"
             >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-sm font-medium">
+              ↓
+            </Button>
+            <span className="min-w-0 flex-1 truncate text-center text-sm font-medium">
               {monthTitle(month)}
             </span>
-            <button
+            <Button
               type="button"
-              aria-label="Próximo mês"
+              variant="secondary"
+              className="shrink-0 px-3"
               onClick={() => setMonth(shiftMonth(month, 1))}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+              aria-label="Próximo mês"
+              title="Próximo mês"
             >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+              ↑
+            </Button>
           </div>
         </div>
 
@@ -280,7 +280,6 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
             <Label>Unidade</Label>
             <Select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
               <option value="">Todas as unidades</option>
-              <option value={EXPENSE_STORE_FILTER_ORG}>Empresa (rateado)</option>
               {stores.map((store) => (
                 <option key={store.id} value={store.id}>
                   {store.name}
@@ -324,208 +323,193 @@ export function ExpensesPanel({ scope }: { scope: ExpenseScope }) {
 
       {error && <Alert className="mb-4">{error}</Alert>}
 
-      {/* A coluna de resumo só aparece em 2xl: abaixo disso ela roubava os ~290px
-          de que a tabela de 8 colunas precisa, e Status/Ações saíam da área
-          visível atrás de um scroll horizontal. */}
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0">
-          <PaginatedSection
-            loading={loading}
-            pagination={{
-              page,
-              totalPages,
-              total,
-              pageSize: PAGE_SIZE,
-              onPageChange: setPage,
-              // `px-2` alinha o "Exibindo…" com o padding das células, senão o
-              // texto encosta na borda do card e destoa da coluna acima.
-              className: 'mt-3 px-2',
-            }}
-          >
-            <Table>
-              <thead className="bg-slate-50 text-left">
-                <tr>
-                  <th className="px-2 py-3">Data</th>
-                  <th className="px-2 py-3">Descrição</th>
-                  <th className="px-2 py-3">Categoria</th>
-                  {scope.mode === 'master' && <th className="px-2 py-3">Unidade</th>}
-                  <th className="px-2 py-3">Pagamento</th>
-                  <th className="px-2 py-3">Valor</th>
-                  <th className="px-2 py-3">Status</th>
-                  <th className="px-2 py-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {expenses.length === 0 ? (
-                  <tr>
-                    <td colSpan={scope.mode === 'master' ? 8 : 7} className="p-8 text-center text-sm text-slate-500">
-                      Nenhum gasto lançado neste período.
-                    </td>
-                  </tr>
-                ) : (
-                  expenses.map((expense) => (
-                    <tr key={expense.id} className="border-t border-slate-100">
-                      <td className="whitespace-nowrap px-2 py-3">{formatDate(`${expense.expenseDate}T12:00:00`)}</td>
-                      <td className="px-2 py-3">
-                        <div className="font-medium text-slate-800">{expense.description}</div>
-                        {/* Fornecedor e vencimento como linha secundária: são opcionais e
-                            não justificam colunas próprias numa tabela já larga. */}
-                        {expense.supplierLabel && (
-                          <div className="text-xs text-slate-500">{expense.supplierLabel}</div>
-                        )}
-                        {expense.dueDate && expense.status === 'PENDING' && (
-                          <div className="text-xs text-slate-400">
-                            vence {formatDate(`${expense.dueDate}T12:00:00`)}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-2 py-3">
-                        <span className="inline-flex items-center gap-1.5">
-                          <CategoryIcon
-                            icon={expense.category.icon}
-                            color={expense.category.color}
-                            className="h-6 w-6 shrink-0"
-                          />
-                          {expense.category.name}
-                        </span>
-                      </td>
-                      {scope.mode === 'master' && (
-                        <td className="px-2 py-3 text-slate-600">
-                          {expense.store?.name ?? (
-                            <span className="text-slate-400">Empresa (rateado)</span>
-                          )}
-                        </td>
-                      )}
-                      <td className="px-2 py-3">
-                        {expense.paymentLabel ? <Badge>{expense.paymentLabel}</Badge> : '—'}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-3 font-semibold tabular-nums">
-                        {formatCurrency(expense.amount)}
-                      </td>
-                      <td className="px-2 py-3">
-                        <Badge tone={statusTone(expense.status)}>
-                          {EXPENSE_STATUS_LABELS[expense.status]}
-                        </Badge>
-                      </td>
-                      <td className="px-2 py-3">
-                        <div className="flex justify-end gap-1">
-                          {expense.status === 'PENDING' && (
-                            <button
-                              type="button"
-                              title="Marcar como pago"
-                              onClick={() => handlePay(expense)}
-                              className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-50"
-                            >
-                              <Wallet className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            title="Editar"
-                            onClick={() => {
-                              setEditing(expense);
-                              setFormOpen(true);
-                            }}
-                            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            title="Excluir"
-                            onClick={() => handleDelete(expense)}
-                            className="rounded-lg p-1 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              {expenses.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
-                    {/* Células vazias no lugar das colunas que o total não usa:
-                        assim o rótulo cai sob "Descrição" e o valor sob "Valor". */}
-                    <td className="px-2 py-3" />
-                    <td className="px-2 py-3">Total do período</td>
-                    <td colSpan={scope.mode === 'master' ? 3 : 2} className="px-2 py-3" />
-                    <td className="whitespace-nowrap px-2 py-3 tabular-nums">
-                      {formatCurrency(filteredTotal)}
-                    </td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
-              )}
-            </Table>
-          </PaginatedSection>
-        </div>
-
-        {/* Empilhado abaixo da tabela os cartões se espalham em grade; virando
-            coluna lateral em 2xl, voltam a ficar um sob o outro. */}
-        <aside className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-1">
-          {/* Ocupando a largura toda, o resumo vira uma faixa de três números —
-              como cartão de uma coluna só ele ficava com metade vazia ao lado
-              do gráfico de categorias. */}
-          <Card className="sm:col-span-2 lg:col-span-3 2xl:col-span-1">
-            <div className="text-sm font-semibold text-slate-700">Resumo do período</div>
-            <div className="mt-3 grid gap-4 md:grid-cols-3 2xl:grid-cols-2">
-              <div className="2xl:col-span-2">
-                <div className="text-sm text-slate-500">Total de gastos</div>
-                <div className="text-3xl font-extrabold text-rose-600">
-                  {formatCurrency(summary?.total ?? 0)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Pago</div>
-                <div className="text-lg font-semibold text-emerald-600 2xl:text-base">
-                  {formatCurrency(summary?.paid ?? 0)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Pendente</div>
-                <div className="text-lg font-semibold text-amber-600 2xl:text-base">
-                  {formatCurrency(summary?.pending ?? 0)}
-                </div>
+      {/* Resumo e gráficos abrem a tela, acima da tabela: são a leitura rápida do
+          período, e a tabela de 8 colunas fica com a largura inteira abaixo. */}
+      <section className="mb-6 grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Ocupando a largura toda, o resumo vira uma faixa de três números —
+            como cartão de uma coluna só ele ficava com metade vazia ao lado. */}
+        <Card className="sm:col-span-2 lg:col-span-3">
+          <div className="text-sm font-semibold text-slate-700">Resumo do período</div>
+          <div className="mt-3 grid gap-4 md:grid-cols-3">
+            <div>
+              <div className="text-sm text-slate-500">Total de gastos</div>
+              <div className="text-3xl font-extrabold text-rose-600">
+                {formatCurrency(summary?.total ?? 0)}
               </div>
             </div>
-          </Card>
-
-          <Card>
-            <div className="mb-1 text-sm font-semibold text-slate-700">Gastos por categoria</div>
-            {summary && <ExpensesByCategoryChart summary={summary} />}
-          </Card>
-
-          <Card>
-            <div className="mb-1 text-sm font-semibold text-slate-700">
-              Evolução dos gastos
-              <span className="ml-1 font-normal text-slate-400">· últimos 6 meses</span>
+            <div>
+              <div className="text-xs text-slate-500">Pago</div>
+              <div className="text-lg font-semibold text-emerald-600">
+                {formatCurrency(summary?.paid ?? 0)}
+              </div>
             </div>
-            {summary && <ExpensesTrendChart summary={summary} />}
-          </Card>
+            <div>
+              <div className="text-xs text-slate-500">Pendente</div>
+              <div className="text-lg font-semibold text-amber-600">
+                {formatCurrency(summary?.pending ?? 0)}
+              </div>
+            </div>
+          </div>
+        </Card>
 
-          {scope.mode === 'master' && summary && summary.byStore.length > 0 && (
-            <Card>
-              <div className="mb-3 text-sm font-semibold text-slate-700">Gastos por unidade</div>
-              <ul className="space-y-2 text-sm">
-                {summary.byStore.map((row) => (
-                  <li
-                    key={row.storeId ?? 'org'}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <span className="min-w-0 truncate text-slate-600">{row.name}</span>
-                    <span className="shrink-0 font-semibold tabular-nums">
-                      {formatCurrency(row.total)}
+        <Card>
+          <div className="mb-1 text-sm font-semibold text-slate-700">Gastos por categoria</div>
+          {summary && <ExpensesByCategoryChart summary={summary} />}
+        </Card>
+
+        <Card>
+          <div className="mb-1 text-sm font-semibold text-slate-700">
+            Evolução dos gastos
+            <span className="ml-1 font-normal text-slate-400">· últimos 6 meses</span>
+          </div>
+          {summary && <ExpensesTrendChart summary={summary} />}
+        </Card>
+
+        {scope.mode === 'master' && summary && summary.byStore.length > 0 && (
+          <Card>
+            <div className="mb-3 text-sm font-semibold text-slate-700">Gastos por unidade</div>
+            <ul className="space-y-2 text-sm">
+              {summary.byStore.map((row) => (
+                <li key={row.storeId ?? 'org'} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-slate-600">{row.name}</span>
+                  <span className="shrink-0 font-semibold tabular-nums">
+                    {formatCurrency(row.total)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </section>
+
+      <PaginatedSection
+        loading={loading}
+        pagination={{
+          page,
+          totalPages,
+          total,
+          pageSize: PAGE_SIZE,
+          onPageChange: setPage,
+          // `px-2` alinha o "Exibindo…" com o padding das células, senão o
+          // texto encosta na borda do card e destoa da coluna acima.
+          className: 'mt-3 px-2',
+        }}
+      >
+        <Table>
+          <thead className="bg-slate-50 text-left">
+            <tr>
+              <th className="px-2 py-3">Data</th>
+              <th className="px-2 py-3">Descrição</th>
+              <th className="px-2 py-3">Categoria</th>
+              {scope.mode === 'master' && <th className="px-2 py-3">Unidade</th>}
+              <th className="px-2 py-3">Pagamento</th>
+              <th className="px-2 py-3">Valor</th>
+              <th className="px-2 py-3">Status</th>
+              <th className="px-2 py-3 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {expenses.length === 0 ? (
+              <tr>
+                <td colSpan={scope.mode === 'master' ? 8 : 7} className="p-8 text-center text-sm text-slate-500">
+                  Nenhum gasto lançado neste período.
+                </td>
+              </tr>
+            ) : (
+              expenses.map((expense) => (
+                <tr key={expense.id} className="border-t border-slate-100">
+                  <td className="whitespace-nowrap px-2 py-3">{formatDate(`${expense.expenseDate}T12:00:00`)}</td>
+                  <td className="px-2 py-3">
+                    <div className="font-medium text-slate-800">{expense.description}</div>
+                    {/* Fornecedor e vencimento como linha secundária: são opcionais e
+                        não justificam colunas próprias numa tabela já larga. */}
+                    {expense.supplierLabel && (
+                      <div className="text-xs text-slate-500">{expense.supplierLabel}</div>
+                    )}
+                    {expense.dueDate && expense.status === 'PENDING' && (
+                      <div className="text-xs text-slate-400">
+                        vence {formatDate(`${expense.dueDate}T12:00:00`)}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-2 py-3">
+                    <span className="inline-flex items-center gap-1.5">
+                      <CategoryIcon
+                        icon={expense.category.icon}
+                        color={expense.category.color}
+                        className="h-6 w-6 shrink-0"
+                      />
+                      {expense.category.name}
                     </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+                  </td>
+                  {scope.mode === 'master' && (
+                    <td className="px-2 py-3 text-slate-600">{expense.store.name}</td>
+                  )}
+                  <td className="px-2 py-3">
+                    {expense.paymentLabel ? <Badge>{expense.paymentLabel}</Badge> : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-3 font-semibold tabular-nums">
+                    {formatCurrency(expense.amount)}
+                  </td>
+                  <td className="px-2 py-3">
+                    <Badge tone={statusTone(expense.status)}>
+                      {EXPENSE_STATUS_LABELS[expense.status]}
+                    </Badge>
+                  </td>
+                  <td className="px-2 py-3">
+                    <div className="flex justify-end gap-1">
+                      {expense.status === 'PENDING' && (
+                        <button
+                          type="button"
+                          title="Marcar como pago"
+                          onClick={() => handlePay(expense)}
+                          className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-50"
+                        >
+                          <Wallet className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        title="Editar"
+                        onClick={() => {
+                          setEditing(expense);
+                          setFormOpen(true);
+                        }}
+                        className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Excluir"
+                        onClick={() => handleDelete(expense)}
+                        className="rounded-lg p-1 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          {expenses.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
+                {/* Células vazias no lugar das colunas que o total não usa:
+                    assim o rótulo cai sob "Descrição" e o valor sob "Valor". */}
+                <td className="px-2 py-3" />
+                <td className="px-2 py-3">Total do período</td>
+                <td colSpan={scope.mode === 'master' ? 3 : 2} className="px-2 py-3" />
+                <td className="whitespace-nowrap px-2 py-3 tabular-nums">
+                  {formatCurrency(filteredTotal)}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
           )}
-        </aside>
-      </div>
+        </Table>
+      </PaginatedSection>
 
       <ExpenseCategoryCards categories={categories} summary={summary} onChanged={loadCategories} />
 

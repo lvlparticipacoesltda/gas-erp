@@ -49,14 +49,12 @@ export function computeNetProfit(grossProfit: number, processingFees: number): n
   return grossProfit - processingFees;
 }
 
-/** Margem bruta em % sobre o CMV. Retorna null quando CMV é zero. */
-export function computeGrossMarginPercent(cogs: number, grossProfit: number): number | null {
-  if (cogs <= 0) return null;
-  return Math.round((grossProfit / cogs) * 10000) / 100;
-}
-
-/** Margem líquida em % sobre o CMV. Retorna null quando CMV é zero. */
-export function computeNetMarginPercent(cogs: number, netProfit: number): number | null {
-  if (cogs <= 0) return null;
-  return Math.round((netProfit / cogs) * 10000) / 100;
+/**
+ * Percentual de uma linha do resultado sobre o faturamento: margem quando o valor é
+ * lucro, participação quando é custo. Sem faturamento no período não há base de
+ * comparação, então retorna null em vez de zero.
+ */
+export function computeMarginPercent(revenue: number, value: number): number | null {
+  if (revenue <= 0) return null;
+  return Math.round((value / revenue) * 10000) / 100;
 }

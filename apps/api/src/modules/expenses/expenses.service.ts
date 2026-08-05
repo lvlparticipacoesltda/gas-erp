@@ -10,7 +10,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   AuthUser,
   DEFAULT_EXPENSE_CATEGORIES,
-  EXPENSE_STORE_FILTER_ORG,
   canViewExpenses,
   createExpenseCategorySchema,
   createExpenseSchema,
@@ -72,23 +71,18 @@ export class ExpensesService {
 
   /**
    * Escopo de leitura/escrita.
-   * - `storeId=org` → apenas despesas da organização (sem unidade).
    * - `storeId=<id>` → aquela unidade (validando acesso).
    * - sem filtro → master vê a organização inteira; financeiro vê as lojas às
-   *   quais tem acesso **mais** as despesas da organização, que também são dele.
+   *   quais tem acesso.
    */
   private buildScopeWhere(user: AuthUser, storeId?: string): Prisma.ExpenseWhereInput {
     const base = { organizationId: user.organizationId };
-    if (storeId === EXPENSE_STORE_FILTER_ORG) return { ...base, storeId: null };
     if (storeId) {
       assertStoreAccess(user, storeId);
       return { ...base, storeId };
     }
     if (this.isOrgWide(user)) return base;
-    return {
-      ...base,
-      OR: [{ storeId: { in: user.storeIds } }, { storeId: null }],
-    };
+    return { ...base, storeId: { in: user.storeIds } };
   }
 
   private buildFilterWhere(user: AuthUser, filters: ExpenseFilters): Prisma.ExpenseWhereInput {
@@ -166,7 +160,7 @@ export class ExpensesService {
   async create(user: AuthUser, input: unknown) {
     this.assertAccess(user);
     const data = createExpenseSchema.parse(input);
-    if (data.storeId) assertStoreAccess(user, data.storeId);
+    assertStoreAccess(user, data.storeId);
     await this.assertCategory(user, data.categoryId);
     if (data.supplierId) await this.assertSupplier(user, data.supplierId);
 
@@ -181,7 +175,7 @@ export class ExpensesService {
       const isFirst = index === 0;
       return {
         organizationId: user.organizationId,
-        storeId: data.storeId ?? null,
+        storeId: data.storeId,
         categoryId: data.categoryId,
         description:
           installments > 1
@@ -211,7 +205,7 @@ export class ExpensesService {
       });
       await this.audit.log(user, 'CREATE', 'Expense', created.id, {
         amount: data.amount,
-        storeId: data.storeId ?? null,
+        storeId: data.storeId,
       });
       return this.serialize(created);
     }
@@ -220,7 +214,7 @@ export class ExpensesService {
     await this.audit.log(user, 'CREATE', 'Expense', recurrenceGroupId ?? undefined, {
       installments,
       amount: data.amount,
-      storeId: data.storeId ?? null,
+      storeId: data.storeId,
     });
     const created = await this.prisma.expense.findMany({
       where: { recurrenceGroupId },
@@ -361,7 +355,7 @@ export class ExpensesService {
       string,
       { categoryId: string; name: string; icon: string | null; color: string | null; total: number; count: number }
     >();
-    const byStoreMap = new Map<string, { storeId: string | null; name: string; total: number; count: number }>();
+    const byStoreMap = new Map<string, { storeId: string; name: string; total: number; count: number }>();
 
     for (const row of rows) {
       const amount = toNumber(row.amount);
@@ -378,16 +372,15 @@ export class ExpensesService {
       category.count += 1;
       byCategoryMap.set(row.categoryId, category);
 
-      const storeKey = row.storeId ?? EXPENSE_STORE_FILTER_ORG;
-      const store = byStoreMap.get(storeKey) ?? {
+      const store = byStoreMap.get(row.storeId) ?? {
         storeId: row.storeId,
-        name: row.storeId ? (storeNameById.get(row.storeId) ?? 'Unidade') : 'Empresa (rateado)',
+        name: storeNameById.get(row.storeId) ?? 'Unidade',
         total: 0,
         count: 0,
       };
       store.total += amount;
       store.count += 1;
-      byStoreMap.set(storeKey, store);
+      byStoreMap.set(row.storeId, store);
     }
 
     const totalByStatus = (status: string) =>
@@ -450,7 +443,7 @@ export class ExpensesService {
         serialized.paidAt ? formatDateKey(serialized.paidAt) : '',
         serialized.description,
         serialized.category.name,
-        serialized.store?.name ?? 'Empresa (rateado)',
+        serialized.store?.name ?? '',
         serialized.supplierLabel ?? '',
         serialized.paymentLabel ?? '',
         formatCsvMoney(serialized.amount),

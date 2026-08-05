@@ -15,8 +15,6 @@ export interface DailySummaryData {
   grossMarginPercent?: number | null;
   totalProcessingFees?: number;
   operatingExpenses?: number;
-  operatingExpensesDirect?: number;
-  operatingExpensesShared?: number;
   netCost?: number;
   netRevenue?: number;
   netProfit?: number;
@@ -224,11 +222,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 <Card>
                   <div className="text-sm text-slate-500">Despesas da empresa {periodLabel}</div>
                   <div className="text-2xl font-bold text-rose-600">{formatCurrency(data.operatingExpenses!)}</div>
-                  {(data.operatingExpensesShared ?? 0) > 0 && (
-                    <div className="mt-1 text-xs text-slate-400">
-                      inclui {formatCurrency(data.operatingExpensesShared!)} rateado
-                    </div>
-                  )}
+                  <div className="mt-1 text-xs text-slate-400">custos diretos do período</div>
                 </Card>
                 <Card>
                   <div className="text-sm text-slate-500">Custo líquido {periodLabel}</div>

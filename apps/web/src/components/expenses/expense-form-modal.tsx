@@ -27,9 +27,9 @@ type FormState = {
   installments: string;
 };
 
-function emptyForm(scope: ExpenseScope, categoryId: string): FormState {
+function emptyForm(scope: ExpenseScope, categoryId: string, storeId: string): FormState {
   return {
-    storeId: scope.mode === 'store' ? scope.storeId : '',
+    storeId: scope.mode === 'store' ? scope.storeId : storeId,
     categoryId,
     description: '',
     expenseDate: todayKey(),
@@ -61,7 +61,9 @@ export function ExpenseFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState<FormState>(() => emptyForm(scope, categories[0]?.id ?? ''));
+  const [form, setForm] = useState<FormState>(() =>
+    emptyForm(scope, categories[0]?.id ?? '', stores[0]?.id ?? ''),
+  );
   const [supplier, setSupplier] = useState<PurchaseSupplier | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -69,14 +71,16 @@ export function ExpenseFormModal({
   // Dependências primitivas: recarregar a lista de categorias não pode zerar o
   // formulário que o usuário já está preenchendo.
   const defaultCategoryId = categories[0]?.id ?? '';
-  const scopeStoreId = scope.mode === 'store' ? scope.storeId : '';
+  // Toda despesa é custo direto de uma unidade, então o novo gasto já nasce com uma
+  // selecionada — no escopo de loja, a própria; no master, a primeira da lista.
+  const defaultStoreId = scope.mode === 'store' ? scope.storeId : (stores[0]?.id ?? '');
 
   useEffect(() => {
     if (!open) return;
     setError('');
     if (expense) {
       setForm({
-        storeId: expense.store?.id ?? '',
+        storeId: expense.store.id,
         categoryId: expense.category.id,
         description: expense.description,
         expenseDate: expense.expenseDate,
@@ -94,14 +98,11 @@ export function ExpenseFormModal({
           : null,
       );
     } else {
-      setForm({
-        ...emptyForm(scope, defaultCategoryId),
-        storeId: scopeStoreId,
-      });
+      setForm(emptyForm(scope, defaultCategoryId, defaultStoreId));
       setSupplier(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, expense, defaultCategoryId, scopeStoreId]);
+  }, [open, expense, defaultCategoryId, defaultStoreId]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -120,9 +121,13 @@ export function ExpenseFormModal({
       setError('Informe a data do pagamento.');
       return;
     }
+    if (!form.storeId) {
+      setError('Selecione a unidade.');
+      return;
+    }
 
     const payload = {
-      storeId: form.storeId || undefined,
+      storeId: form.storeId,
       categoryId: form.categoryId,
       description: form.description.trim(),
       expenseDate: form.expenseDate,
@@ -145,7 +150,6 @@ export function ExpenseFormModal({
             method: 'PATCH',
             body: JSON.stringify({
               ...payload,
-              storeId: form.storeId || null,
               dueDate: form.dueDate || null,
               paidAt: form.status === 'PAID' ? form.paidAt : null,
               supplierId: supplier?.id ?? null,
@@ -224,8 +228,11 @@ export function ExpenseFormModal({
         {scope.mode === 'master' && (
           <div>
             <Label>Unidade</Label>
-            <Select value={form.storeId} onChange={(event) => set('storeId', event.target.value)}>
-              <option value="">Empresa (rateado entre as unidades)</option>
+            <Select
+              value={form.storeId}
+              onChange={(event) => set('storeId', event.target.value)}
+              required
+            >
               {stores.map((store) => (
                 <option key={store.id} value={store.id}>
                   {store.name}
@@ -233,8 +240,7 @@ export function ExpenseFormModal({
               ))}
             </Select>
             <p className="mt-1 text-xs text-slate-500">
-              Sem unidade, o gasto é rateado no lucro líquido de cada loja conforme o faturamento
-              do período.
+              O gasto entra como custo direto desta unidade no resultado do período.
             </p>
           </div>
         )}
