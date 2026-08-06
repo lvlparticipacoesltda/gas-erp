@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import {
   aggregatePaymentsByMethodId,
   buildPaymentAllocationsFromItems,
 } from '@gas-erp/shared';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 import type { StorePaymentMethodOption } from '@/components/SalePaymentsEditor';
 
 export interface SaleItemPaymentRow {
@@ -41,6 +41,7 @@ export function SaleItemPaymentsEditor({
   onChangeDeliveryFeeMethod,
   methods,
 }: SaleItemPaymentsEditorProps) {
+  const styles = useStyles();
   const available = paymentMethodsForSale(methods);
   const summary = aggregatePaymentsByMethodId(
     buildPaymentAllocationsFromItems(
@@ -129,7 +130,7 @@ export function SaleItemPaymentsEditor({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   root: { gap: spacing.md },
   card: {
     borderWidth: 1,
@@ -170,4 +171,4 @@ const styles = StyleSheet.create({
   summaryTitle: { fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 4 },
   summaryLine: { fontSize: 13, color: colors.textMuted },
   warning: { fontSize: 13, color: colors.warningText },
-});
+}));

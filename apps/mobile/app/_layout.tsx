@@ -12,7 +12,8 @@ import { DevicePowerSetupBridge } from '@/components/DevicePowerSetupBridge';
 import { NotificationPermissionOnLaunch } from '@/components/NotificationPermissionOnLaunch';
 import { LocationDisclosureHost } from '@/components/LocationDisclosureHost';
 import { initForegroundPresence, teardownForegroundPresence } from '@/lib/location';
-import { colors } from '@/theme';
+import { useColors } from '@/theme';
+import { ThemePreferenceProvider } from '@/lib/theme-preference';
 
 /** Entregas compartilhadas entre abas e tela de detalhe (/delivery/[id]). */
 function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
@@ -46,14 +47,16 @@ function AuthenticatedDeliveries({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout() {
+  const colors = useColors();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemePreferenceProvider>
       <SafeAreaProvider>
         <AuthProvider>
           <LocationDisclosureHost />
           <NotificationPermissionOnLaunch />
           <AuthenticatedDeliveries>
-            <StatusBar style="dark" />
+            <StatusBar style="auto" />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="login" />
@@ -67,6 +70,7 @@ export default function RootLayout() {
           </AuthenticatedDeliveries>
         </AuthProvider>
       </SafeAreaProvider>
+      </ThemePreferenceProvider>
     </GestureHandlerRootView>
   );
 }

@@ -5,7 +5,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -39,7 +38,7 @@ import { api, ApiError } from '@/lib/api';
 import { getCurrentDeliveryAddress } from '@/lib/location';
 import { fetchAddressByCep, formatCep, normalizeCepDigits } from '@/lib/viacep';
 import { formatMoneyDraft, parseMoneyInput, sanitizeMoneyInput } from '@/lib/money-input';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 interface Store {
   id: string;
@@ -126,6 +125,8 @@ export default function NewSaleScreen() {
 }
 
 function DelivererSaleScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const { user } = useAuth();
   const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -1184,7 +1185,7 @@ function DelivererSaleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
@@ -1233,7 +1234,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.navy, borderColor: colors.navy },
   chipText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
-  chipTextActive: { color: '#FFFFFF' },
+  chipTextActive: { color: colors.navyOn },
   productList: { gap: spacing.sm },
   productCard: {
     padding: spacing.md,
@@ -1250,9 +1251,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   productName: { fontSize: 15, fontWeight: '600', color: colors.text, flex: 1 },
-  productNameActive: { color: '#FFFFFF' },
+  productNameActive: { color: colors.navyOn },
   productPrice: { fontSize: 15, fontWeight: '700', color: colors.primary },
-  productPriceActive: { color: '#FFFFFF' },
+  productPriceActive: { color: colors.navyOn },
   lineItems: { gap: spacing.sm, marginTop: spacing.sm },
   lineItemCard: {
     padding: spacing.md,
@@ -1356,4 +1357,4 @@ const styles = StyleSheet.create({
   pendingItems: { fontSize: 13, color: colors.textMuted },
   pendingTotal: { fontSize: 13, fontWeight: '600', color: colors.text },
   separator: { height: spacing.md },
-});
+}));

@@ -1,6 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../../theme';
+import { makeStyles, radius, spacing, useColors } from '../../theme';
 
 /** Painel inferior enquanto a navegação nativa até a base está ativa. */
 export function StoreHomeRoutePanel({
@@ -20,6 +20,7 @@ export function StoreHomeRoutePanel({
   onOpenGoogleMaps: () => void;
   onOpenWaze: () => void;
 }) {
+  const styles = useStyles();
   const statusText = routeLoading
     ? 'Calculando rota…'
     : routeError
@@ -75,7 +76,7 @@ export function StoreHomeRoutePanel({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
@@ -126,7 +127,7 @@ const styles = StyleSheet.create({
   error: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#FEE2E2',
+    color: colors.dangerBg,
   },
   navRow: {
     flexDirection: 'row',
@@ -154,4 +155,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.8)',
   },
-});
+}));

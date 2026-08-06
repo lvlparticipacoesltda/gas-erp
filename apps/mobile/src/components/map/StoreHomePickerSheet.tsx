@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { DelivererMeStore } from '@gas-erp/shared';
 import { BottomSheet } from '../BottomSheet';
-import { colors, radius, spacing } from '../../theme';
+import { makeStyles, radius, spacing, useColors } from '../../theme';
 import { buildStoreAddress } from '../../lib/store-home';
 
 export function StoreHomePickerSheet({
@@ -17,6 +17,8 @@ export function StoreHomePickerSheet({
   onClose: () => void;
   onSelect: (store: DelivererMeStore) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
 
   return (
@@ -59,7 +61,7 @@ export function StoreHomePickerSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   content: {
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
@@ -108,4 +110,4 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   name: { fontSize: 15, fontWeight: '700', color: colors.text },
   address: { marginTop: 2, fontSize: 12, color: colors.textMuted },
-});
+}));

@@ -2,24 +2,28 @@ import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  StyleSheet,
   Text,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import type { SaleDisplayTone } from '@gas-erp/shared';
-import { colors, radius, spacing } from '../theme';
+import { makeStyles, radius, spacing, useColors, type Colors } from '../theme';
 
-const toneStyles: Record<SaleDisplayTone, { bg: string; fg: string }> = {
-  default: { bg: colors.infoBg, fg: colors.infoText },
-  success: { bg: colors.successBg, fg: colors.successText },
-  warning: { bg: colors.warningBg, fg: colors.warningText },
-  danger: { bg: colors.dangerBg, fg: colors.dangerText },
-};
+/** Mapas de cor viram função da paleta: em escopo de módulo ficariam presos ao tema claro. */
+function toneStyles(colors: Colors): Record<SaleDisplayTone, { bg: string; fg: string }> {
+  return {
+    default: { bg: colors.infoBg, fg: colors.infoText },
+    success: { bg: colors.successBg, fg: colors.successText },
+    warning: { bg: colors.warningBg, fg: colors.warningText },
+    danger: { bg: colors.dangerBg, fg: colors.dangerText },
+  };
+}
 
 export function Badge({ label, tone = 'default' }: { label: string; tone?: SaleDisplayTone }) {
-  const s = toneStyles[tone];
+  const styles = useStyles();
+  const colors = useColors();
+  const s = toneStyles(colors)[tone];
   return (
     <View style={[styles.badge, { backgroundColor: s.bg }]}>
       <Text style={[styles.badgeText, { color: s.fg }]}>{label}</Text>
@@ -36,6 +40,7 @@ export function Card({
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
 }) {
+  const styles = useStyles();
   if (onPress) {
     return (
       <Pressable
@@ -68,7 +73,9 @@ export function Button({
   icon?: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
-  const v = buttonVariants[variant];
+  const styles = useStyles();
+  const colors = useColors();
+  const v = buttonVariants(colors)[variant];
   const isDisabled = disabled || loading;
   return (
     <Pressable
@@ -94,13 +101,17 @@ export function Button({
   );
 }
 
-const buttonVariants: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
-  primary: { bg: colors.primary, fg: colors.primaryText, border: colors.primary },
-  secondary: { bg: colors.surface, fg: colors.text, border: colors.border },
-  success: { bg: colors.success, fg: '#FFFFFF', border: colors.success },
-  danger: { bg: colors.surface, fg: colors.dangerText, border: colors.dangerBg },
-  ghost: { bg: 'transparent', fg: colors.textMuted, border: 'transparent' },
-};
+function buttonVariants(
+  colors: Colors,
+): Record<ButtonVariant, { bg: string; fg: string; border: string }> {
+  return {
+    primary: { bg: colors.primary, fg: colors.primaryText, border: colors.primary },
+    secondary: { bg: colors.surface, fg: colors.text, border: colors.border },
+    success: { bg: colors.success, fg: colors.successOn, border: colors.success },
+    danger: { bg: colors.surface, fg: colors.dangerText, border: colors.dangerBg },
+    ghost: { bg: 'transparent', fg: colors.textMuted, border: 'transparent' },
+  };
+}
 
 export function StateMessage({
   title,
@@ -113,6 +124,7 @@ export function StateMessage({
   emoji?: string;
   children?: ReactNode;
 }) {
+  const styles = useStyles();
   return (
     <View style={styles.state}>
       {emoji ? <Text style={styles.stateEmoji}>{emoji}</Text> : null}
@@ -124,6 +136,8 @@ export function StateMessage({
 }
 
 export function Loading({ label }: { label?: string }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.state}>
       <ActivityIndicator size="large" color={colors.primary} />
@@ -132,7 +146,7 @@ export function Loading({ label }: { label?: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   badge: {
     alignSelf: 'flex-start',
     borderRadius: radius.pill,
@@ -164,4 +178,4 @@ const styles = StyleSheet.create({
   stateEmoji: { fontSize: 40 },
   stateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' },
   stateSubtitle: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
-});
+}));

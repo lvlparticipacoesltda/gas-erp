@@ -1,10 +1,12 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPhoneBr } from '@gas-erp/shared';
 import { openWhatsApp } from '@/lib/navigation';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 export function CustomerPhoneLink({ phone }: { phone?: string | null }) {
+  const styles = useStyles();
+  const colors = useColors();
   const formatted = formatPhoneBr(phone);
   if (!formatted.trim() || !phone?.trim()) return null;
 
@@ -22,7 +24,7 @@ export function CustomerPhoneLink({ phone }: { phone?: string | null }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -38,4 +40,4 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
   label: { fontSize: 14, fontWeight: '700', color: colors.primary },
   phone: { fontSize: 14, fontWeight: '600', color: colors.text },
-});
+}));

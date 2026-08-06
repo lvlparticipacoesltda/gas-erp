@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Marker } from 'react-native-maps';
 import type { LatLng } from '@gas-erp/shared';
 import { shortDeliveryAddress } from '../../lib/deliveries';
-import { colors, radius, spacing } from '../../theme';
+import { makeStyles, radius, spacing, useColors } from '../../theme';
 import type { Delivery, DeliveryDestination } from '../../types';
 
 export function DeliveryAddressPill({
@@ -15,6 +15,8 @@ export function DeliveryAddressPill({
   active: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const inRoute = delivery.status === 'IN_PROGRESS';
   const customerName = delivery.sale.customer?.name?.split(' ')[0] ?? 'Cliente';
 
@@ -28,7 +30,7 @@ export function DeliveryAddressPill({
         <Ionicons
           name={inRoute ? 'navigate' : 'location'}
           size={16}
-          color={inRoute ? '#FFFFFF' : colors.primary}
+          color={inRoute ? colors.successOn : colors.primary}
         />
       </View>
       <View style={styles.textWrap}>
@@ -75,6 +77,7 @@ export function DeliveryAddressMapMarkers({
   extraCoordinates?: Record<string, LatLng>;
   onSelect?: (delivery: Delivery) => void;
 }) {
+  const styles = useStyles();
   return (
     <>
       {deliveries.map((delivery) => {
@@ -114,7 +117,7 @@ export function DeliveryAddressMapMarkers({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   markerWrap: {
     alignItems: 'center',
     maxWidth: 280,
@@ -183,4 +186,4 @@ const styles = StyleSheet.create({
   tailActive: {
     borderTopColor: colors.primary,
   },
-});
+}));

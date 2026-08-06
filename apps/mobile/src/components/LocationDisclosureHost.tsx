@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, ScrollView, Text, View } from 'react-native';
 import { Button } from '@/components/ui';
 import { APP_DISPLAY_NAME } from '@/constants/branding';
 import {
   registerLocationDisclosurePresenter,
   type LocationDisclosureKind,
 } from '@/lib/location-disclosure';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 const COPY: Record<
   LocationDisclosureKind,
@@ -46,6 +46,7 @@ type PendingRequest = {
 
 /** Modal de divulgação destacada (Google Play) — sempre antes do prompt do sistema. */
 export function LocationDisclosureHost() {
+  const styles = useStyles();
   const [queue, setQueue] = useState<PendingRequest[]>([]);
   const current = queue[0] ?? null;
 
@@ -98,7 +99,7 @@ export function LocationDisclosureHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   backdrop: {
     flex: 1,
     justifyContent: 'center',
@@ -139,4 +140,4 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
   },
-});
+}));

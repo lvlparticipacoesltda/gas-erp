@@ -2,7 +2,6 @@ import {
   Pressable,
   RefreshControl,
   SectionList,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -11,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '../BottomSheet';
 import { DeliveryCard } from '../DeliveryCard';
 import { Loading, StateMessage } from '../ui';
-import { colors, radius, spacing } from '../../theme';
+import { makeStyles, radius, spacing, useColors } from '../../theme';
 import type { Delivery } from '../../types';
 
 type Section = { title: string; data: Delivery[] };
@@ -39,6 +38,8 @@ export function DeliveryPickerSheet({
   onClose: () => void;
   onSelect: (delivery: Delivery) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
 
   const sections: Section[] = [];
@@ -106,7 +107,7 @@ export function DeliveryPickerSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   content: {
     paddingTop: spacing.sm,
   },
@@ -145,4 +146,4 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   list: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.lg },
-});
+}));

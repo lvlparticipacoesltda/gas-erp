@@ -1,9 +1,11 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme';
+import { makeStyles, useColors } from '../../theme';
 
 /** Marcador de destino — ícone home laranja/branco (mesma paleta do entregador). */
 export function DestinationMarker({ emphasized = false }: { emphasized?: boolean }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View
       style={[styles.wrap, emphasized ? styles.wrapEmphasized : null]}
@@ -14,7 +16,7 @@ export function DestinationMarker({ emphasized = false }: { emphasized?: boolean
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {
     width: 44,
     height: 44,
@@ -38,4 +40,4 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 10,
   },
-});
+}));

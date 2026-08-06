@@ -5,9 +5,10 @@ import { ExpandableTabBar } from '@/components/ExpandableTabBar';
 import { Loading } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
-import { colors } from '@/theme';
+import { useColors } from '@/theme';
 
 function TabsNav({ isAttendant }: { isAttendant: boolean }) {
+  const colors = useColors();
   const { pending } = useDeliveriesContext();
   return (
     <Tabs
@@ -61,6 +62,7 @@ function TabsNav({ isAttendant }: { isAttendant: boolean }) {
 }
 
 export default function TabsLayout() {
+  const colors = useColors();
   const { token, user, initializing } = useAuth();
 
   if (initializing) {
