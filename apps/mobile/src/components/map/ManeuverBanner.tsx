@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { NextManeuver } from '../../hooks/useRouteNavigation';
+import type { NextManeuver } from '../../hooks/useRouteProgress';
 import { radius, spacing } from '../../theme';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -48,6 +48,20 @@ export function ManeuverBanner({
         <Text style={styles.instruction} numberOfLines={2}>
           {maneuver.instruction}
         </Text>
+        {/* A manobra seguinte evita o erro clássico do cruzamento encadeado:
+            virar e descobrir só depois que havia outra curva logo adiante. */}
+        {maneuver.then ? (
+          <View style={styles.thenRow}>
+            <Ionicons
+              name={iconForManeuver(maneuver.then.maneuver)}
+              size={13}
+              color="rgba(255,255,255,0.75)"
+            />
+            <Text style={styles.then} numberOfLines={1}>
+              e então {maneuver.then.instruction}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -81,4 +95,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   distance: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
   instruction: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.92)', marginTop: 2 },
+  thenRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  then: { flex: 1, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
 });
