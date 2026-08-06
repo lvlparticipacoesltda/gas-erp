@@ -170,6 +170,10 @@ type DashboardPayload = {
       gdpRevenue: number;
       /** Faturamento das vendas cuja entrega ele concluiu. */
       revenue: number;
+      /** CMV das mesmas vendas. Ausente para quem não enxerga margem. */
+      totalCost?: number;
+      /** Faturamento − CMV. Ausente para quem não enxerga margem. */
+      grossProfit?: number;
       /** Faturamento ÷ vendas entregues. `null` quando não entregou nada. */
       avgTicket: number | null;
       cashAmount: number;
@@ -531,6 +535,8 @@ export class DashboardService {
             select: {
               quantity: true,
               total: true,
+              // Custo entra aqui para apurar o lucro bruto por entregador.
+              unitCost: true,
               storePaymentMethodId: true,
               product: { select: { id: true, name: true, sku: true, productType: true } },
             },
@@ -615,6 +621,8 @@ export class DashboardService {
 
     type DelivererFinancials = {
       revenue: number;
+      /** CMV das vendas entregues — base do lucro bruto da linha. */
+      totalCost: number;
       deliveredSales: number;
       cash: number;
       pix: number;
@@ -709,6 +717,7 @@ export class DashboardService {
       if (deliveredBy) {
         const acc = financialsByDelivererId.get(deliveredBy) ?? {
           revenue: 0,
+          totalCost: 0,
           deliveredSales: 0,
           cash: 0,
           pix: 0,
@@ -716,6 +725,7 @@ export class DashboardService {
           other: 0,
         };
         acc.revenue += toNumber(sale.total);
+        acc.totalCost += computeSaleCogs(sale.items);
         acc.deliveredSales += 1;
         for (const payment of sale.payments) {
           acc[receiptBucket(payment.method)] += toNumber(payment.amount);
@@ -845,6 +855,7 @@ export class DashboardService {
     const byDeliverer = routeStats.byDeliverer.map((row) => {
       const financials = financialsByDelivererId.get(row.delivererId);
       const revenue = round2(financials?.revenue ?? 0);
+      const totalCost = round2(financials?.totalCost ?? 0);
       const deliveredSales = financials?.deliveredSales ?? 0;
       return {
         ...row,
@@ -852,6 +863,10 @@ export class DashboardService {
         gdpQuantity: gdpQuantityByDelivererId.get(row.delivererId) ?? 0,
         gdpRevenue: gdpRevenueByDelivererId.get(row.delivererId) ?? 0,
         revenue,
+        // Lucro bruto (faturamento − CMV); só para quem enxerga margem.
+        ...(showFinancial
+          ? { totalCost, grossProfit: round2(computeGrossProfit(revenue, totalCost)) }
+          : {}),
         // Divide pelas vendas que faturaram, não por `completedCount`: rota concluída
         // de venda depois cancelada conta como realizada e não entra no faturamento.
         avgTicket: deliveredSales > 0 ? round2(revenue / deliveredSales) : null,

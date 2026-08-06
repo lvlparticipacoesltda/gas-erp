@@ -107,6 +107,8 @@ export interface DailySummaryData {
       gdpQuantity: number;
       gdpRevenue: number;
       revenue: number;
+      totalCost?: number;
+      grossProfit?: number;
       avgTicket: number | null;
       cashAmount: number;
       pixAmount: number;
@@ -145,6 +147,9 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
   // Fiado, cheque e afins são raros: a coluna só aparece quando houve algum, senão
   // seria uma coluna de zeros numa tabela que já é larga.
   const showOtherReceipts = metrics?.byDeliverer.some((d) => d.otherAmount > 0) ?? false;
+  // Lucro por entregador só chega para quem enxerga margem; a API omite o campo
+  // para os demais e a coluna some junto.
+  const showDelivererProfit = metrics?.byDeliverer.some((d) => d.grossProfit != null) ?? false;
   const paymentEntries = data.paymentsByMethod;
   const showFinancial = data.totalCost != null && data.grossProfit != null;
   const showNetFinancial = showFinancial && data.netRevenue != null && data.netProfit != null;
@@ -318,6 +323,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                   <tr>
                     <th className="p-3">Entregador</th>
                     <th className="p-3 text-right">Faturamento</th>
+                    {showDelivererProfit && <th className="p-3 text-right">Lucro bruto</th>}
                     <th className="p-3 text-right">Ticket médio</th>
                     <th className="p-3 text-right">Dinheiro</th>
                     <th className="p-3 text-right">PIX</th>
@@ -338,6 +344,16 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                     <tr key={d.delivererId} className="border-t border-slate-100">
                       <td className="p-3">{d.delivererName}</td>
                       <td className="p-3 text-right font-semibold tabular-nums">{formatCurrency(d.revenue)}</td>
+                      {showDelivererProfit && (
+                        <td
+                          className={cn(
+                            'p-3 text-right font-semibold tabular-nums',
+                            negativeTone(d.grossProfit),
+                          )}
+                        >
+                          {d.grossProfit == null ? '—' : formatCurrency(d.grossProfit)}
+                        </td>
+                      )}
                       <td className="p-3 text-right tabular-nums text-slate-600">
                         {d.avgTicket == null ? '—' : formatCurrency(d.avgTicket)}
                       </td>
