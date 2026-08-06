@@ -35,6 +35,7 @@ import {
   getRouteDurationSeconds,
   getWaitTimeSeconds,
   isDelivererAssignableForSale,
+  type DelivererTimeClockStatus,
 } from '@gas-erp/shared';
 
 interface SaleDetail {
@@ -100,6 +101,7 @@ interface Deliverer {
   status: string;
   availableStoreId?: string | null;
   pendingDeliveryCount?: number;
+  timeClockStatus?: DelivererTimeClockStatus | null;
   user: { name: string; active?: boolean };
 }
 

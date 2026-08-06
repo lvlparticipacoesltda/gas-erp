@@ -7,6 +7,7 @@ import { createDelivererSchema, deliveryRouteQuerySchema, registerPushTokenSchem
 import { AuthUser } from '@gas-erp/shared';
 import { assertSharedStoreAccess, assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
+import { getDelivererTimeClockStatuses } from '../../common/utils/deliverer-time-clock';
 import { AuditService } from '../../common/audit/audit.service';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
 import { RoutingService } from '../../common/routing/routing.service';
@@ -83,7 +84,7 @@ export class DeliverersService {
     stores: { include: { store: true } },
   } as const;
 
-  findAll(user: AuthUser, storeId?: string) {
+  async findAll(user: AuthUser, storeId?: string) {
     if (storeId) assertStoreAccess(user, storeId);
 
     const where = storeId
@@ -92,25 +93,34 @@ export class DeliverersService {
         ? { stores: { some: { store: { organizationId: user.organizationId } } } }
         : { stores: { some: { storeId: { in: user.storeIds } } } };
 
-    return this.prisma.deliverer
-      .findMany({
-        where,
-        include: {
-          ...this.include,
-          _count: {
-            select: {
-              deliveries: { where: { status: 'PENDING' } },
-            },
+    const rows = await this.prisma.deliverer.findMany({
+      where,
+      include: {
+        ...this.include,
+        _count: {
+          select: {
+            deliveries: { where: { status: 'PENDING' } },
           },
         },
-        orderBy: { user: { name: 'asc' } },
-      })
-      .then((rows) =>
-        rows.map(({ _count, ...deliverer }) => ({
-          ...deliverer,
-          pendingDeliveryCount: _count.deliveries,
-        })),
-      );
+      },
+      orderBy: { user: { name: 'asc' } },
+    });
+
+    // O ponto é batido por unidade; sem `storeId` não há um cartão único a apurar
+    // e o campo fica indefinido (não bloqueia).
+    const timeClockStatuses = storeId
+      ? await getDelivererTimeClockStatuses(
+          this.prisma,
+          rows.map((row) => row.userId),
+          storeId,
+        )
+      : null;
+
+    return rows.map(({ _count, ...deliverer }) => ({
+      ...deliverer,
+      pendingDeliveryCount: _count.deliveries,
+      timeClockStatus: timeClockStatuses?.get(deliverer.userId) ?? null,
+    }));
   }
 
   async suggestDeliverers(user: AuthUser, query: unknown) {
@@ -152,6 +162,7 @@ export class DeliverersService {
             user: d.user,
             pendingDeliveryCount: d.pendingDeliveryCount,
             availableStoreId: d.availableStoreId,
+            timeClockStatus: d.timeClockStatus,
           },
           params.storeId,
         );

@@ -30,6 +30,7 @@ import { StockService } from '../stock/stock.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { PushService } from '../../common/push/push.service';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
+import { getDelivererTimeClockStatus } from '../../common/utils/deliverer-time-clock';
 import { StorePaymentMethodsService } from '../stores/store-payment-methods.service';
 import {
   StoreRealtimeReason,
@@ -1693,6 +1694,11 @@ export class SalesService {
         status: deliverer.status,
         user: deliverer.user,
         availableStoreId: deliverer.availableStoreId,
+        timeClockStatus: await getDelivererTimeClockStatus(
+          this.prisma,
+          deliverer.userId,
+          storeId,
+        ),
       },
       storeId,
     );
