@@ -6,6 +6,7 @@ import { AuthUser } from '@gas-erp/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { syncDelivererStoresForUser } from '../../common/deliverer-store-sync';
 import { paginate, paginatedResult } from '../../common/utils/pagination';
+import { generatePassword } from '../../common/utils/password';
 
 @Injectable()
 export class UsersService {
@@ -77,7 +78,10 @@ export class UsersService {
     });
     if (existing) throw new ConflictException('Este e-mail já está cadastrado nesta rede');
 
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    // Sem senha informada, a API gera uma e devolve em claro nesta única resposta —
+    // é a única chance de repassá-la, o banco só guarda o hash.
+    const generatedPassword = data.password ? null : generatePassword();
+    const passwordHash = await bcrypt.hash(data.password ?? generatedPassword!, 10);
     const created = await this.prisma.user.create({
       data: {
         organizationId: user.organizationId,
@@ -98,13 +102,15 @@ export class UsersService {
       },
       include: { userStores: { include: { store: true } } },
     });
-    await this.audit.log(user, 'CREATE', 'User', created.id);
+    await this.audit.log(user, 'CREATE', 'User', created.id, {
+      generatedPassword: generatedPassword !== null,
+    });
     if (created.role === 'DELIVERER') {
       const storeIds = created.userStores.map((us) => us.storeId);
       await syncDelivererStoresForUser(this.prisma, created.id, storeIds);
     }
     const { passwordHash: _, ...safe } = created;
-    return safe;
+    return { ...safe, generatedPassword };
   }
 
   async update(user: AuthUser, id: string, input: unknown) {

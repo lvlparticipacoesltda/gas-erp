@@ -30,7 +30,11 @@ export const userHrFieldsSchema = z.object({
 
 export const createUserSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  /** Em branco: a API gera uma senha aleatória e devolve em `generatedPassword`. */
+  password: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.string().min(6).optional(),
+  ),
   name: z.string().min(2),
   phone: z.string().optional(),
   role: z.enum(USER_ROLES),
