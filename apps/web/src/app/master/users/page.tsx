@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Check, Copy, Plus } from 'lucide-react';
 import { PageLoader } from '@/components/brand-loader';
 import { FilterPanel } from '@/components/filter-panel';
 import { PaginatedSection } from '@/components/paginated-section';
@@ -35,6 +35,17 @@ interface UserRow {
   userStores: { store: { id: string; name: string } }[];
 }
 
+/** `generatedPassword` só vem preenchido quando o cadastro foi feito sem senha. */
+interface CreatedUser extends UserRow {
+  generatedPassword: string | null;
+}
+
+interface GeneratedCredentials {
+  name: string;
+  email: string;
+  password: string;
+}
+
 function toDateInputValue(value?: string | null) {
   if (!value) return '';
   return value.slice(0, 10);
@@ -53,7 +64,7 @@ function needsStoreAssignment(role: string) {
 const emptyCreate = {
   name: '',
   email: '',
-  password: 'admin123',
+  password: '',
   role: 'ATTENDANT',
   storeIds: [] as string[],
   permissions: [] as string[],
@@ -75,6 +86,8 @@ export default function MasterUsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
+  /** Senha gerada pela API: existe só nesta resposta, some ao fechar o aviso. */
+  const [generated, setGenerated] = useState<GeneratedCredentials | null>(null);
   const [form, setForm] = useState(emptyCreate);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [editForm, setEditForm] = useState({
@@ -200,12 +213,13 @@ export default function MasterUsersPage() {
     }
     setSaving(true);
     try {
-      await api(
+      const created = await api<CreatedUser>(
         '/users',
         {
           method: 'POST',
           body: JSON.stringify({
             ...form,
+            password: form.password || undefined,
             storeIds: form.storeIds.length ? form.storeIds : undefined,
             permissions: permissionsToPayload(form.role, form.permissions),
             cpf: form.cpf || undefined,
@@ -217,6 +231,15 @@ export default function MasterUsersPage() {
         getToken(),
       );
       closeModal();
+      if (created.generatedPassword) {
+        setGenerated({
+          name: created.name,
+          email: created.email,
+          password: created.generatedPassword,
+        });
+      } else {
+        toast.success('Usuário cadastrado.', created.name);
+      }
       await loadUsers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erro ao cadastrar usuário');
@@ -467,8 +490,13 @@ export default function MasterUsersPage() {
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              required
+              placeholder="Deixe em branco para gerar uma senha"
+              autoComplete="new-password"
+              minLength={6}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Sem senha, o sistema cria uma aleatória e mostra na tela para você repassar.
+            </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -669,6 +697,83 @@ export default function MasterUsersPage() {
           </div>
         </form>
       </Modal>
+
+      <GeneratedPasswordModal credentials={generated} onClose={() => setGenerated(null)} />
     </>
+  );
+}
+
+/**
+ * Mostra a senha gerada uma única vez. O banco só guarda o hash: fechado o aviso,
+ * não há como recuperá-la — só gerar outra pela edição do usuário.
+ */
+function GeneratedPasswordModal({
+  credentials,
+  onClose,
+}: {
+  credentials: GeneratedCredentials | null;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  async function copyPassword() {
+    if (!credentials) return;
+    try {
+      await navigator.clipboard.writeText(credentials.password);
+      setCopied(true);
+    } catch {
+      // Navegador sem permissão de área de transferência: a senha continua visível na tela.
+      toast.error('Não foi possível copiar.', 'Selecione a senha e copie manualmente.');
+    }
+  }
+
+  return (
+    <Modal
+      open={Boolean(credentials)}
+      onClose={onClose}
+      title="Usuário cadastrado"
+      subtitle={credentials ? `Senha de acesso de ${credentials.name}` : undefined}
+      size="md"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          Anote ou copie agora e repasse ao usuário. Esta é a única vez que a senha aparece —
+          depois disso só é possível definir uma nova.
+        </p>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs uppercase tracking-wide text-slate-500">E-mail</p>
+          <p className="mb-3 font-medium text-slate-800">{credentials?.email}</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Senha</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 select-all font-mono text-lg tracking-wide text-slate-900">
+              {credentials?.password}
+            </code>
+            <Button type="button" variant="secondary" onClick={copyPassword}>
+              {copied ? (
+                <>
+                  <Check className="h-4 w-4" aria-hidden /> Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" aria-hidden /> Copiar
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button type="button" onClick={onClose}>
+            Entendi
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
