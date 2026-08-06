@@ -53,6 +53,7 @@ interface Deliverer {
   availableStoreId?: string | null;
   pendingDeliveryCount?: number;
   timeClockStatus?: DelivererTimeClockStatus | null;
+  timeClockEnforced?: boolean;
   user: { name: string; active?: boolean };
 }
 
@@ -443,9 +444,14 @@ export default function NewSalePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync single-line amount with sale total
   }, [total, draft.gasDoPovoBenefit, regularPaymentMethods.length]);
 
-  const assignableDeliverers = deliverers.filter(
-    (d) => isDelivererAssignableForSale(d, storeId).assignable,
-  );
+  // Entregador bloqueado continua na lista, desabilitado e com o motivo à vista.
+  // Some-lo deixava o atendente sem saber por que a lista estava vazia — pior
+  // ainda quando o mapa mostrava a pessoa online.
+  const delivererOptions = deliverers.map((d) => ({
+    deliverer: d,
+    ...isDelivererAssignableForSale(d, storeId),
+  }));
+  const assignableDeliverers = delivererOptions.filter((o) => o.assignable);
 
   function goNext() {
     setError('');
@@ -1006,29 +1012,57 @@ export default function NewSalePage() {
                     {suggestNote}
                   </p>
                 ) : null}
-                {assignableDeliverers.length === 0 ? (
+                {delivererOptions.length === 0 ? (
                   <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Nenhum entregador disponível no momento. Verifique o mapa de entregadores.
+                    Nenhum entregador cadastrado para esta unidade.
                   </p>
                 ) : (
-                  <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {assignableDeliverers.map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        onClick={() => setDraft({ ...draft, delivererId: d.id })}
-                        className={`rounded-xl border p-3 text-left ${
-                          draft.delivererId === d.id ? 'border-orange-500 bg-orange-50' : 'border-slate-200'
-                        }`}
-                      >
-                        <span className="text-lg">🛵</span>
-                        <div className="mt-1 font-medium">{d.user.name}</div>
-                        {delivererDistances[d.id] ? (
-                          <div className="mt-0.5 text-xs text-slate-500">{delivererDistances[d.id]}</div>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    {assignableDeliverers.length === 0 ? (
+                      <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        Nenhum entregador liberado no momento — o motivo de cada um está abaixo.
+                      </p>
+                    ) : null}
+                    <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {delivererOptions.map(({ deliverer: d, assignable, reason, warning }) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          disabled={!assignable}
+                          title={assignable ? undefined : reason ?? 'Indisponível'}
+                          onClick={() => setDraft({ ...draft, delivererId: d.id })}
+                          className={`rounded-xl border p-3 text-left ${
+                            !assignable
+                              ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-70'
+                              : draft.delivererId === d.id
+                                ? 'border-orange-500 bg-orange-50'
+                                : 'border-slate-200'
+                          }`}
+                        >
+                          <span className="text-lg">🛵</span>
+                          <div className="mt-1 font-medium">{d.user.name}</div>
+                          {!assignable ? (
+                            <div className="mt-0.5 text-xs font-medium text-amber-700">
+                              {reason ?? 'Indisponível'}
+                            </div>
+                          ) : (
+                            <>
+                              {delivererDistances[d.id] ? (
+                                <div className="mt-0.5 text-xs text-slate-500">
+                                  {delivererDistances[d.id]}
+                                </div>
+                              ) : null}
+                              {warning ? (
+                                <div className="mt-0.5 text-xs font-medium text-amber-700">
+                                  ⚠ {warning}
+                                </div>
+                              ) : null}
+                            </>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </>
             )}

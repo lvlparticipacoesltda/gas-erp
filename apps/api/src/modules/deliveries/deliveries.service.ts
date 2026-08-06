@@ -13,6 +13,7 @@ import { AuthUser } from '@gas-erp/shared';
 import { getDeliveryPhaseMetrics } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
 import { getDelivererTimeClockStatus } from '../../common/utils/deliverer-time-clock';
+import { isTimeClockDeliveryBlockEnabled } from '../../common/utils/time-clock-policy';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
 import { RoutingService } from '../../common/routing/routing.service';
 import { StoreRealtimeService } from '../../common/realtime/store-realtime.service';
@@ -565,6 +566,7 @@ export class DeliveriesService {
         status: deliverer.status,
         user: deliverer.user,
         availableStoreId: deliverer.availableStoreId,
+        timeClockEnforced: isTimeClockDeliveryBlockEnabled(),
         timeClockStatus: await getDelivererTimeClockStatus(
           this.prisma,
           deliverer.userId,
