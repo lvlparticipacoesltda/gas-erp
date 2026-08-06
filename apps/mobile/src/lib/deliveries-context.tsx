@@ -11,6 +11,8 @@ interface DeliveriesContextValue {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  /** Lista veio do cache local e ainda não foi confirmada pela rede. */
+  fromCache: boolean;
   refresh: () => Promise<void>;
   getById: (id: string) => Delivery | undefined;
   hasActiveRoute: boolean;
@@ -19,7 +21,7 @@ interface DeliveriesContextValue {
 const DeliveriesContext = createContext<DeliveriesContextValue | undefined>(undefined);
 
 export function DeliveriesProvider({ children }: { children: ReactNode }) {
-  const { deliveries, loading, refreshing, error, refresh } = useDeliveries();
+  const { deliveries, loading, refreshing, error, fromCache, refresh } = useDeliveries();
 
   const value = useMemo<DeliveriesContextValue>(() => {
     const pending = deliveries.filter((d) => d.status === 'PENDING');
@@ -33,11 +35,12 @@ export function DeliveriesProvider({ children }: { children: ReactNode }) {
       loading,
       refreshing,
       error,
+      fromCache,
       refresh,
       getById: (id: string) => deliveries.find((d) => d.id === id),
       hasActiveRoute: inProgress.length > 0,
     };
-  }, [deliveries, loading, refreshing, error, refresh]);
+  }, [deliveries, loading, refreshing, error, fromCache, refresh]);
 
   return <DeliveriesContext.Provider value={value}>{children}</DeliveriesContext.Provider>;
 }

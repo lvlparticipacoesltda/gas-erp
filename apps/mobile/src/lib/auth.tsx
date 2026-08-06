@@ -6,6 +6,7 @@ import { api, ApiError, setUnauthorizedHandler } from './api';
 import { clearSession, getStoredOrganization, getStoredUser, getToken, saveSession } from './storage';
 import { clearPushTokenOnServer, syncPushWithRetries } from './notifications';
 import { stopAllTracking } from './location';
+import { clearOfflineCache } from './offline-cache';
 import type { AuthUser, LoginResponse, Organization } from '../types';
 
 interface AuthState {
@@ -89,6 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api('/auth/logout', { method: 'POST', token, auth: false }).catch(() => undefined);
     }
     await clearPushTokenOnServer();
+    // O aparelho é compartilhado entre turnos: o próximo entregador não pode
+    // abrir o app com a fila do anterior em tela.
+    await clearOfflineCache();
     await clearSession();
     setState({ token: null, user: null, organization: null, initializing: false });
   }, []);
