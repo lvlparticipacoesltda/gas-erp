@@ -285,6 +285,9 @@ export const DriverMap = forwardRef<DriverMapRef, {
       showsUserLocation={false}
       showsMyLocationButton={false}
       toolbarEnabled={false}
+      // Camada do próprio mapa já carregado: não gera requisição faturável.
+      // Só em navegação, para não poluir a visão geral das entregas.
+      showsTraffic={isNavigationMode}
       // iOS: o MapKit acompanha a aparência do sistema sozinho.
       customMapStyle={Platform.OS === 'android' && isDark ? DARK_MAP_STYLE : undefined}
       rotateEnabled

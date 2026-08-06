@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams } from 'expo-router';
 import { FinishPaymentsModal } from '../FinishPaymentsModal';
 import { Loading } from '../ui';
@@ -17,6 +19,7 @@ import { useDriverLocation } from '../../hooks/useDriverLocation';
 import { useRouteNavigation } from '../../hooks/useRouteNavigation';
 import { useRoutePreview } from '../../hooks/useRoutePreview';
 import { useStoreHomeNavigation } from '../../hooks/useStoreHomeNavigation';
+import { useVoiceGuidance } from '../../hooks/useVoiceGuidance';
 import { useAuth } from '../../lib/auth';
 import { deliveryAddress, buildNavigationAddress, updateDeliveryStatus, updateSalePayments } from '../../lib/deliveries';
 import { useDeliveriesContext } from '../../lib/deliveries-context';
@@ -27,11 +30,15 @@ import {
 } from '../../lib/start-delivery-route';
 import { focusDeliveryRoute } from '../../lib/switch-delivery-route';
 import { getActiveDeliveryId, stopDeliveryTracking } from '../../lib/location';
+import { clearCachedRoute } from '../../lib/offline-cache';
 import { openGoogleMaps, openWaze } from '../../lib/navigation';
 import { assertStoreNavigable, fetchMyStores, toStoreDestination } from '../../lib/store-home';
-import { colors, radius, spacing } from '../../theme';
+import { makeStyles, radius, spacing, useColors } from '../../theme';
 import type { Delivery } from '../../types';
 import type { DelivererMeStore } from '@gas-erp/shared';
+
+/** Tag própria: evita que outro ponto do app libere a tela no meio da rota. */
+const KEEP_AWAKE_TAG = 'delivery-navigation';
 
 function dedupeDeliveries(deliveries: Delivery[]): Delivery[] {
   const seen = new Set<string>();
@@ -43,6 +50,8 @@ function dedupeDeliveries(deliveries: Delivery[]): Delivery[] {
 }
 
 export function DeliveryMapHome() {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const fabSize = screenWidth * 0.14;
@@ -78,11 +87,26 @@ export function DeliveryMapHome() {
     return inProgress[0] ?? null;
   }, [navigationDeliveryId, inProgress, getById]);
 
-  const { position: driverPosition } = useDriverLocation(!isUnavailable);
   const homeMode = Boolean(homeStore);
   const routeEnabled = Boolean(
     !homeMode && navigationDelivery?.status === 'IN_PROGRESS' && !selected,
   );
+  const navigationFollow = routeEnabled || homeMode;
+  // Precisão alta só enquanto navega: turn-by-turn não se sustenta com ~100 m
+  // de incerteza, mas manter o GPS nesse modo o dia todo torra a bateria.
+  const { position: driverPosition } = useDriverLocation(!isUnavailable, navigationFollow);
+  // A tela apagando a cada 30 s inviabiliza o uso no suporte da moto — mas só
+  // durante a rota: fora dela, manter o aparelho aceso torraria a bateria do
+  // turno inteiro. `useKeepAwake` não serve aqui porque vale enquanto a tela
+  // existir, e o mapa é a tela inicial do app.
+  useEffect(() => {
+    if (!navigationFollow) return;
+    void activateKeepAwakeAsync(KEEP_AWAKE_TAG);
+    return () => {
+      void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => undefined);
+    };
+  }, [navigationFollow]);
+
   const previewEnabled = Boolean(!homeMode && selected && selected.status === 'PENDING');
   const {
     polyline: deliveryPolyline,
@@ -91,6 +115,7 @@ export function DeliveryMapHome() {
     etaLabel,
     distanceLabel,
     nextManeuver: deliveryManeuver,
+    arrived: deliveryArrived,
   } = useRouteNavigation(
     navigationDelivery?.id ?? null,
     driverPosition,
@@ -104,6 +129,7 @@ export function DeliveryMapHome() {
     etaLabel: homeEtaLabel,
     distanceLabel: homeDistanceLabel,
     nextManeuver: homeManeuver,
+    arrived: homeArrived,
   } = useStoreHomeNavigation(
     homeStore?.id ?? null,
     driverPosition,
@@ -112,7 +138,16 @@ export function DeliveryMapHome() {
 
   const polyline = homeMode ? homePolyline : deliveryPolyline;
   const nextManeuver = homeMode ? homeManeuver : deliveryManeuver;
-  const navigationFollow = routeEnabled || homeMode;
+  const arrived = homeMode ? homeArrived : deliveryArrived;
+
+  const { muted: voiceMuted, toggleMuted: toggleVoice } = useVoiceGuidance({
+    maneuver: nextManeuver,
+    arrived,
+    enabled: navigationFollow,
+  });
+
+  /** Seguimento pausado por gesto — sem sinalizar isso, a câmera parece travada. */
+  const [followPaused, setFollowPaused] = useState(false);
 
   const routeDestination = useMemo(() => {
     if (polyline.length === 0) return null;
@@ -267,7 +302,16 @@ export function DeliveryMapHome() {
       setSelected(null);
     } catch (err) {
       await cancelDeliveryRouteOnError();
-      Alert.alert('Erro', err instanceof Error ? err.message : 'Não foi possível iniciar a rota.');
+      // Em campo, "Erro / OK" não diz se foi internet, permissão ou pedido já
+      // pego por outro — e sem ação de repetir o entregador liga para a loja.
+      Alert.alert(
+        'Não foi possível iniciar a rota',
+        err instanceof Error ? err.message : 'Verifique sua conexão e tente novamente.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Tentar de novo', onPress: () => void handleStartRoute() },
+        ],
+      );
     } finally {
       setBusy(false);
     }
@@ -290,6 +334,8 @@ export function DeliveryMapHome() {
         });
         await updateDeliveryStatus(navigationDelivery.id, 'DELIVERED');
         await stopDeliveryTracking().catch(() => undefined);
+        // Entrega concluída: a rota salva não serve mais e não deve reaparecer.
+        await clearCachedRoute(navigationDelivery.id);
         setPaymentsOpen(false);
         setNavigationDeliveryId(null);
         setSelected(null);
@@ -343,6 +389,23 @@ export function DeliveryMapHome() {
     },
     [homeStore],
   );
+
+  /**
+   * O logout fica no canto onde o polegar esbarra ao segurar o aparelho, e sair
+   * derruba o rastreamento no meio da rota. Confirmação é barata perto disso.
+   */
+  const handleLogout = useCallback(() => {
+    Alert.alert(
+      'Sair da conta',
+      navigationDelivery
+        ? 'Você está com uma entrega em rota. Sair encerra o rastreamento.'
+        : 'Deseja encerrar a sessão neste aparelho?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Sair', style: 'destructive', onPress: () => void logout() },
+      ],
+    );
+  }, [logout, navigationDelivery]);
 
   const handleNavigateHome = useCallback(async () => {
     if (homeBusy) return;
@@ -404,12 +467,20 @@ export function DeliveryMapHome() {
               ?? null
         }
         onSelectPendingDelivery={handleSelectDelivery}
+        onFollowPausedChange={setFollowPaused}
       />
 
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={logout} style={styles.iconButton} hitSlop={8}>
+        <View style={styles.topSide}>
+        <Pressable
+          onPress={handleLogout}
+          style={styles.iconButton}
+          hitSlop={8}
+          accessibilityLabel="Sair da conta"
+        >
           <Ionicons name="log-out-outline" size={22} color={colors.text} />
         </Pressable>
+        </View>
         <View style={styles.topCenter}>
           {organization?.name ? (
             <Text style={styles.org} numberOfLines={1}>
@@ -418,7 +489,22 @@ export function DeliveryMapHome() {
           ) : null}
           <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'entregador'}</Text>
         </View>
-        <View style={styles.iconButtonPlaceholder}>
+        <View style={[styles.topSide, styles.topSideRight]}>
+          {navigationFollow ? (
+            <Pressable
+              onPress={toggleVoice}
+              style={styles.iconButton}
+              hitSlop={8}
+              accessibilityLabel={voiceMuted ? 'Ativar guiagem por voz' : 'Silenciar guiagem por voz'}
+              accessibilityState={{ selected: !voiceMuted }}
+            >
+              <Ionicons
+                name={voiceMuted ? 'volume-mute' : 'volume-high'}
+                size={22}
+                color={voiceMuted ? colors.textMuted : colors.primaryDark}
+              />
+            </Pressable>
+          ) : null}
           {driverPosition && !isUnavailable ? (
             <Pressable
               onPress={() => mapRef.current?.recenter()}
@@ -426,7 +512,7 @@ export function DeliveryMapHome() {
               hitSlop={8}
               accessibilityLabel="Ver entregas e sua posição no mapa"
             >
-              <Ionicons name="locate" size={22} color={colors.primary} />
+              <Ionicons name="locate" size={22} color={colors.primaryDark} />
             </Pressable>
           ) : null}
         </View>
@@ -469,7 +555,7 @@ export function DeliveryMapHome() {
         <Ionicons
           name="home"
           size={fabIconSize}
-          color={homeMode ? '#FFFFFF' : colors.navy}
+          color={homeMode ? colors.primaryText : colors.navy}
         />
         {homeMode ? (
           <View style={styles.homeFabDot} />
@@ -490,7 +576,7 @@ export function DeliveryMapHome() {
           onPress={() => setPickerOpen(true)}
           accessibilityLabel="Ver lista de entregas"
         >
-          <Ionicons name="list" size={fabIconSize} color={colors.navy} />
+          <Ionicons name="list" size={fabIconSize} color="#1C140C" />
           {fabCount > 0 ? (
             <View
               style={[
@@ -506,6 +592,31 @@ export function DeliveryMapHome() {
             </View>
           ) : null}
         </Pressable>
+      ) : null}
+
+      {/* Arrastar o mapa pausa o seguimento. Sem dizer isso, o entregador fica
+          esperando a câmera voltar sozinha; o chip fica na zona do polegar,
+          não no ícone pequeno do topo. */}
+      {followPaused && navigationFollow && driverPosition ? (
+        <Pressable
+          style={[styles.recenterChip, { bottom: fabBottom + fabSize + spacing.md }]}
+          onPress={() => mapRef.current?.recenter()}
+          accessibilityLabel="Voltar a seguir sua posição"
+        >
+          <Ionicons name="navigate" size={16} color={colors.primaryText} />
+          <Text style={styles.recenterText}>Recentralizar</Text>
+        </Pressable>
+      ) : null}
+
+      {/* Sem entregas, a tela ficava muda: nada confirmava que o app estava
+          funcionando e que a loja o enxerga como disponível. */}
+      {!loading && !isUnavailable && actionableDeliveries.length === 0 && !homeMode ? (
+        <View style={[styles.emptyCard, { bottom: fabBottom - 120 }]} pointerEvents="none">
+          <Text style={styles.emptyTitle}>Nenhuma entrega no momento</Text>
+          <Text style={styles.emptyText}>
+            Você está disponível — a loja verá sua posição ao despachar um pedido.
+          </Text>
+        </View>
       ) : null}
 
       {showHomePanel && homeStore ? (
@@ -531,6 +642,7 @@ export function DeliveryMapHome() {
             busy={busy}
             canFinish={canFinish}
             finishHint={finishHint}
+            arrived={arrived}
             onFinish={handleRequestFinish}
             onOpenGoogleMaps={() => openDeliveryExternalNav('maps')}
             onOpenWaze={() => openDeliveryExternalNav('waze')}
@@ -602,7 +714,7 @@ export function DeliveryMapHome() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.bg },
   topBar: {
     position: 'absolute',
@@ -635,31 +747,78 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  iconButtonPlaceholder: { width: 44, alignItems: 'center', justifyContent: 'center' },
+  /**
+   * Laterais de largura fixa e igual — dois botões de 44 mais o intervalo.
+   *
+   * Com `flex: 1` só no centro, a saudação era empurrada para a esquerda porque a
+   * direita ficou mais larga que a esquerda ao ganhar o botão de voz. Pior: o
+   * botão só existe em navegação, então o título saltaria de lugar ao iniciar a
+   * rota. Fixando as duas laterais, o centro é o centro da tela em qualquer estado.
+   */
+  topSide: {
+    width: 44 * 2 + spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  topSideRight: { justifyContent: 'flex-end' },
+  recenterChip: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 18,
+  },
+  recenterText: { fontSize: 15, fontWeight: '800', color: colors.primaryText },
+  emptyCard: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  emptyTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
+  emptyText: { marginTop: 4, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
   banner: {
     position: 'absolute',
     left: spacing.lg,
     right: spacing.lg,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: colors.warningBg,
     borderWidth: 1,
-    borderColor: '#FCD34D',
+    borderColor: colors.warning,
   },
-  bannerTitle: { fontSize: 14, fontWeight: '800', color: '#92400E' },
-  bannerText: { marginTop: 4, fontSize: 12, color: '#B45309' },
+  bannerTitle: { fontSize: 14, fontWeight: '800', color: colors.warningText },
+  bannerText: { marginTop: 4, fontSize: 12, color: colors.warningText },
   loadingOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(244, 238, 232, 0.6)',
+    backgroundColor: colors.overlay,
   },
   fab: {
     position: 'absolute',
     right: '4%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FACC15',
+    backgroundColor: colors.fab,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -716,4 +875,4 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 20,
   },
-});
+}));

@@ -9,16 +9,42 @@ export interface DriverPosition {
   heading: number | null;
 }
 
-/** Posição do entregador em primeiro plano (mapa home). */
-export function useDriverLocation(enabled = true) {
+/**
+ * Abaixo desta velocidade o curso do GPS é ruído: parado no semáforo ou
+ * empurrando a moto, `coords.heading` oscila e faz a câmera girar sozinha.
+ */
+const HEADING_MIN_SPEED_MPS = 0.8;
+
+/**
+ * Posição do entregador em primeiro plano (mapa home).
+ *
+ * `navigating` eleva a precisão: `Balanced` (~100 m) basta para mostrar onde ele
+ * está no mapa, mas não para turn-by-turn — com essa incerteza o marcador
+ * serpenteia entre quadras e a manobra pode ser escolhida pelo passo errado. O
+ * rastreamento em segundo plano (`location.ts`) já usa `High` durante a entrega;
+ * aqui era o mapa em uso que estava menos preciso que ele.
+ */
+export function useDriverLocation(enabled = true, navigating = false) {
   const [position, setPosition] = useState<DriverPosition | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const watchRef = useRef<Location.LocationSubscription | null>(null);
+  /** Último rumo confiável — mantido enquanto o entregador está lento demais. */
+  const lastHeadingRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
     let cancelled = false;
+
+    function resolveHeading(coords: Location.LocationObjectCoords): number | null {
+      const speed = coords.speed ?? 0;
+      const heading = coords.heading;
+      if (heading == null || heading < 0 || speed < HEADING_MIN_SPEED_MPS) {
+        return lastHeadingRef.current;
+      }
+      lastHeadingRef.current = heading;
+      return heading;
+    }
 
     async function refreshOnce(highAccuracy = false) {
       const current = await Location.getCurrentPositionAsync({
@@ -28,7 +54,7 @@ export function useDriverLocation(enabled = true) {
         setPosition({
           latitude: current.coords.latitude,
           longitude: current.coords.longitude,
-          heading: current.coords.heading,
+          heading: resolveHeading(current.coords),
         });
       }
     }
@@ -51,15 +77,15 @@ export function useDriverLocation(enabled = true) {
 
       watchRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 3000,
-          distanceInterval: 8,
+          accuracy: navigating ? Location.Accuracy.High : Location.Accuracy.Balanced,
+          timeInterval: navigating ? 1500 : 3000,
+          distanceInterval: navigating ? 5 : 8,
         },
         (loc) => {
           setPosition({
             latitude: loc.coords.latitude,
             longitude: loc.coords.longitude,
-            heading: loc.coords.heading,
+            heading: resolveHeading(loc.coords),
           });
         },
       );
@@ -79,7 +105,8 @@ export function useDriverLocation(enabled = true) {
       watchRef.current?.remove();
       watchRef.current = null;
     };
-  }, [enabled]);
+    // `navigating` reabre o watch com a precisão nova — é troca de modo, não de valor.
+  }, [enabled, navigating]);
 
   return { position, permissionDenied };
 }

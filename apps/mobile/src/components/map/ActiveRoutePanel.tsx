@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CustomerPhoneLink } from '../CustomerPhoneLink';
 import { DeliveryNotes } from '../DeliveryNotes';
 import { Button } from '../ui';
 import { DeliverySaleSummary } from '../DeliverySaleSummary';
 import { deliveryAddress } from '../../lib/deliveries';
-import { colors, radius, spacing } from '../../theme';
+import { makeStyles, radius, spacing, useColors } from '../../theme';
 import type { Delivery } from '../../types';
 
 function formatElapsed(totalSeconds: number): string {
@@ -18,6 +18,37 @@ function formatElapsed(totalSeconds: number): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
 }
 
+/**
+ * Complemento e ponto de referência são o que resolve os últimos 30 metros —
+ * achar o apartamento, o portão, a entrada certa. Vinham concatenados na string
+ * do endereço, truncada em duas linhas dentro da seção recolhida: exatamente a
+ * informação mais útil na chegada era a mais escondida.
+ */
+function ArrivalDetails({ delivery }: { delivery: Delivery }) {
+  const styles = useStyles();
+  const colors = useColors();
+  const complement = delivery.sale.deliveryComplement?.trim();
+  const landmark = delivery.sale.deliveryLandmark?.trim();
+  if (!complement && !landmark) return null;
+
+  return (
+    <View style={styles.arrivalDetails}>
+      {complement ? (
+        <View style={styles.arrivalRow}>
+          <Ionicons name="business-outline" size={16} color={colors.text} />
+          <Text style={styles.arrivalText}>{complement}</Text>
+        </View>
+      ) : null}
+      {landmark ? (
+        <View style={styles.arrivalRow}>
+          <Ionicons name="eye-outline" size={16} color={colors.text} />
+          <Text style={styles.arrivalText}>{landmark}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function ActiveRoutePanel({
   delivery,
   etaLabel,
@@ -27,6 +58,7 @@ export function ActiveRoutePanel({
   busy,
   canFinish,
   finishHint,
+  arrived,
   onFinish,
   onOpenGoogleMaps,
   onOpenWaze,
@@ -39,10 +71,13 @@ export function ActiveRoutePanel({
   busy: boolean;
   canFinish: boolean;
   finishHint?: string | null;
+  arrived?: boolean;
   onFinish: () => void;
   onOpenGoogleMaps: () => void;
   onOpenWaze: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const address = deliveryAddress(delivery);
@@ -56,19 +91,28 @@ export function ActiveRoutePanel({
   }, [delivery.startedAt]);
 
   return (
-    <View style={styles.compactPanel}>
+    <View style={[styles.compactPanel, arrived && styles.compactPanelArrived]}>
+      {arrived ? (
+        <View style={styles.arrivalBanner}>
+          <Ionicons name="flag" size={16} color={colors.successText} />
+          <Text style={styles.arrivalTitle}>Você chegou</Text>
+        </View>
+      ) : null}
+
       <Pressable
         style={styles.header}
         onPress={() => setExpanded((v) => !v)}
         accessibilityLabel={expanded ? 'Recolher detalhes da entrega' : 'Expandir detalhes da entrega'}
       >
-        <View style={styles.pulse} />
+        <View style={[styles.pulse, arrived && styles.pulseArrived]} />
         <View style={styles.flex}>
           <Text style={styles.customer} numberOfLines={1}>
             {delivery.sale.customer?.name ?? 'Cliente'}
           </Text>
           <Text style={styles.timer}>{formatElapsed(elapsed)} em rota</Text>
         </View>
+        {/* Distância e ETA são o que mais se consulta em movimento: ficam
+            maiores que o nome do cliente, e não menores como antes. */}
         {distanceLabel || etaLabel ? (
           <View style={styles.meta}>
             {distanceLabel ? <Text style={styles.metaStrong}>{distanceLabel}</Text> : null}
@@ -82,6 +126,10 @@ export function ActiveRoutePanel({
         />
       </Pressable>
 
+      {/* Na chegada, complemento e referência sobem para fora da seção
+          recolhível: é quando eles valem mais e quando ninguém vai expandir. */}
+      {arrived ? <ArrivalDetails delivery={delivery} /> : null}
+
       {expanded ? (
         <View style={styles.details}>
           {address ? (
@@ -89,6 +137,8 @@ export function ActiveRoutePanel({
               {address}
             </Text>
           ) : null}
+
+          {!arrived ? <ArrivalDetails delivery={delivery} /> : null}
 
           <CustomerPhoneLink phone={delivery.sale.customer?.phone} />
 
@@ -154,6 +204,7 @@ export function SelectedDeliveryPanel({
   onStart: () => void;
   onClear: () => void;
 }) {
+  const styles = useStyles();
   const address = deliveryAddress(delivery);
 
   return (
@@ -194,7 +245,7 @@ export function SelectedDeliveryPanel({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   panel: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.lg,
@@ -237,15 +288,34 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.success,
   },
-  customer: { fontSize: 17, fontWeight: '800', color: colors.text },
+  customer: { fontSize: 15, fontWeight: '800', color: colors.text },
   timer: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginTop: 2 },
   meta: { alignItems: 'flex-end' },
-  metaStrong: { fontSize: 14, fontWeight: '800', color: colors.primary },
-  metaText: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  metaStrong: { fontSize: 20, fontWeight: '800', color: colors.primaryDark },
+  metaText: { fontSize: 14, fontWeight: '700', color: colors.primaryDark },
+  compactPanelArrived: { borderTopColor: colors.success, borderTopWidth: 3 },
+  pulseArrived: { backgroundColor: colors.primary },
+  arrivalBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  arrivalTitle: { fontSize: 15, fontWeight: '800', color: colors.successText },
+  arrivalDetails: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  arrivalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  arrivalText: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text },
   address: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
   hint: { fontSize: 12, color: colors.textFaint },
   error: { fontSize: 12, color: colors.danger },
   navRow: { flexDirection: 'row', gap: spacing.sm },
   navBtn: { flex: 1 },
   actions: { flexDirection: 'row', gap: spacing.sm },
-});
+}));
