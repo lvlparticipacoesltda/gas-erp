@@ -80,9 +80,13 @@ const DAY_COLUMNS: Array<{
   key: string;
   label: ReactNode;
   align?: 'left' | 'center';
+  /** Largura fixa; sem ela `table-layout: fixed` divide tudo em partes iguais. */
+  width?: number;
 }> = [
-  { key: 'dia', label: 'DIA', align: 'left' },
-  { key: 'previsto', label: 'PREVISTO', align: 'left' },
+  { key: 'dia', label: 'DIA', align: 'left', width: 58 },
+  // Cabe uma faixa por linha ("08:00-12:00" / "13:00-18:00"): com a divisão
+  // igualitária o texto não cabia e vazava por cima das colunas de batida.
+  { key: 'previsto', label: 'PREVISTO', align: 'left', width: 82 },
   { key: 'ent1', label: 'ENT.1', align: 'center' },
   { key: 'sai1', label: 'SAÍ.1', align: 'center' },
   { key: 'ent2', label: 'ENT.2', align: 'center' },
@@ -172,6 +176,10 @@ const cellBase: CSSProperties = {
   lineHeight: '1.2',
   background: '#fff',
   fontSize: 9,
+  // Rede de segurança: com `table-layout: fixed` um conteúdo maior que a coluna
+  // transborda por cima das vizinhas em vez de ser cortado.
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
 };
 
 function cellStyle(opts?: {
@@ -436,6 +444,12 @@ export function TimeClockCardView({
       </table>
 
       <table style={tableStyle}>
+        <colgroup>
+          {DAY_COLUMNS.map((col) => (
+            <col key={col.key} style={col.width ? { width: col.width } : undefined} />
+          ))}
+          {showPhotosCol ? <col /> : null}
+        </colgroup>
         <thead>
           <tr>
             {DAY_COLUMNS.map((col, idx) => (
@@ -479,7 +493,8 @@ export function TimeClockCardView({
                 <td style={cellStyle({ nowrap: true, lastRow })}>
                   {String(day.day).padStart(2, '0')} {day.weekday}
                 </td>
-                <td style={cellStyle({ nowrap: true, lastRow })}>{day.previsto}</td>
+                {/* Sem `nowrap`: dias com intervalo trazem duas faixas e precisam quebrar. */}
+                <td style={cellStyle({ lastRow })}>{day.previsto}</td>
                 {punchDisplays.map(({ key, value }) => (
                   <EditablePunchCell
                     key={`${day.date}-${key}`}
