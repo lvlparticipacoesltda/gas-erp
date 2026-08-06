@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Res,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthUser } from '@gas-erp/shared';
 import { JwtAuthGuard } from '../../common/guards';
 import { CurrentUser } from '../../common/decorators';
@@ -106,6 +119,39 @@ export class SchedulesController {
   @Put('time-clock/day')
   upsertDayPunches(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.schedules.upsertTimeClockDay(user, body);
+  }
+
+  @Get('time-clock/justifications')
+  listJustifications(
+    @CurrentUser() user: AuthUser,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.schedules.listJustifications(user, query);
+  }
+
+  @Post('time-clock/justifications')
+  createJustification(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.schedules.createJustification(user, body);
+  }
+
+  @Get('time-clock/justifications/:id/file')
+  async justificationFile(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const file = await this.schedules.getJustificationFile(user, id);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${file.fileName.replace(/"/g, '')}"`,
+    );
+    return new StreamableFile(file.bytes);
+  }
+
+  @Delete('time-clock/justifications/:id')
+  deleteJustification(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.schedules.deleteJustification(user, id);
   }
 
   @Get('time-clock')

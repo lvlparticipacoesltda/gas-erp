@@ -21,6 +21,7 @@ export * from './schemas/deliverer';
 export * from './schemas/push';
 export * from './schemas/delivery';
 export * from './schemas/schedule';
+export * from './schemas/time-clock-justification';
 export * from './permissions';
 export * from './sale-display';
 export * from './sale-financials';
