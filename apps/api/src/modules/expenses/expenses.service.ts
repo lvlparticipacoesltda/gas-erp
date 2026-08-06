@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   AuthUser,
   DEFAULT_EXPENSE_CATEGORIES,
+  EXPENSE_FALLBACK_CATEGORY_NAME,
   canViewExpenses,
   createExpenseCategorySchema,
   createExpenseSchema,
@@ -461,20 +462,71 @@ export class ExpensesService {
 
   /* ------------------------------ Categorias ------------------------------- */
 
-  /** Semeia as categorias padrão na primeira vez que a organização abre o painel. */
+  /**
+   * Semeia as categorias padrão que a organização ainda não tem — na primeira abertura
+   * do painel e também quando o catálogo ganha entradas novas.
+   *
+   * Só cria o que falta por nome: categoria do sistema desativada continua existindo como
+   * linha, então não ressuscita. Em organização já povoada as novas entram no fim da
+   * ordenação, para não renumerar a ordem que o usuário ajustou.
+   */
   private async ensureDefaultCategories(organizationId: string) {
-    const existing = await this.prisma.expenseCategory.count({ where: { organizationId } });
-    if (existing > 0) return;
-    await this.prisma.expenseCategory.createMany({
-      data: DEFAULT_EXPENSE_CATEGORIES.map((category, index) => ({
-        organizationId,
-        name: category.name,
-        icon: category.icon,
-        color: category.color,
-        sortOrder: index,
-        system: true,
-      })),
-      skipDuplicates: true,
+    const existing = await this.prisma.expenseCategory.findMany({
+      where: { organizationId },
+      select: { id: true, name: true, sortOrder: true },
+    });
+    const known = new Set(existing.map((category) => category.name));
+    const missing = DEFAULT_EXPENSE_CATEGORIES.filter((category) => !known.has(category.name));
+
+    const nextSortOrder = existing.length
+      ? Math.max(...existing.map((category) => category.sortOrder)) + 1
+      : 0;
+    if (missing.length > 0) {
+      await this.prisma.expenseCategory.createMany({
+        data: missing.map((category, index) => ({
+          organizationId,
+          name: category.name,
+          icon: category.icon,
+          color: category.color,
+          sortOrder: nextSortOrder + index,
+          system: true,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    await this.keepFallbackCategoryLast(existing, missing.length, nextSortOrder);
+  }
+
+  /**
+   * Mantém "Outros" no fim da lista. Sem isso ela fica presa na posição em que foi semeada
+   * e as categorias adicionadas depois ao catálogo (que entram no fim) passam na frente.
+   *
+   * Roda no máximo um `UPDATE` por organização: na chamada seguinte ela já é a maior.
+   */
+  private async keepFallbackCategoryLast(
+    existing: { id: string; name: string; sortOrder: number }[],
+    createdCount: number,
+    firstCreatedSortOrder: number,
+  ) {
+    const fallback = existing.find(
+      (category) => category.name === EXPENSE_FALLBACK_CATEGORY_NAME,
+    );
+    // Organização recém-semeada: já entrou na última posição do catálogo.
+    if (!fallback) return;
+
+    const lastCreated = createdCount > 0 ? firstCreatedSortOrder + createdCount - 1 : -Infinity;
+    const maxOther = Math.max(
+      lastCreated,
+      ...existing
+        .filter((category) => category.id !== fallback.id)
+        .map((category) => category.sortOrder),
+    );
+    if (fallback.sortOrder > maxOther) return;
+
+    await this.prisma.expenseCategory.update({
+      where: { id: fallback.id },
+      data: { sortOrder: maxOther + 1 },
     });
   }
 

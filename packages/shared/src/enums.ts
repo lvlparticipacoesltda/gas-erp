@@ -179,7 +179,10 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   { name: 'Benefícios', icon: 'ticket', color: '#06b6d4' },
   { name: 'Impostos e taxas', icon: 'landmark', color: '#ef4444' },
   { name: 'Manutenção de veículos', icon: 'wrench', color: '#64748b' },
+  { name: 'Manutenção de unidade', icon: 'hammer', color: '#a16207' },
   { name: 'Combustível', icon: 'fuel', color: '#dc2626' },
+  { name: 'Transporte', icon: 'truck', color: '#4f46e5' },
+  { name: 'Material', icon: 'package', color: '#84cc16' },
   { name: 'Contabilidade', icon: 'calculator', color: '#14b8a6' },
   { name: 'Marketing', icon: 'megaphone', color: '#ec4899' },
   { name: 'Outros', icon: 'circle-ellipsis', color: '#94a3b8' },
@@ -187,6 +190,9 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
 
 /** Cor de fallback para categoria sem cor definida. */
 export const EXPENSE_CATEGORY_FALLBACK_COLOR = '#94a3b8';
+
+/** Balde do que não se encaixa nas demais — sempre no fim da lista. */
+export const EXPENSE_FALLBACK_CATEGORY_NAME = 'Outros';
 
 export const ROLE_LABELS: Record<string, string> = {
   PLATFORM_ADMIN: 'Admin Plataforma',
