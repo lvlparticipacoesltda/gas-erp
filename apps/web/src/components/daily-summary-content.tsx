@@ -1,8 +1,10 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Card, Table } from '@/components/ui';
 import { PaginatedList } from '@/components/paginated-list';
 import { cn, formatCurrency, formatPercent } from '@/lib/utils';
+import { groupStockByCategory } from '@/lib/stock-categories';
 import { formatWaitTime } from '@gas-erp/shared';
 
 export interface DailySummaryData {
@@ -149,15 +151,47 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
   // Despesas da empresa só chegam para master e financeiro.
   const showExpenses = showNetFinancial && data.operatingExpenses != null;
 
-  const stock = data.stockGlp;
   const gdp = data.gasDoPovo;
   const portaria = data.portaria;
 
+  // `stockAll` cobre o catálogo inteiro agrupado por categoria; APIs antigas que só
+  // devolvem `stockGlp` continuam caindo no bloco de gás para não zerar a tela.
+  const stockGroups = useMemo(
+    () =>
+      data.stockAll
+        ? groupStockByCategory(data.stockAll.groups)
+        : groupStockByCategory([
+            {
+              type: 'GLP',
+              products: data.stockGlp.products.map((p) => ({
+                ...p,
+                soldQty: 0,
+                soldRevenue: 0,
+              })),
+              subtotal: { ...data.stockGlp.totals, soldRevenue: 0 },
+            },
+          ]),
+    [data.stockAll, data.stockGlp],
+  );
+
+  const stockTotals = useMemo(
+    () =>
+      stockGroups.reduce(
+        (sum, group) => ({
+          opening: sum.opening + group.subtotal.opening,
+          out: sum.out + group.subtotal.out,
+          closing: sum.closing + group.subtotal.closing,
+        }),
+        { opening: 0, out: 0, closing: 0 },
+      ),
+    [stockGroups],
+  );
+
   return (
     <>
-      <h2 className="mb-3 font-semibold">Estoque de gás (GLP)</h2>
-      {stock.products.length === 0 ? (
-        <p className="text-sm text-slate-500">Nenhum produto de gás cadastrado.</p>
+      <h2 className="mb-3 font-semibold">Movimentações de estoque</h2>
+      {stockGroups.length === 0 ? (
+        <p className="text-sm text-slate-500">Nenhum produto com movimentação de estoque.</p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200">
           <Table>
@@ -169,25 +203,41 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
                 <th className="p-3 text-right">Estoque final</th>
               </tr>
             </thead>
-            <tbody>
-              {stock.products.map((p) => (
-                <tr key={p.productId} className="border-t border-slate-100">
-                  <td className="p-3">
-                    {p.name}
-                    {p.sku ? <span className="ml-1 text-xs text-slate-400">({p.sku})</span> : null}
+            {stockGroups.map((group) => (
+              <tbody key={group.key}>
+                <tr className="border-t border-slate-200 bg-slate-50/70">
+                  <td
+                    className="p-2 px-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    colSpan={4}
+                  >
+                    {group.label}
                   </td>
-                  <td className="p-3 text-right tabular-nums">{p.opening}</td>
-                  <td className="p-3 text-right font-semibold tabular-nums text-rose-600">{p.out}</td>
-                  <td className="p-3 text-right font-semibold tabular-nums">{p.closing}</td>
                 </tr>
-              ))}
-            </tbody>
+                {group.products.map((p) => (
+                  <tr key={p.productId} className="border-t border-slate-100">
+                    <td className="p-3">
+                      {p.name}
+                      {p.sku ? <span className="ml-1 text-xs text-slate-400">({p.sku})</span> : null}
+                    </td>
+                    <td className="p-3 text-right tabular-nums">{p.opening}</td>
+                    <td className="p-3 text-right font-semibold tabular-nums text-rose-600">{p.out}</td>
+                    <td className="p-3 text-right font-semibold tabular-nums">{p.closing}</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-slate-100 bg-slate-50/40 text-sm font-semibold text-slate-600">
+                  <td className="p-2 px-3">Subtotal · {group.label}</td>
+                  <td className="p-2 px-3 text-right tabular-nums">{group.subtotal.opening}</td>
+                  <td className="p-2 px-3 text-right tabular-nums text-rose-600">{group.subtotal.out}</td>
+                  <td className="p-2 px-3 text-right tabular-nums">{group.subtotal.closing}</td>
+                </tr>
+              </tbody>
+            ))}
             <tfoot>
               <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
-                <td className="p-3">Total</td>
-                <td className="p-3 text-right tabular-nums">{stock.totals.opening}</td>
-                <td className="p-3 text-right tabular-nums text-rose-600">{stock.totals.out}</td>
-                <td className="p-3 text-right tabular-nums">{stock.totals.closing}</td>
+                <td className="p-3">Total geral</td>
+                <td className="p-3 text-right tabular-nums">{stockTotals.opening}</td>
+                <td className="p-3 text-right tabular-nums text-rose-600">{stockTotals.out}</td>
+                <td className="p-3 text-right tabular-nums">{stockTotals.closing}</td>
               </tr>
             </tfoot>
           </Table>
