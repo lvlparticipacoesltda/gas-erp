@@ -33,6 +33,7 @@ import {
   isPastBusinessDay,
   todayBusinessDateKey,
   isDelivererAssignableForSale,
+  type DelivererTimeClockStatus,
   formatDistanceMeters,
   allItemsHavePaymentMethod,
   buildPaymentAllocationsFromItems,
@@ -51,6 +52,7 @@ interface Deliverer {
   status: string;
   availableStoreId?: string | null;
   pendingDeliveryCount?: number;
+  timeClockStatus?: DelivererTimeClockStatus | null;
   user: { name: string; active?: boolean };
 }
 

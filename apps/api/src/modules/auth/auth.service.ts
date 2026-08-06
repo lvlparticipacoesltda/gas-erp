@@ -336,25 +336,35 @@ export class AuthService {
 
     if (ipChanged && incomingIp && session.ipAddress) {
       // Evidência: mantém o IP antigo como sessão encerrada; a ativa passa a ser o novo IP.
-      await this.prisma.$transaction([
-        this.prisma.userSession.create({
-          data: {
-            userId: session.userId,
-            client: session.client,
-            deviceId: session.deviceId,
-            ipAddress: session.ipAddress,
-            userAgent: session.userAgent,
-            createdAt: session.createdAt,
-            lastSeenAt: session.lastSeenAt,
-            revokedAt: now,
-            revokeReason: 'ip_changed',
-          },
-        }),
-        this.prisma.userSession.update({
-          where: { id: session.id },
-          data: { ipAddress: incomingIp, lastSeenAt: now },
-        }),
-      ]).catch(() => undefined);
+      //
+      // O painel dispara várias requisições em paralelo. Sem o compare-and-swap
+      // abaixo, todas liam o mesmo `session.ipAddress` antigo e cada uma gravava
+      // sua própria evidência — o resultado eram N linhas encerradas idênticas
+      // (mesmo IP, mesmo início, mesmo fim), porque a cópia herda `createdAt` e
+      // `lastSeenAt` do original. O `updateMany` condicionado ao IP antigo só
+      // acerta uma linha: quem perder a corrida vê `count === 0` e não duplica.
+      await this.prisma
+        .$transaction(async (tx) => {
+          const swapped = await tx.userSession.updateMany({
+            where: { id: session.id, ipAddress: session.ipAddress, revokedAt: null },
+            data: { ipAddress: incomingIp, lastSeenAt: now },
+          });
+          if (swapped.count === 0) return;
+          await tx.userSession.create({
+            data: {
+              userId: session.userId,
+              client: session.client,
+              deviceId: session.deviceId,
+              ipAddress: session.ipAddress,
+              userAgent: session.userAgent,
+              createdAt: session.createdAt,
+              lastSeenAt: session.lastSeenAt,
+              revokedAt: now,
+              revokeReason: 'ip_changed',
+            },
+          });
+        })
+        .catch(() => undefined);
       return;
     }
 

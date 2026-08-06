@@ -13,6 +13,7 @@ export * from './schemas/purchase-invoice';
 export * from './schemas/report';
 export * from './schemas/result';
 export * from './schemas/expense';
+export * from './schemas/vasilhame-loan';
 export * from './expense-financials';
 export * from './schemas/sale';
 export * from './schemas/stock';
