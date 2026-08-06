@@ -252,6 +252,7 @@ export const TIME_CLOCK_DAY_STATUSES = [
   'LATE',
   'ABSENT',
   'INCOMPLETE',
+  'JUSTIFIED',
   'DAY_OFF',
   'OFF_SCHEDULE',
 ] as const;
@@ -262,6 +263,7 @@ export const TIME_CLOCK_DAY_STATUS_LABELS: Record<TimeClockDayStatus, string> = 
   LATE: 'Atraso',
   ABSENT: 'Ausente',
   INCOMPLETE: 'Sem saída',
+  JUSTIFIED: 'Abonado',
   DAY_OFF: 'Folga',
   OFF_SCHEDULE: 'Fora da escala',
 };

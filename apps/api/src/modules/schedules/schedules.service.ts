@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ScheduleDayType, TimeClockPunchType, UserRole } from '@gas-erp/database';
+import { Prisma, ScheduleDayType, TimeClockJustificationType, TimeClockPunchType, UserRole } from '@gas-erp/database';
 import {
   AuthUser,
   ROLE_LABELS,
@@ -36,6 +36,12 @@ import {
   timeClockMeQuerySchema,
   timeClockPunchSchema,
   timeClockReportQuerySchema,
+  timeClockJustificationQuerySchema,
+  createTimeClockJustificationSchema,
+  TIME_CLOCK_JUSTIFICATION_LABELS,
+  TIME_CLOCK_JUSTIFICATION_FILE_MAX_BYTES,
+  justificationAbonaHoras,
+
   timeClockSlotPunchType,
   todayDateKey,
   upsertScheduleDaySchema,
@@ -216,6 +222,38 @@ function assignDayPunchSlots(
     sourceEnt2: bySlot.ent2?.source ?? null,
     sourceSai2: bySlot.sai2?.source ?? null,
   };
+}
+
+/**
+ * Recorte da justificativa dentro de um dia, em minutos desde a meia-noite no
+ * fuso da operação. Retorna null quando o período não toca o dia.
+ */
+function justificationDayWindow(
+  dateKey: string,
+  startAt: Date,
+  endAt: Date,
+): { start: number; end: number } | null {
+  const dayStart = zonedTimeToUtc(dateKey, 0, 0, 0, BR_TZ).getTime();
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+  const from = Math.max(startAt.getTime(), dayStart);
+  const to = Math.min(endAt.getTime(), dayEnd);
+  if (to <= from) return null;
+  return {
+    start: Math.round((from - dayStart) / 60000),
+    end: Math.round((to - dayStart) / 60000),
+  };
+}
+
+/** Minutos de sobreposição entre a janela justificada e o previsto do dia. */
+function overlapMinutes(
+  scheduled: Array<{ start: number; end: number }>,
+  window: { start: number; end: number },
+): number {
+  return scheduled.reduce((sum, slot) => {
+    const start = Math.max(slot.start, window.start);
+    const end = Math.min(slot.end, window.end);
+    return end > start ? sum + (end - start) : sum;
+  }, 0);
 }
 
 function parseHmParts(hm: string): { hour: number; minute: number } {
@@ -1799,7 +1837,7 @@ export class SchedulesService {
     punchTo.setUTCDate(punchTo.getUTCDate() + 1);
     const dim = daysInMonth(params.year, params.month);
 
-    const [entries, punches, punchesWithPhoto] = await Promise.all([
+    const [entries, punches, punchesWithPhoto, justifications] = await Promise.all([
       this.prisma.workScheduleEntry.findMany({
         where: {
           organizationId: user.organizationId,
@@ -1836,7 +1874,35 @@ export class SchedulesService {
           punchedAt: true,
         },
       }),
+      // Sobreposição com o mês: um atestado que atravessa a virada precisa
+      // pintar os dias que caem dentro da competência exibida.
+      this.prisma.timeClockJustification.findMany({
+        where: {
+          organizationId: user.organizationId,
+          storeId: params.storeId,
+          userId: { in: userIds },
+          startAt: { lt: punchTo },
+          endAt: { gte: punchFrom },
+        },
+        orderBy: { startAt: 'asc' },
+        select: {
+          id: true,
+          userId: true,
+          type: true,
+          notes: true,
+          startAt: true,
+          endAt: true,
+          fileName: true,
+        },
+      }),
     ]);
+
+    const justificationsByUser = new Map<string, typeof justifications>();
+    for (const item of justifications) {
+      const list = justificationsByUser.get(item.userId) ?? [];
+      list.push(item);
+      justificationsByUser.set(item.userId, list);
+    }
 
     const scheduleByKey = new Map<string, (typeof entries)[number]>();
     const schedulesByUser = new Map<string, typeof entries>();
@@ -1909,6 +1975,7 @@ export class SchedulesService {
         let totalNoturnoMinutes = 0;
         let diaFaltaMinutes = 0;
         let faltaEAtrasoMinutes = 0;
+        let abonoTotalMinutes = 0;
         let extra50dMinutes = 0;
         let extraDiurnaMinutes = 0;
         let extraNoturnaMinutes = 0;
@@ -1936,10 +2003,30 @@ export class SchedulesService {
             sai2: slots.sai2 ? brazilTimeHm(slots.sai2) : null,
           });
 
+          // Justificativas que tocam o dia. Só as que abonam viram minutos de
+          // ABONO; as demais apenas documentam a ausência na grade.
+          const dayJustifications = (justificationsByUser.get(collab.id) ?? [])
+            .map((item) => ({
+              item,
+              window: justificationDayWindow(date, item.startAt, item.endAt),
+            }))
+            .filter((entry) => entry.window !== null);
+
+          const abonoMinutes = isWorkDay
+            ? dayJustifications.reduce(
+                (sum, entry) =>
+                  justificationAbonaHoras(entry.item.type)
+                    ? sum + overlapMinutes(scheduledIntervals, entry.window!)
+                    : sum,
+                0,
+              )
+            : 0;
+
           const calc = computeTimeClockDayTotals({
             isWorkDay,
             scheduled: scheduledIntervals,
             worked: workedIntervals,
+            abonoMinutes,
             scheduledStartMinutes: parseHmToMinutes(scheduleSlots.ent1),
             scheduledEndMinutes: parseHmToMinutes(scheduleSlots.sai2 ?? scheduleSlots.sai1),
             firstInMinutes: slots.ent1 ? parseHmToMinutes(brazilTimeHm(slots.ent1)) : null,
@@ -1955,6 +2042,7 @@ export class SchedulesService {
           totalNoturnoMinutes += calc.totalNoturnoMinutes;
           diaFaltaMinutes += calc.diaFaltaMinutes;
           faltaEAtrasoMinutes += calc.faltaEAtrasoMinutes;
+          abonoTotalMinutes += calc.abonoMinutes;
           extra50dMinutes += calc.extra50dMinutes;
           extraDiurnaMinutes += calc.extraDiurnaMinutes;
           extraNoturnaMinutes += calc.extraNoturnaMinutes;
@@ -1962,12 +2050,18 @@ export class SchedulesService {
 
           const clockIn = slots.ent1;
           const clockOut = slots.sai2 ?? slots.sai1;
-          const status = resolveDayStatus({
+          const rawStatus = resolveDayStatus({
             dayType: schedule?.dayType ?? null,
             startTime: schedule?.startTime ?? null,
             clockIn,
             clockOut,
           });
+          // Ausencia/atraso coberto por abono deixa de pesar como falta.
+          const status: TimeClockDayStatus =
+            calc.abonoMinutes > 0
+            && (rawStatus === 'ABSENT' || rawStatus === 'LATE' || rawStatus === 'INCOMPLETE')
+              ? 'JUSTIFIED'
+              : rawStatus;
           if (status === 'ABSENT') faltas += 1;
           if (status === 'LATE') atrasos += 1;
 
@@ -1990,8 +2084,16 @@ export class SchedulesService {
             diaFaltaMinutes: calc.diaFaltaMinutes,
             faltaEAtraso: formatMinutesCommaOrNull(calc.faltaEAtrasoMinutes),
             faltaEAtrasoMinutes: calc.faltaEAtrasoMinutes,
-            abono: null as string | null,
-            abonoMinutes: 0,
+            abono: formatMinutesCommaOrNull(calc.abonoMinutes),
+            abonoMinutes: calc.abonoMinutes,
+            justifications: dayJustifications.map(({ item }) => ({
+              id: item.id,
+              type: item.type,
+              typeLabel: TIME_CLOCK_JUSTIFICATION_LABELS[item.type] ?? item.type,
+              label: item.notes?.trim() || TIME_CLOCK_JUSTIFICATION_LABELS[item.type] || item.type,
+              abona: justificationAbonaHoras(item.type),
+              hasFile: Boolean(item.fileName),
+            })),
             extra50d: formatMinutesCommaOrNull(calc.extra50dMinutes),
             extra50dMinutes: calc.extra50dMinutes,
             extraDiurna: formatMinutesCommaOrNull(calc.extraDiurnaMinutes),
@@ -2032,7 +2134,8 @@ export class SchedulesService {
             diaFaltaMinutes: Math.round(diaFaltaMinutes),
             faltaEAtraso: formatMinutesCommaOrNull(faltaEAtrasoMinutes),
             faltaEAtrasoMinutes: Math.round(faltaEAtrasoMinutes),
-            abono: null as string | null,
+            abono: formatMinutesCommaOrNull(abonoTotalMinutes),
+            abonoMinutes: Math.round(abonoTotalMinutes),
             extra50d: formatMinutesCommaOrNull(extra50dMinutes),
             extra50dMinutes: Math.round(extra50dMinutes),
             extraDiurna: formatMinutesCommaOrNull(extraDiurnaMinutes),
@@ -2152,6 +2255,194 @@ export class SchedulesService {
     const card = cardsResult.cards[0] ?? null;
     const day = card?.days.find((d) => d.date === data.date) ?? null;
     return { card, day };
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Justificativas de ausência (atestado, abono, falta justificada)          */
+  /* ---------------------------------------------------------------------- */
+
+  /** Consulta segue a permissão do cartão; lançar/excluir é de master e gerente. */
+  private assertCanManageJustifications(user: AuthUser) {
+    if (!canManageSchedules(user.role)) {
+      throw new ForbiddenException(
+        'Apenas master ou gerente podem lançar justificativas de ponto',
+      );
+    }
+  }
+
+  private serializeJustification(row: {
+    id: string;
+    userId: string;
+    storeId: string;
+    type: TimeClockJustificationType;
+    notes: string | null;
+    startAt: Date;
+    endAt: Date;
+    fileName: string | null;
+    fileMimeType: string | null;
+    fileSize: number | null;
+    createdAt: Date;
+    user?: { name: string } | null;
+    createdBy?: { name: string } | null;
+  }) {
+    return {
+      id: row.id,
+      userId: row.userId,
+      storeId: row.storeId,
+      type: row.type,
+      typeLabel: TIME_CLOCK_JUSTIFICATION_LABELS[row.type] ?? row.type,
+      abona: justificationAbonaHoras(row.type),
+      notes: row.notes,
+      startAt: row.startAt.toISOString(),
+      endAt: row.endAt.toISOString(),
+      startDate: brazilDateKey(row.startAt),
+      startTime: brazilTimeHm(row.startAt),
+      endDate: brazilDateKey(row.endAt),
+      endTime: brazilTimeHm(row.endAt),
+      hasFile: Boolean(row.fileName),
+      fileName: row.fileName,
+      fileMimeType: row.fileMimeType,
+      fileSize: row.fileSize,
+      userName: row.user?.name ?? null,
+      createdByName: row.createdBy?.name ?? null,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  async listJustifications(user: AuthUser, query: unknown) {
+    this.assertCanViewTimeClock(user);
+    const params = timeClockJustificationQuerySchema.parse(query);
+    assertStoreAccess(user, params.storeId);
+
+    const range =
+      params.dateFrom || params.dateTo
+        ? {
+            // Sobreposição com o intervalo pedido, não contenção: um atestado de
+            // 28/06 a 02/07 precisa aparecer tanto em junho quanto em julho.
+            startAt: { lte: getBusinessDayBounds(params.dateTo ?? params.dateFrom!, BR_TZ).end },
+            endAt: { gte: getBusinessDayBounds(params.dateFrom ?? params.dateTo!, BR_TZ).start },
+          }
+        : {};
+
+    const rows = await this.prisma.timeClockJustification.findMany({
+      where: {
+        organizationId: user.organizationId,
+        storeId: params.storeId,
+        ...(params.userId ? { userId: params.userId } : {}),
+        ...range,
+      },
+      orderBy: { startAt: 'desc' },
+      select: {
+        id: true,
+        userId: true,
+        storeId: true,
+        type: true,
+        notes: true,
+        startAt: true,
+        endAt: true,
+        fileName: true,
+        fileMimeType: true,
+        fileSize: true,
+        createdAt: true,
+        user: { select: { name: true } },
+        createdBy: { select: { name: true } },
+      },
+    });
+
+    return { items: rows.map((row) => this.serializeJustification(row)) };
+  }
+
+  async createJustification(user: AuthUser, input: unknown) {
+    const data = createTimeClockJustificationSchema.parse(input);
+    this.assertCanManageJustifications(user);
+    assertStoreAccess(user, data.storeId);
+
+    const target = await this.prisma.user.findFirst({
+      where: { id: data.userId, organizationId: user.organizationId },
+      select: { id: true },
+    });
+    if (!target) throw new NotFoundException('Colaborador não encontrado');
+
+    const startParts = parseHmParts(data.startTime);
+    const endParts = parseHmParts(data.endTime);
+    const startAt = zonedTimeToUtc(data.startDate, startParts.hour, startParts.minute, 0, BR_TZ);
+    // Segundo 59 para o fim do dia ("23:59") cobrir o minuto inteiro.
+    const endAt = zonedTimeToUtc(data.endDate, endParts.hour, endParts.minute, 59, BR_TZ);
+
+    let fileBytes: Uint8Array | null = null;
+    if (data.fileBase64) {
+      const raw = data.fileBase64.replace(/^data:[^;]+;base64,/, '');
+      fileBytes = new Uint8Array(Buffer.from(raw, 'base64'));
+      if (fileBytes.length === 0) throw new BadRequestException('Arquivo inválido.');
+      if (fileBytes.length > TIME_CLOCK_JUSTIFICATION_FILE_MAX_BYTES) {
+        throw new BadRequestException(
+          `Arquivo muito grande (máx. ${Math.round(
+            TIME_CLOCK_JUSTIFICATION_FILE_MAX_BYTES / (1024 * 1024),
+          )} MB).`,
+        );
+      }
+    }
+
+    const created = await this.prisma.timeClockJustification.create({
+      data: {
+        organizationId: user.organizationId,
+        storeId: data.storeId,
+        userId: data.userId,
+        type: data.type as TimeClockJustificationType,
+        notes: data.notes?.trim() || null,
+        startAt,
+        endAt,
+        fileBytes: fileBytes ? Buffer.from(fileBytes) : null,
+        fileName: fileBytes ? data.fileName?.slice(0, 255) || 'anexo' : null,
+        fileMimeType: fileBytes ? data.fileMimeType ?? null : null,
+        fileSize: fileBytes ? fileBytes.length : null,
+        createdById: user.id,
+      },
+      select: {
+        id: true,
+        userId: true,
+        storeId: true,
+        type: true,
+        notes: true,
+        startAt: true,
+        endAt: true,
+        fileName: true,
+        fileMimeType: true,
+        fileSize: true,
+        createdAt: true,
+        user: { select: { name: true } },
+        createdBy: { select: { name: true } },
+      },
+    });
+
+    return this.serializeJustification(created);
+  }
+
+  async getJustificationFile(user: AuthUser, id: string) {
+    this.assertCanViewTimeClock(user);
+    const row = await this.prisma.timeClockJustification.findFirst({
+      where: { id, organizationId: user.organizationId },
+      select: { storeId: true, fileBytes: true, fileName: true, fileMimeType: true },
+    });
+    if (!row || !row.fileBytes) throw new NotFoundException('Anexo não encontrado');
+    assertStoreAccess(user, row.storeId);
+    return {
+      bytes: Buffer.from(row.fileBytes),
+      fileName: row.fileName ?? 'anexo',
+      mimeType: row.fileMimeType ?? 'application/octet-stream',
+    };
+  }
+
+  async deleteJustification(user: AuthUser, id: string) {
+    this.assertCanManageJustifications(user);
+    const row = await this.prisma.timeClockJustification.findFirst({
+      where: { id, organizationId: user.organizationId },
+      select: { id: true, storeId: true },
+    });
+    if (!row) throw new NotFoundException('Justificativa não encontrada');
+    assertStoreAccess(user, row.storeId);
+    await this.prisma.timeClockJustification.delete({ where: { id } });
+    return { ok: true };
   }
 
   /** Escala do próprio colaborador no app — entries por pessoa; store = unidade do dia (ponto). */

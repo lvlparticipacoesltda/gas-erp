@@ -39,6 +39,23 @@ export async function api<T>(
   return res.json();
 }
 
+/**
+ * Baixa um arquivo protegido e devolve uma object URL.
+ *
+ * O token vai no header, nunca na query string: URL com credencial vaza em
+ * histórico, log de servidor e Referer. Quem chama precisa dar `revokeObjectURL`
+ * depois de usar.
+ */
+export async function apiBlobUrl(path: string, token?: string | null): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { headers, cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? 'Anexo não encontrado' : 'Falha ao abrir o anexo');
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('token');

@@ -8,6 +8,7 @@ import { AuthUser } from '@gas-erp/shared';
 import { assertSharedStoreAccess, assertStoreAccess, assertScreenPermission } from '../../common/guards';
 import { syncUserStoresForDeliverer } from '../../common/deliverer-store-sync';
 import { getDelivererTimeClockStatuses } from '../../common/utils/deliverer-time-clock';
+import { isTimeClockDeliveryBlockEnabled } from '../../common/utils/time-clock-policy';
 import { AuditService } from '../../common/audit/audit.service';
 import { GeocodingService } from '../../common/geocoding/geocoding.service';
 import { RoutingService } from '../../common/routing/routing.service';
@@ -120,6 +121,7 @@ export class DeliverersService {
       ...deliverer,
       pendingDeliveryCount: _count.deliveries,
       timeClockStatus: timeClockStatuses?.get(deliverer.userId) ?? null,
+      timeClockEnforced: isTimeClockDeliveryBlockEnabled(),
     }));
   }
 
@@ -163,6 +165,7 @@ export class DeliverersService {
             pendingDeliveryCount: d.pendingDeliveryCount,
             availableStoreId: d.availableStoreId,
             timeClockStatus: d.timeClockStatus,
+            timeClockEnforced: d.timeClockEnforced,
           },
           params.storeId,
         );
@@ -368,6 +371,17 @@ export class DeliverersService {
     const pointByDeliverer = new Map(latestPoints.map((p) => [p.delivererId, p]));
     const now = Date.now();
 
+    // O mapa mostrava "disponível" para quem a tela de venda recusava por causa
+    // do ponto, e o atendente ficava sem entender a lista vazia. Aqui o status do
+    // cartão viaja junto para as duas telas contarem a mesma história.
+    const timeClockStatuses = storeId
+      ? await getDelivererTimeClockStatuses(
+          this.prisma,
+          deliverers.map((d) => d.userId),
+          storeId,
+        )
+      : null;
+
     return deliverers.map((deliverer) => {
       const trackingFallback = pointByDeliverer.get(deliverer.id);
       const scopedDeliveries = deliverer.deliveries;
@@ -438,6 +452,8 @@ export class DeliverersService {
           status: deliverer.status,
           availableStoreId,
           delivererStatus,
+          timeClockStatus: timeClockStatuses?.get(deliverer.userId) ?? null,
+          timeClockEnforced: isTimeClockDeliveryBlockEnabled(),
           latitude: null,
           longitude: null,
           updatedAt: null,
@@ -462,6 +478,8 @@ export class DeliverersService {
         status: deliverer.status,
         availableStoreId,
         delivererStatus,
+        timeClockStatus: timeClockStatuses?.get(deliverer.userId) ?? null,
+        timeClockEnforced: isTimeClockDeliveryBlockEnabled(),
         latitude,
         longitude,
         updatedAt: lastSeenAt,

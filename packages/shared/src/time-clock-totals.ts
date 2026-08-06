@@ -33,6 +33,12 @@ export type TimeClockDayCalcInput = {
   /** Última batida de saída (minutos). */
   lastOutMinutes?: number | null;
   lateGraceMinutes?: number;
+  /**
+   * Minutos do previsto cobertos por justificativa que abona (atestado, abono
+   * de ausência…). Absorvem primeiro o DIA FALTA e depois FALTA E ATRASO,
+   * migrando o tempo para a coluna ABONO.
+   */
+  abonoMinutes?: number;
 };
 
 export type TimeClockDayCalcResult = {
@@ -201,10 +207,13 @@ export function computeTimeClockDayTotals(input: TimeClockDayCalcInput): TimeClo
 
   // Falta integral
   if (workedTotal <= 0) {
-    return {
-      ...empty,
-      diaFaltaMinutes: Math.round(scheduledMinutes),
-    };
+    return applyAbono(
+      {
+        ...empty,
+        diaFaltaMinutes: Math.round(scheduledMinutes),
+      },
+      input.abonoMinutes ?? 0,
+    );
   }
 
   const totalNormais = maskedMinutes(worked, scheduled);
@@ -242,16 +251,42 @@ export function computeTimeClockDayTotals(input: TimeClockDayCalcInput): TimeClo
 
   const bancoTotal = extraDiurna + extraNoturna;
 
+  return applyAbono(
+    {
+      totalNormaisMinutes: Math.round(totalNormais),
+      totalNoturnoMinutes: Math.round(totalNoturno),
+      diaFaltaMinutes: 0,
+      faltaEAtrasoMinutes: Math.round(faltaEAtraso),
+      abonoMinutes: 0,
+      extra50dMinutes: Math.round(extraDiurna),
+      extraDiurnaMinutes: Math.round(extraDiurna),
+      extraNoturnaMinutes: Math.round(extraNoturna),
+      bancoTotalMinutes: Math.round(bancoTotal),
+    },
+    input.abonoMinutes ?? 0,
+  );
+}
+
+/**
+ * Move para ABONO o tempo justificado, abatendo primeiro o dia de falta e
+ * depois o atraso. O abono nunca cria saldo: sobra além do que era descontado
+ * é simplesmente ignorada.
+ */
+function applyAbono(
+  result: TimeClockDayCalcResult,
+  abonoMinutes: number,
+): TimeClockDayCalcResult {
+  const available = Math.max(0, Math.round(abonoMinutes));
+  if (available <= 0) return result;
+
+  const onFalta = Math.min(available, result.diaFaltaMinutes);
+  const onAtraso = Math.min(available - onFalta, result.faltaEAtrasoMinutes);
+
   return {
-    totalNormaisMinutes: Math.round(totalNormais),
-    totalNoturnoMinutes: Math.round(totalNoturno),
-    diaFaltaMinutes: 0,
-    faltaEAtrasoMinutes: Math.round(faltaEAtraso),
-    abonoMinutes: 0,
-    extra50dMinutes: Math.round(extraDiurna),
-    extraDiurnaMinutes: Math.round(extraDiurna),
-    extraNoturnaMinutes: Math.round(extraNoturna),
-    bancoTotalMinutes: Math.round(bancoTotal),
+    ...result,
+    diaFaltaMinutes: result.diaFaltaMinutes - onFalta,
+    faltaEAtrasoMinutes: result.faltaEAtrasoMinutes - onAtraso,
+    abonoMinutes: onFalta + onAtraso,
   };
 }
 

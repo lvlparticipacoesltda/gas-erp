@@ -2,14 +2,26 @@ export function getDelivererAvailabilityLock(position: {
   delivererStatus?: string;
   deliveryStatus?: string | null;
   pendingDeliveries?: unknown[] | null;
-}): { locked: boolean; reason: string | null } {
+  timeClockStatus?: DelivererTimeClockStatus | null;
+  /** Regra do ponto ativada na organização (ver `timeClockEnforced`). */
+  timeClockEnforced?: boolean;
+}): { locked: boolean; reason: string | null; warning: string | null } {
   if (position.deliveryStatus === 'IN_PROGRESS' || position.delivererStatus === 'ON_DELIVERY') {
-    return { locked: true, reason: 'Bloqueado em rota' };
+    return { locked: true, reason: 'Bloqueado em rota', warning: null };
   }
   if ((position.pendingDeliveries?.length ?? 0) > 0) {
-    return { locked: true, reason: 'Bloqueado: rota aguardando aceite' };
+    return { locked: true, reason: 'Bloqueado: rota aguardando aceite', warning: null };
   }
-  return { locked: false, reason: null };
+  // Pendência de ponto sempre aparece; só vira bloqueio com a regra ativada.
+  // Sem isso o mapa contradizia a tela de venda, que recusava o mesmo entregador.
+  const timeClockPending =
+    position.timeClockStatus && position.timeClockStatus !== 'CLOCKED_IN'
+      ? TIME_CLOCK_BLOCK_REASONS[position.timeClockStatus]
+      : null;
+  if (timeClockPending && position.timeClockEnforced) {
+    return { locked: true, reason: timeClockPending, warning: null };
+  }
+  return { locked: false, reason: null, warning: timeClockPending };
 }
 
 /**
@@ -60,26 +72,35 @@ export function isDelivererAssignableForSale(
      * o campo).
      */
     timeClockStatus?: DelivererTimeClockStatus | null;
+    /**
+     * Regra do ponto ativada. Desligada (padrão), a pendência vira apenas aviso
+     * — foi assim que a regra entrou, para não travar quem já estava em turno.
+     */
+    timeClockEnforced?: boolean;
   },
   /** Quando informado, exige disponibilidade nessa unidade. */
   storeId?: string,
-): { assignable: boolean; reason: string | null } {
+): { assignable: boolean; reason: string | null; warning: string | null } {
   if (deliverer.user?.active === false) {
-    return { assignable: false, reason: 'Inativo' };
+    return { assignable: false, reason: 'Inativo', warning: null };
   }
   if (deliverer.status === 'OFFLINE') {
-    return { assignable: false, reason: 'Indisponível' };
+    return { assignable: false, reason: 'Indisponível', warning: null };
   }
-  if (deliverer.timeClockStatus && deliverer.timeClockStatus !== 'CLOCKED_IN') {
-    return { assignable: false, reason: TIME_CLOCK_BLOCK_REASONS[deliverer.timeClockStatus] };
+  const timeClockPending =
+    deliverer.timeClockStatus && deliverer.timeClockStatus !== 'CLOCKED_IN'
+      ? TIME_CLOCK_BLOCK_REASONS[deliverer.timeClockStatus]
+      : null;
+  if (timeClockPending && deliverer.timeClockEnforced) {
+    return { assignable: false, reason: timeClockPending, warning: null };
   }
   if (storeId) {
     if (!deliverer.availableStoreId) {
-      return { assignable: false, reason: 'Indisponível nesta unidade' };
+      return { assignable: false, reason: 'Indisponível nesta unidade', warning: null };
     }
     if (deliverer.availableStoreId !== storeId) {
-      return { assignable: false, reason: 'Disponível em outra unidade' };
+      return { assignable: false, reason: 'Disponível em outra unidade', warning: null };
     }
   }
-  return { assignable: true, reason: null };
+  return { assignable: true, reason: null, warning: timeClockPending };
 }

@@ -50,6 +50,14 @@ export type TimeClockCard = {
     bancoSaldo?: string | null;
     status: TimeClockDayStatus;
     statusLabel: string;
+    justifications?: Array<{
+      id: string;
+      type: string;
+      typeLabel: string;
+      label: string;
+      abona: boolean;
+      hasFile: boolean;
+    }>;
   }>;
   totals: {
     totalNormais: string;
@@ -65,6 +73,17 @@ export type TimeClockCard = {
     faltas: number;
     atrasos: number;
   };
+};
+
+/** Cor do marcador de status por dia (só na tela; o PDF sai sem a coluna). */
+const STATUS_TONE: Record<string, { bg: string; fg: string; mark: string }> = {
+  OK: { bg: '#dcfce7', fg: '#166534', mark: '✔' },
+  LATE: { bg: '#fef3c7', fg: '#92400e', mark: '!' },
+  ABSENT: { bg: '#fee2e2', fg: '#991b1b', mark: '✕' },
+  INCOMPLETE: { bg: '#ffedd5', fg: '#9a3412', mark: '~' },
+  JUSTIFIED: { bg: '#dbeafe', fg: '#1e40af', mark: '⚑' },
+  DAY_OFF: { bg: '#f1f5f9', fg: '#475569', mark: '·' },
+  OFF_SCHEDULE: { bg: '#ede9fe', fg: '#5b21b6', mark: '+' },
 };
 
 export type DayPunchSlots = {
@@ -305,6 +324,8 @@ export function TimeClockCardView({
   savingKey = null,
   onPunchEdit,
   onViewPhotos,
+  showStatusColumn,
+  onAddJustification,
 }: {
   card: TimeClockCard;
   year: number;
@@ -321,8 +342,12 @@ export function TimeClockCardView({
   }) => Promise<void> | void;
   /** Botão de fotos à direita (só na tela web; omitir no PDF). */
   onViewPhotos?: (date: string) => void;
+  /** Coluna de status + ação de justificativa. Só na tela; o PDF sai sem. */
+  showStatusColumn?: boolean;
+  onAddJustification?: (date: string) => void;
 }) {
   const showPhotosCol = Boolean(onViewPhotos);
+  const showStatus = Boolean(showStatusColumn);
   const { header, horarioTrabalho, days, totals } = card;
   const cnpj = formatCnpj(header.cnpj) || '—';
   const weekCols = horarioTrabalho.length + 1;
@@ -445,6 +470,7 @@ export function TimeClockCardView({
 
       <table style={tableStyle}>
         <colgroup>
+          {showStatus ? <col style={{ width: 26 }} /> : null}
           {DAY_COLUMNS.map((col) => (
             <col key={col.key} style={col.width ? { width: col.width } : undefined} />
           ))}
@@ -452,6 +478,11 @@ export function TimeClockCardView({
         </colgroup>
         <thead>
           <tr>
+            {showStatus ? (
+              <th style={cellStyle({ header: true, center: true })} title="Situação do dia">
+                ST
+              </th>
+            ) : null}
             {DAY_COLUMNS.map((col, idx) => (
               <th
                 key={col.key}
@@ -469,10 +500,15 @@ export function TimeClockCardView({
                 style={cellStyle({
                   header: true,
                   center: true,
-                  lastCol: true,
+                  lastCol: !onAddJustification,
                 })}
               >
                 FOTO
+              </th>
+            ) : null}
+            {onAddJustification ? (
+              <th style={cellStyle({ header: true, center: true, lastCol: true })}>
+                JUST.
               </th>
             ) : null}
           </tr>
@@ -487,15 +523,50 @@ export function TimeClockCardView({
               { key: 'sai2', value: day.sai2 ?? '—' },
             ];
             const metric = (v?: string | null) => cellValue(v);
+            const tone = STATUS_TONE[day.status] ?? STATUS_TONE.DAY_OFF;
+            const justification = day.justifications?.[0] ?? null;
+            // Dia sem nenhuma batida e coberto por justificativa: o rótulo ocupa
+            // as quatro colunas de ponto, como no cartão de referência.
+            const justificationSpansPunches =
+              Boolean(justification)
+              && !day.ent1 && !day.sai1 && !day.ent2 && !day.sai2;
 
             return (
               <tr key={day.date}>
+                {showStatus ? (
+                  <td
+                    title={`${day.statusLabel}${justification ? ` · ${justification.label}` : ''}`}
+                    style={{
+                      ...cellStyle({ center: true, lastRow }),
+                      background: tone.bg,
+                      color: tone.fg,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {tone.mark}
+                  </td>
+                ) : null}
                 <td style={cellStyle({ nowrap: true, lastRow })}>
                   {String(day.day).padStart(2, '0')} {day.weekday}
                 </td>
                 {/* Sem `nowrap`: dias com intervalo trazem duas faixas e precisam quebrar. */}
                 <td style={cellStyle({ lastRow })}>{day.previsto}</td>
-                {punchDisplays.map(({ key, value }) => (
+                {justificationSpansPunches && justification ? (
+                  <td
+                    colSpan={4}
+                    title={justification.typeLabel}
+                    style={{
+                      ...cellStyle({ center: true, lastRow }),
+                      background: justification.abona ? '#eff6ff' : '#fef2f2',
+                      color: justification.abona ? '#1e40af' : '#991b1b',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {justification.label}
+                    {justification.hasFile ? ' 📎' : ''}
+                  </td>
+                ) : (
+                  punchDisplays.map(({ key, value }) => (
                   <EditablePunchCell
                     key={`${day.date}-${key}`}
                     display={value}
@@ -513,7 +584,8 @@ export function TimeClockCardView({
                       await onPunchEdit({ date: day.date, slot: key, value: nextValue, slots });
                     }}
                   />
-                ))}
+                  ))
+                )}
                 <td style={cellStyle({ center: true, lastRow })}>{metric(day.totalNormais)}</td>
                 <td style={cellStyle({ center: true, lastRow })}>{metric(day.totalNoturno)}</td>
                 <td style={cellStyle({ center: true, lastRow })}>{metric(day.diaFalta)}</td>
@@ -533,7 +605,13 @@ export function TimeClockCardView({
                   {metric(day.bancoSaldo)}
                 </td>
                 {showPhotosCol ? (
-                  <td style={cellStyle({ center: true, lastCol: true, lastRow })}>
+                  <td
+                    style={cellStyle({
+                      center: true,
+                      lastCol: !onAddJustification,
+                      lastRow,
+                    })}
+                  >
                     {day.hasPhotos ? (
                       <button
                         type="button"
@@ -555,6 +633,27 @@ export function TimeClockCardView({
                     ) : (
                       ''
                     )}
+                  </td>
+                ) : null}
+                {onAddJustification ? (
+                  <td style={cellStyle({ center: true, lastCol: true, lastRow })}>
+                    <button
+                      type="button"
+                      onClick={() => onAddJustification(day.date)}
+                      title="Lançar atestado / justificativa neste dia"
+                      style={{
+                        border: '1px solid #94a3b8',
+                        background: justification ? '#dbeafe' : '#f8fafc',
+                        borderRadius: 4,
+                        padding: '1px 6px',
+                        fontSize: 9,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: '#0f172a',
+                      }}
+                    >
+                      {justification ? 'Ver' : '+'}
+                    </button>
                   </td>
                 ) : null}
               </tr>

@@ -18,6 +18,7 @@ import {
   type PunchSlotKey,
   type TimeClockCard,
 } from './time-clock-card-view';
+import { JustificationModal } from './justification-modal';
 
 type RoleFilter = 'deliverers' | 'attendants' | 'all';
 
@@ -149,6 +150,13 @@ export function TimeClockLogPanel({
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [dayPhotos, setDayPhotos] = useState<DayPhotosResponse['photos']>([]);
+  const [justificationModal, setJustificationModal] = useState<{
+    userId: string;
+    userName: string;
+    date: string;
+  } | null>(null);
+  /** Índice do colaborador exibido — a tela mostra um cartão por vez. */
+  const [cardIndex, setCardIndex] = useState(0);
 
   useEffect(() => {
     if (fixedStoreId) setStoreId(fixedStoreId);
@@ -198,6 +206,13 @@ export function TimeClockLogPanel({
       .map((c) => [c.header.userId, c.header.userName] as const)
       .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
   }, [cards]);
+
+  // Trocar de filtro pode encurtar a lista; volta para o primeiro cartão.
+  useEffect(() => {
+    setCardIndex(0);
+  }, [storeId, year, month, roleFilter, userId]);
+
+  const currentCard = cards[Math.min(cardIndex, Math.max(0, cards.length - 1))] ?? null;
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
@@ -438,39 +453,93 @@ export function TimeClockLogPanel({
             {cards.length} {cards.length === 1 ? 'cartão' : 'cartões'}
           </div>
 
-          {cards.length === 0 ? (
+          {cards.length === 0 || !currentCard ? (
             <Card className="p-8 text-center text-sm text-slate-500">
               Nenhum colaborador encontrado para os filtros selecionados.
             </Card>
           ) : (
-            cards.map((card) => (
-              <Card key={card.header.userId} className="overflow-x-auto p-3">
-                <div className="mb-3 text-sm font-semibold text-slate-900">
-                  {card.header.userName}
-                  <span className="ml-2 text-xs font-normal text-slate-500">
-                    {card.header.jobTitle || card.header.roleLabel}
-                  </span>
+            <Card className="p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {currentCard.header.userName}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {currentCard.header.jobTitle || currentCard.header.roleLabel}
+                  </div>
                 </div>
-                <div className="overflow-x-auto">
-                  <TimeClockCardView
-                    card={card}
-                    year={year}
-                    month={month}
-                    editable={canEdit}
-                    savingKey={savingKey}
-                    onPunchEdit={
-                      canEdit
-                        ? ({ date, slot, slots }) =>
-                            saveDayPunches(card.header.userId, date, slot, slots)
-                        : undefined
-                    }
-                    onViewPhotos={(date) =>
-                      void openDayPhotos(card.header.userId, card.header.userName, date)
-                    }
-                  />
-                </div>
-              </Card>
-            ))
+                {cards.length > 1 ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={cardIndex === 0}
+                      onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
+                    >
+                      ‹
+                    </Button>
+                    <span className="min-w-[80px] text-center text-sm text-slate-600 tabular-nums">
+                      {cardIndex + 1} de {cards.length}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={cardIndex >= cards.length - 1}
+                      onClick={() => setCardIndex((i) => Math.min(cards.length - 1, i + 1))}
+                    >
+                      ›
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                {[
+                  ['Normais', currentCard.totals.totalNormais],
+                  ['Faltas', String(currentCard.totals.faltas)],
+                  ['Atrasos', String(currentCard.totals.atrasos)],
+                  ['Falta/atraso', currentCard.totals.faltaEAtraso ?? '—'],
+                  ['Abono', currentCard.totals.abono ?? '—'],
+                  ['Banco saldo', currentCard.totals.bancoSaldo ?? '—'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="text-xs text-slate-500">{label}</div>
+                    <div className="text-lg font-bold tabular-nums text-slate-900">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="overflow-x-auto">
+                <TimeClockCardView
+                  card={currentCard}
+                  year={year}
+                  month={month}
+                  editable={canEdit}
+                  savingKey={savingKey}
+                  showStatusColumn
+                  onPunchEdit={
+                    canEdit
+                      ? ({ date, slot, slots }) =>
+                          saveDayPunches(currentCard.header.userId, date, slot, slots)
+                      : undefined
+                  }
+                  onViewPhotos={(date) =>
+                    void openDayPhotos(
+                      currentCard.header.userId,
+                      currentCard.header.userName,
+                      date,
+                    )
+                  }
+                  onAddJustification={(date) =>
+                    setJustificationModal({
+                      userId: currentCard.header.userId,
+                      userName: currentCard.header.userName,
+                      date,
+                    })
+                  }
+                />
+              </div>
+            </Card>
           )}
         </div>
       )}
@@ -526,6 +595,19 @@ export function TimeClockLogPanel({
           </div>
         )}
       </Modal>
+
+      {justificationModal ? (
+        <JustificationModal
+          open
+          onClose={() => setJustificationModal(null)}
+          storeId={storeId}
+          userId={justificationModal.userId}
+          userName={justificationModal.userName}
+          date={justificationModal.date}
+          canManage={canEdit}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </div>
   );
 }

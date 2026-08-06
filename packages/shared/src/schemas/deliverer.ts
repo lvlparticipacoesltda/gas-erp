@@ -123,6 +123,13 @@ export const delivererPositionSchema = z.object({
   deliveryAddress: z.string().nullable().optional(),
   /** Rotas direcionadas ao entregador ainda não iniciadas (PENDING). */
   pendingDeliveries: z.array(delivererPendingDeliverySchema).optional(),
+  /** Situação do cartão de ponto do dia; null quando não apurada. */
+  timeClockStatus: z
+    .enum(['CLOCKED_IN', 'NOT_CLOCKED_IN', 'ON_BREAK', 'DAY_ENDED'])
+    .nullable()
+    .optional(),
+  /** Regra do ponto ativada; desligada, a pendência é só aviso. */
+  timeClockEnforced: z.boolean().optional(),
   stores: z.array(delivererPositionStoreSchema),
 });
 

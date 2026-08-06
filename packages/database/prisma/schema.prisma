@@ -138,6 +138,13 @@ enum TimeClockSource {
   MOBILE
 }
 
+enum TimeClockJustificationType {
+  ATESTADO_MEDICO
+  DECLARACAO_COMPARECIMENTO
+  ABONO_AUSENCIA
+  FALTA_JUSTIFICADA
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -161,6 +168,7 @@ model Organization {
   expenseCategories   ExpenseCategory[]
   expenses            Expense[]
   vasilhameLoans      VasilhameLoan[]
+  timeClockJustifications TimeClockJustification[]
 }
 
 model Store {
@@ -208,6 +216,7 @@ model Store {
   timeClockPunches    TimeClockPunch[]
   expenses            Expense[]
   vasilhameLoans      VasilhameLoan[]
+  timeClockJustifications TimeClockJustification[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -284,6 +293,8 @@ model User {
   expensesUpdated     Expense[]           @relation("ExpenseUpdatedBy")
   vasilhameLoansCreated VasilhameLoan[]   @relation("VasilhameLoanCreatedBy")
   vasilhameLoansUpdated VasilhameLoan[]   @relation("VasilhameLoanUpdatedBy")
+  timeClockJustifications TimeClockJustification[] @relation("TimeClockJustificationUser")
+  timeClockJustificationsCreated TimeClockJustification[] @relation("TimeClockJustificationCreatedBy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -1154,4 +1165,43 @@ model VasilhameLoan {
   @@index([storeId, responsibleName])
   @@index([organizationId])
   @@index([customerId])
+}
+
+/**
+ * Justificativa de ausência sobre um período do cartão de ponto (atestado
+ * médico, abono, falta justificada).
+ *
+ * O período é gravado em UTC a partir de data+hora informadas no fuso da
+ * operação. Tipos que abonam (ver `justificationAbonaHoras` no shared) migram o
+ * previsto coberto de DIA FALTA / FALTA E ATRASO para a coluna ABONO.
+ *
+ * O anexo mora no banco, como a selfie da batida — o projeto não tem storage
+ * externo e o volume aqui é baixo (um PDF por atestado).
+ */
+model TimeClockJustification {
+  id             String                     @id @default(cuid())
+  organizationId String
+  storeId        String
+  userId         String
+  type           TimeClockJustificationType
+  /** Texto livre; quando vazio vale o rótulo do tipo. */
+  notes          String?
+  startAt        DateTime
+  endAt          DateTime
+  fileBytes      Bytes?
+  fileName       String?
+  fileMimeType   String?
+  fileSize       Int?
+  createdById    String?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user         User         @relation("TimeClockJustificationUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("TimeClockJustificationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId, startAt])
+  @@index([storeId, startAt])
+  @@index([organizationId, startAt])
 }
