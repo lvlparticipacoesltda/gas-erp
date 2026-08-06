@@ -516,6 +516,7 @@ async function main() {
     { name: 'Internet e telefone', icon: 'wifi', color: '#8b5cf6' },
     { name: 'Folha de pagamento', icon: 'users', color: '#3b82f6' },
     { name: 'Benefícios', icon: 'ticket', color: '#06b6d4' },
+    { name: 'Rescisão', icon: 'user-minus', color: '#9333ea' },
     { name: 'Impostos e taxas', icon: 'landmark', color: '#ef4444' },
     { name: 'Manutenção de veículos', icon: 'wrench', color: '#64748b' },
     { name: 'Manutenção de unidade', icon: 'hammer', color: '#a16207' },
