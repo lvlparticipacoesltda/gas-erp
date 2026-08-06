@@ -23,7 +23,7 @@ export const TIME_CLOCK_SOURCES = ['WEB', 'MOBILE'] as const;
 export type TimeClockSource = (typeof TIME_CLOCK_SOURCES)[number];
 
 /** Raio máximo (metros) para bater ponto pelo app do entregador. */
-export const TIME_CLOCK_GEOFENCE_METERS = 500;
+export const TIME_CLOCK_GEOFENCE_METERS = 100;
 
 /**
  * Tamanho alvo da foto JPEG após compressão no servidor (~512 KB).
