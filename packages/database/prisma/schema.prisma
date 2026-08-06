@@ -160,6 +160,7 @@ model Organization {
   timeClockPunches    TimeClockPunch[]
   expenseCategories   ExpenseCategory[]
   expenses            Expense[]
+  vasilhameLoans      VasilhameLoan[]
 }
 
 model Store {
@@ -206,6 +207,7 @@ model Store {
   workScheduleWeeklies WorkScheduleWeekly[]
   timeClockPunches    TimeClockPunch[]
   expenses            Expense[]
+  vasilhameLoans      VasilhameLoan[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -280,6 +282,8 @@ model User {
   devicePairingCodes  DevicePairingCode[]
   expensesCreated     Expense[]           @relation("ExpenseCreatedBy")
   expensesUpdated     Expense[]           @relation("ExpenseUpdatedBy")
+  vasilhameLoansCreated VasilhameLoan[]   @relation("VasilhameLoanCreatedBy")
+  vasilhameLoansUpdated VasilhameLoan[]   @relation("VasilhameLoanUpdatedBy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -383,6 +387,7 @@ model Customer {
   addresses    CustomerAddress[]
   sales        Sale[]
   productPrices CustomerProductPrice[]
+  vasilhameLoans VasilhameLoan[]
 
   @@index([organizationId])
   @@index([storeId])
@@ -1106,4 +1111,47 @@ model Expense {
   @@index([status])
   @@index([supplierId])
   @@index([recurrenceGroupId])
+}
+
+/**
+ * Vasilhame emprestado (comodato): botijões/garrafões que estão na mão de um
+ * cliente ou comércio e ainda precisam voltar para a unidade.
+ *
+ * É um cadastro de controle, não movimenta estoque — a baixa do vasilhame já
+ * acontece na venda. Quando o vasilhame volta, ajusta-se `quantity` ou o
+ * registro é excluído.
+ */
+model VasilhameLoan {
+  id             String   @id @default(cuid())
+  organizationId String
+  storeId        String
+  /** Cliente cadastrado, quando houver; empréstimos avulsos ficam sem vínculo. */
+  customerId     String?
+  /** Quem responde pelos vasilhames no local. */
+  responsibleName String
+  responsiblePhone String?
+  street       String
+  number       String?
+  complement   String?
+  neighborhood String?
+  city         String
+  state        String
+  zipCode      String?
+  landmark     String?
+  quantity     Int
+  notes        String?
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer     Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("VasilhameLoanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy    User?        @relation("VasilhameLoanUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([storeId, responsibleName])
+  @@index([organizationId])
+  @@index([customerId])
 }

@@ -35,6 +35,11 @@ export const STORE_NAV_GROUPS: StoreNavGroup[] = [
       { screen: 'store.sales.new', segment: 'sales/new', label: 'Nova venda' },
       { screen: 'store.sales', segment: 'sales', label: 'Vendas' },
       { screen: 'store.customers', segment: 'customers', label: 'Clientes' },
+      {
+        screen: 'store.vasilhame-loans',
+        segment: 'vasilhame-loans',
+        label: 'Vasilhames emprestados',
+      },
     ],
   },
   {
