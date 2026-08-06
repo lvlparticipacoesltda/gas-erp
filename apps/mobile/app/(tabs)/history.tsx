@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Loading, StateMessage } from '@/components/ui';
@@ -11,7 +11,7 @@ import {
 } from '@/lib/deliveries';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
 import { useAuth } from '@/lib/auth';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 type StatusFilter = 'all' | 'DELIVERED' | 'CANCELLED';
 
@@ -36,6 +36,8 @@ export default function HistoryScreen() {
 }
 
 function DelivererHistoryScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { deliveries, loading, refreshing, error, refresh } = useDeliveriesContext();
   const [period, setPeriod] = useState<HistoryPeriod>('today');
@@ -128,6 +130,7 @@ function FilterChip({
   active: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -147,6 +150,7 @@ function SegmentButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -157,7 +161,7 @@ function SegmentButton({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
@@ -175,7 +179,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
-  chipTextActive: { color: '#FFFFFF' },
+  chipTextActive: { color: colors.primaryText },
   segment: {
     flex: 1,
     alignItems: 'center',
@@ -188,6 +192,6 @@ const styles = StyleSheet.create({
   },
   segmentActive: { backgroundColor: colors.navy, borderColor: colors.navy },
   segmentText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
-  segmentTextActive: { color: '#FFFFFF' },
+  segmentTextActive: { color: colors.navyOn },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
-});
+}));

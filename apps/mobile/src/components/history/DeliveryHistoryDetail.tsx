@@ -23,7 +23,7 @@ import { DestinationMarker } from '@/components/map/DestinationMarker';
 import { useDriverMarkerTracksViewChanges } from '@/components/map/DriverMarker';
 import { Badge, Loading } from '@/components/ui';
 import { deliveryAddress, fetchDeliveryTracking } from '@/lib/deliveries';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 import type { Delivery, DeliveryDestination, TrackingPoint } from '@/types';
 
 const DEFAULT_REGION: Region = {
@@ -65,6 +65,8 @@ function timingLabel(delivery: Delivery): string {
 }
 
 export function DeliveryHistoryDetail({ delivery }: { delivery: Delivery }) {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { height: screenHeight } = useWindowDimensions();
   const mapHeight = screenHeight * 0.4;
@@ -246,7 +248,7 @@ function HistoryDestinationMarker({ coordinate }: { coordinate: DeliveryDestinat
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -327,4 +329,4 @@ const styles = StyleSheet.create({
   },
   customer: { fontSize: 18, fontWeight: '800', color: colors.text },
   address: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
-});
+}));

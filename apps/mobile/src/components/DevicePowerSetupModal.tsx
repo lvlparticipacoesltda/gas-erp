@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, ScrollView, Text, View } from 'react-native';
 import {
   getAutostartGuide,
   needsAutostartGuide,
@@ -14,7 +14,7 @@ import {
 } from '@/lib/device-power-setup';
 import { Button } from '@/components/ui';
 import { APP_DISPLAY_NAME } from '@/constants/branding';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 type Step = 'battery' | 'autostart';
 
@@ -25,6 +25,7 @@ export function DevicePowerSetupModal({
   visible: boolean;
   onCompleted: () => void;
 }) {
+  const styles = useStyles();
   const [step, setStep] = useState<Step>('battery');
   const autostartGuide = useMemo<AutostartGuide | null>(
     () => (needsAutostartGuide() ? getAutostartGuide() : null),
@@ -134,7 +135,7 @@ export function DevicePowerSetupModal({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -199,4 +200,4 @@ const styles = StyleSheet.create({
   secondaryButton: {
     marginTop: spacing.xs,
   },
-});
+}));

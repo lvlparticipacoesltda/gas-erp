@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, useColorScheme } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import type { LatLng } from '@gas-erp/shared';
 import type { DriverPosition } from '../../hooks/useDriverLocation';
@@ -12,6 +12,7 @@ import {
   GoogleStyleRoutePolyline,
 } from './map-navigation-styles';
 import { RouteCheckpointMarker } from './RouteCheckpointMarker';
+import { DARK_MAP_STYLE } from './dark-map-style';
 
 export type DriverMapRef = {
   recenter: () => void;
@@ -53,6 +54,7 @@ export const DriverMap = forwardRef<DriverMapRef, {
   onFollowPausedChange,
 }, ref) {
   const mapRef = useRef<MapView>(null);
+  const isDark = useColorScheme() === 'dark';
   const followPausedRef = useRef(false);
   const lastHeadingRef = useRef(0);
   const initialCameraDoneRef = useRef(false);
@@ -283,6 +285,11 @@ export const DriverMap = forwardRef<DriverMapRef, {
       showsUserLocation={false}
       showsMyLocationButton={false}
       toolbarEnabled={false}
+      // Camada do próprio mapa já carregado: não gera requisição faturável.
+      // Só em navegação, para não poluir a visão geral das entregas.
+      showsTraffic={isNavigationMode}
+      // iOS: o MapKit acompanha a aparência do sistema sozinho.
+      customMapStyle={Platform.OS === 'android' && isDark ? DARK_MAP_STYLE : undefined}
       rotateEnabled
       pitchEnabled={isDriverCentric}
       onPanDrag={() => {

@@ -7,7 +7,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { colors } from '../theme';
+import { makeStyles, useColors } from '../theme';
 
 interface BottomSheetProps {
   visible: boolean;
@@ -22,6 +22,7 @@ export function BottomSheet({
   children,
   maxHeightRatio = 0.72,
 }: BottomSheetProps) {
+  const styles = useStyles();
   const { height: screenHeight } = useWindowDimensions();
   const [mounted, setMounted] = useState(visible);
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -94,7 +95,7 @@ export function BottomSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   root: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -108,4 +109,4 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
-});
+}));

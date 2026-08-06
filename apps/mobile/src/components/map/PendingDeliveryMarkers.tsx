@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Callout, Marker } from 'react-native-maps';
 import {
   formatDistanceMeters,
@@ -11,7 +11,7 @@ import {
   formatSalePaymentsSummary,
 } from '../DeliverySaleSummary';
 import { deliveryAddress } from '../../lib/deliveries';
-import { colors, radius, spacing } from '../../theme';
+import { makeStyles, radius, spacing, useColors } from '../../theme';
 import type { Delivery, DeliveryDestination } from '../../types';
 import type { DriverPosition } from '../../hooks/useDriverLocation';
 import { DestinationMarker } from './DestinationMarker';
@@ -40,6 +40,7 @@ function DeliveryDestinationPin({
   address: string;
   onSelect?: (delivery: Delivery) => void;
 }) {
+  const styles = useStyles();
   // Marcadores customizados precisam manter tracksViewChanges para todos renderizarem (iOS e Android).
   const trackChanges = true;
 
@@ -135,7 +136,7 @@ export function PendingDeliveryMarkers({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   callout: {
     minWidth: 220,
     maxWidth: 280,
@@ -156,4 +157,4 @@ const styles = StyleSheet.create({
     color: colors.navy,
     marginTop: 6,
   },
-});
+}));

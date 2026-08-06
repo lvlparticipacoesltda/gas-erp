@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { PAYMENT_METHOD_LABELS } from '@gas-erp/shared';
-import { colors, spacing } from '../theme';
+import { makeStyles, spacing, useColors } from '../theme';
 import type { Sale, SaleItem } from '../types';
 
 function formatCurrency(value: number | string | null | undefined): string {
@@ -49,6 +49,7 @@ export function DeliverySaleSummary({
   itemsStyle?: StyleProp<TextStyle>;
   paymentStyle?: StyleProp<TextStyle>;
 }) {
+  const styles = useStyles();
   const items = formatSaleItemsSummary(sale);
   const payments = formatSalePaymentsSummary(sale);
 
@@ -67,9 +68,9 @@ export function DeliverySaleSummary({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { gap: spacing.xs },
   items: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
   payment: { fontSize: 12, fontWeight: '600', color: colors.textFaint },
   total: { fontSize: 14, fontWeight: '700', color: colors.text },
-});
+}));

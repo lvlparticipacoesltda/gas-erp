@@ -7,7 +7,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -22,7 +21,7 @@ import {
 import { Button } from '@/components/ui';
 import { api } from '@/lib/api';
 import { parseMoneyInput, sanitizeMoneyInput, formatMoneyDraft } from '@/lib/money-input';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 import {
   SalePaymentsEditor,
   createDefaultPaymentLines,
@@ -125,6 +124,8 @@ export function FinishPaymentsModal({
   onClose,
   onConfirm,
 }: FinishPaymentsModalProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [methods, setMethods] = useState<StorePaymentMethodOption[]>([]);
@@ -490,7 +491,7 @@ export function FinishPaymentsModal({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   fullscreen: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -574,4 +575,4 @@ const styles = StyleSheet.create({
   error: { fontSize: 13, color: colors.dangerText, textAlign: 'center' },
   actions: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
-});
+}));

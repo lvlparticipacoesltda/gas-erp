@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import {
   PAYMENT_METHOD_LABELS,
   formatPaymentSumHint,
@@ -7,7 +7,7 @@ import {
 } from '@gas-erp/shared';
 import { Button } from '@/components/ui';
 import { formatMoneyDraft, parseMoneyInput, sanitizeMoneyInput } from '@/lib/money-input';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 export interface StorePaymentMethodOption {
   id: string;
@@ -108,6 +108,8 @@ export function SalePaymentsEditor({
   onAmountFocus,
   comfortable = false,
 }: SalePaymentsEditorProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const availableMethods = useMemo(
     () => resolveEditorMethods(methods, gdpLocked, showGdpOption),
     [methods, gdpLocked, showGdpOption],
@@ -293,7 +295,7 @@ function formatBrl(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   root: { gap: spacing.sm },
   hint: { fontSize: 13, color: colors.textMuted },
   error: { fontSize: 13, color: colors.dangerText },
@@ -303,7 +305,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.primary,
-    backgroundColor: '#FFF4ED',
+    backgroundColor: colors.primaryMuted,
     gap: spacing.xs,
   },
   gdpTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
@@ -344,7 +346,7 @@ const styles = StyleSheet.create({
   },
   methodChipSelected: {
     borderColor: colors.primary,
-    backgroundColor: '#FFF4ED',
+    backgroundColor: colors.primaryMuted,
   },
   methodChipText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   methodChipTextComfortable: { fontSize: 14 },
@@ -395,4 +397,4 @@ const styles = StyleSheet.create({
     color: colors.warningText,
     lineHeight: 18,
   },
-});
+}));

@@ -4,9 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DeliveryHistoryDetail } from '@/components/history/DeliveryHistoryDetail';
 import { Loading, StateMessage } from '@/components/ui';
 import { useDeliveriesContext } from '@/lib/deliveries-context';
-import { colors } from '@/theme';
+import { useColors } from '@/theme';
 
 export default function DeliveryDetailScreen() {
+  const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getById, loading } = useDeliveriesContext();

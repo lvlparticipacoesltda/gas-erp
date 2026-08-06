@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import {
   formatWaitTime,
   formatCompletedDeliveryPhases,
@@ -12,7 +12,7 @@ import { DeliveryNotes } from './DeliveryNotes';
 import { Badge, Card } from './ui';
 import { DeliverySaleSummary } from './DeliverySaleSummary';
 import { deliveryAddress } from '../lib/deliveries';
-import { colors, spacing } from '../theme';
+import { makeStyles, spacing, useColors } from '../theme';
 import type { Delivery } from '../types';
 
 function waitLabel(delivery: Delivery): string {
@@ -51,6 +51,7 @@ export function DeliveryCard({
   onPress: () => void;
   highlighted?: boolean;
 }) {
+  const styles = useStyles();
   const display = getDeliveryDisplayStatus({
     status: delivery.status,
     sale: { status: delivery.sale.status },
@@ -77,7 +78,7 @@ export function DeliveryCard({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: { gap: spacing.sm },
   cardHighlighted: {
     borderWidth: 2,
@@ -87,4 +88,4 @@ const styles = StyleSheet.create({
   wait: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
   customer: { fontSize: 16, fontWeight: '700', color: colors.text },
   address: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
-});
+}));

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme';
+import { makeStyles, useColors } from '../../theme';
 
 export type DriverMarkerVariant = 'bicycle' | 'navigation';
 
@@ -12,6 +12,8 @@ export type DriverMarkerVariant = 'bicycle' | 'navigation';
  *   é aplicada pelo Marker no DriverMap).
  */
 export function DriverMarker({ variant = 'bicycle' }: { variant?: DriverMarkerVariant }) {
+  const styles = useStyles();
+  const colors = useColors();
   if (variant === 'navigation') {
     return (
       <View style={styles.navWrap} collapsable={false}>
@@ -46,7 +48,7 @@ export function useDriverMarkerTracksViewChanges(
   return tracksViewChanges;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {
     width: 44,
     height: 44,
@@ -78,4 +80,4 @@ const styles = StyleSheet.create({
   // O ícone `navigate` do Ionicons aponta para o canto superior direito (~45°);
   // rotaciona -45° para apontar exatamente para cima (direção do movimento).
   navIcon: { transform: [{ rotate: '-45deg' }] },
-});
+}));

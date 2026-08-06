@@ -14,15 +14,15 @@ export function RouteCheckpointMarker({
 }: {
   variant?: CheckpointVariant;
 }) {
-  const colors = VARIANTS[variant];
+  const variantColors = VARIANTS[variant];
 
   return (
     <View style={styles.wrap} collapsable={false}>
-      <View style={[styles.head, { backgroundColor: colors.fill, borderColor: colors.ring }]}>
+      <View style={[styles.head, { backgroundColor: variantColors.fill, borderColor: variantColors.ring }]}>
         <Ionicons name="flag" size={16} color="#FFFFFF" />
       </View>
-      <View style={[styles.stem, { backgroundColor: colors.fill }]} />
-      <View style={[styles.dot, { backgroundColor: colors.fill, borderColor: colors.ring }]} />
+      <View style={[styles.stem, { backgroundColor: variantColors.fill }]} />
+      <View style={[styles.dot, { backgroundColor: variantColors.fill, borderColor: variantColors.ring }]} />
     </View>
   );
 }

@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 /** Observação da venda para o entregador (telefone, endereço, etc.). */
 export function DeliveryNotes({
@@ -10,6 +10,8 @@ export function DeliveryNotes({
   notes?: string | null;
   numberOfLines?: number;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const text = notes?.trim();
   if (!text) return null;
 
@@ -26,7 +28,7 @@ export function DeliveryNotes({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -52,4 +54,4 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 20,
   },
-});
+}));

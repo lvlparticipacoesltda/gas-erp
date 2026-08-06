@@ -6,14 +6,16 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '@/theme';
+import { makeStyles, useColors } from '@/theme';
 
-const TAB_ACTIVE = colors.primary;
-const TAB_INACTIVE = colors.textFaint;
 const ICON_SIZE = 24;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function ExpandableTabBar(props: any) {
+  const styles = useStyles();
+  const colors = useColors();
+  const TAB_ACTIVE = colors.primary;
+  const TAB_INACTIVE = colors.textFaint;
   const { state, descriptors, navigation } = props;
   const insets = useSafeAreaInsets();
 
@@ -60,7 +62,7 @@ export function ExpandableTabBar(props: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {
     backgroundColor: colors.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -99,4 +101,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFF',
   },
-});
+}));

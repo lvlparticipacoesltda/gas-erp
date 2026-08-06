@@ -38,7 +38,12 @@ import {
   type ScheduleEntryDto,
   type TimeClockMe,
 } from '@/lib/schedules';
-import { colors, radius, spacing } from '@/theme';
+import {
+  THEME_PREFERENCE_LABELS,
+  THEME_PREFERENCE_OPTIONS,
+  useThemePreference,
+} from '@/lib/theme-preference';
+import { makeStyles, radius, spacing, useColors, type Colors, readableOn } from '@/theme';
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -63,14 +68,14 @@ function base64ByteLength(b64: string): number {
   return Math.floor((cleaned.length * 3) / 4) - padding;
 }
 
-function dayFillColor(type: ScheduleDayType) {
+function dayFillColor(type: ScheduleDayType, colors: Colors) {
   if (type === 'WORK') return colors.success;
   if (type === 'HALF_DAY') return colors.warning;
   if (type === 'VACATION') return colors.primary;
   return colors.textFaint;
 }
 
-function dayTypeBadgeColors(type: ScheduleDayType) {
+function dayTypeBadgeColors(type: ScheduleDayType, colors: Colors) {
   if (type === 'WORK') return { bg: colors.successBg, text: colors.successText };
   if (type === 'HALF_DAY') return { bg: colors.warningBg, text: colors.warningText };
   if (type === 'VACATION') return { bg: colors.surfaceAlt, text: colors.primary };
@@ -86,7 +91,58 @@ function formatCommitmentDate(date: string) {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
+/**
+ * Aparência do app.
+ *
+ * Fica na Escala porque o app não tem tela de ajustes e esta é a aba de assuntos
+ * pessoais do entregador — o topo do mapa já tem três botões e não comporta mais
+ * um. "Sistema" devolve o controle ao aparelho, inclusive ao agendamento por pôr
+ * do sol; as outras duas existem porque o contexto de quem entrega não é o do
+ * dono do celular: no guidão sob viseira o escuro pode valer o turno inteiro.
+ */
+function ThemeSetting() {
+  const styles = useStyles();
+  const colors = useColors();
+  const { preference, setPreference } = useThemePreference();
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>Aparência</Text>
+      <View style={styles.themeRow}>
+        {THEME_PREFERENCE_OPTIONS.map((option) => {
+          const active = preference === option;
+          return (
+            <Pressable
+              key={option}
+              onPress={() => setPreference(option)}
+              style={[styles.themeOption, active && styles.themeOptionActive]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Aparência ${THEME_PREFERENCE_LABELS[option]}`}
+            >
+              <Ionicons
+                name={
+                  option === 'system' ? 'phone-portrait-outline'
+                    : option === 'light' ? 'sunny-outline'
+                      : 'moon-outline'
+                }
+                size={18}
+                color={active ? colors.navyOn : colors.textMuted}
+              />
+              <Text style={[styles.themeOptionText, active && styles.themeOptionTextActive]}>
+                {THEME_PREFERENCE_LABELS[option]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export default function ScheduleScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const { user, logout } = useAuth();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -234,7 +290,7 @@ export default function ScheduleScreen() {
 
   const selectedEntry = selectedDate ? entryByDate.get(selectedDate) : undefined;
   const nextBadgeColors = nextCommitment
-    ? dayTypeBadgeColors(nextCommitment.dayType)
+    ? dayTypeBadgeColors(nextCommitment.dayType, colors)
     : null;
 
   const canPunch =
@@ -618,7 +674,7 @@ export default function ScheduleScreen() {
                   const entry = cell.date ? entryByDate.get(cell.date) : undefined;
                   const isSelected = cell.date === selectedDate;
                   const hasEntry = Boolean(entry);
-                  const fill = entry ? dayFillColor(entry.dayType) : undefined;
+                  const fill = entry ? dayFillColor(entry.dayType, colors) : undefined;
                   return (
                     <Pressable
                       key={`${wi}-${idx}`}
@@ -641,7 +697,8 @@ export default function ScheduleScreen() {
                           style={[
                             styles.dayNum,
                             !hasEntry && styles.dayNumMuted,
-                            hasEntry && { color: colors.primaryText },
+                            // O fundo da célula muda com o tipo do dia: o rótulo é escolhido por luminância.
+                            hasEntry && fill ? { color: readableOn(fill) } : null,
                           ]}
                         >
                             {cell.day}
@@ -830,6 +887,8 @@ export default function ScheduleScreen() {
             </Text>
           )}
         </View>
+
+        <ThemeSetting />
       </ScrollView>
 
       <Modal
@@ -927,7 +986,7 @@ export default function ScheduleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   blockedContent: {
@@ -1071,7 +1130,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#F0D5C4',
+    borderColor: colors.border,
   },
   nextUnitIcon: {
     width: 28,
@@ -1118,7 +1177,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: spacing.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#F0D5C4',
+    borderColor: colors.border,
   },
   punchUnitLabel: {
     fontSize: 10,
@@ -1133,6 +1192,24 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   hint: { fontSize: 12, color: colors.textMuted },
+  themeRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    // 44 de altura: alvo de toque mínimo, com luva e em pé.
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  themeOptionActive: { backgroundColor: colors.navy, borderColor: colors.navy },
+  themeOptionText: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
+  themeOptionTextActive: { color: colors.navyOn },
   punchStatus: { fontSize: 13, color: colors.text, fontWeight: '600' },
   syncRow: {
     flexDirection: 'row',
@@ -1236,7 +1313,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#F0D5C4',
+    borderColor: colors.border,
     marginTop: spacing.xs,
   },
   modalUnitLabel: {
@@ -1271,4 +1348,4 @@ const styles = StyleSheet.create({
   badgeTextHalf: { color: colors.warningText },
   badgeTextOff: { color: colors.textMuted },
   modalNotes: { fontSize: 13, color: colors.text, marginTop: 4 },
-});
+}));

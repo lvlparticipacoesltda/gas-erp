@@ -4,7 +4,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -16,9 +15,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, Loading } from '@/components/ui';
 import { BrandLogo } from '@/components/BrandLogo';
 import { useAuth } from '@/lib/auth';
-import { colors, radius, spacing } from '@/theme';
+import { makeStyles, radius, spacing, useColors } from '@/theme';
 
 export default function LoginScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const { login, token, initializing, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -171,7 +172,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   safe: { flex: 1, backgroundColor: colors.surface },
   flex: { flex: 1 },
   center: { flex: 1, backgroundColor: colors.surface, justifyContent: 'center' },
@@ -223,4 +224,4 @@ const styles = StyleSheet.create({
   pairingHint: { fontSize: 12, color: colors.textFaint, marginTop: 4, lineHeight: 16 },
   error: { color: colors.dangerText, fontSize: 13, marginTop: spacing.sm },
   submit: { marginTop: spacing.lg },
-});
+}));
