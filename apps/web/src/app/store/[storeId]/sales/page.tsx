@@ -41,6 +41,8 @@ interface Sale {
   mobileApproval?: string;
   createdByDelivererId?: string | null;
   total: number | string;
+  deliveryNeighborhood?: string | null;
+  items?: { id: string; quantity: number; product?: { name: string } | null }[];
   customer?: { name: string };
   attendant?: { name: string } | null;
   createdByDeliverer?: { user: { name: string } } | null;
@@ -54,6 +56,17 @@ interface DelivererOption {
 }
 
 const PAGE_SIZE = 20;
+
+/** "2x P13, 1x Água 20L" — itens iguais somados, na ordem em que aparecem na venda. */
+function summarizeSaleItems(items: Sale['items']): string[] {
+  const byName = new Map<string, number>();
+  for (const item of items ?? []) {
+    const name = item.product?.name?.trim();
+    if (!name) continue;
+    byName.set(name, (byName.get(name) ?? 0) + item.quantity);
+  }
+  return Array.from(byName.entries()).map(([name, qty]) => `${qty}x ${name}`);
+}
 
 export default function SalesListPage() {
   const { storeId } = useParams<{ storeId: string }>();
@@ -379,10 +392,12 @@ export default function SalesListPage() {
             <tr>
               <th className="p-3">Data</th>
               <th className="p-3">Cliente</th>
+              <th className="p-3">Bairro</th>
               <th className="p-3">Atendente</th>
               <th className="p-3">Entregador</th>
               <th className="p-3">Espera p/ rota</th>
               <th className="p-3">Tempo em rota</th>
+              <th className="p-3">Produtos</th>
               <th className="p-3">Status</th>
               <th className="p-3">Total</th>
               <th className="p-3" />
@@ -394,6 +409,7 @@ export default function SalesListPage() {
               const attendantName = getSaleAttendantName(s);
               const fromMobile = isMobileOriginatedSale(s);
               const fromBackdate = isBackdatedSale(s);
+              const productLines = summarizeSaleItems(s.items);
               return (
               <tr key={s.id} className="border-t border-slate-100">
                 <td className="p-3">
@@ -404,6 +420,7 @@ export default function SalesListPage() {
                   </div>
                 </td>
                 <td className="p-3">{s.customer?.name ?? '-'}</td>
+                <td className="p-3">{s.deliveryNeighborhood?.trim() || '—'}</td>
                 <td className="p-3">
                   <div>{attendantName ?? '—'}</div>
                   {fromMobile && attendantName && (
@@ -430,6 +447,19 @@ export default function SalesListPage() {
                     : '—'}
                 </td>
                 <td className="p-3">
+                  {productLines.length === 0 ? (
+                    '—'
+                  ) : (
+                    <div className="flex max-w-[16rem] flex-col gap-0.5 text-sm">
+                      {productLines.map((line) => (
+                        <span key={line} className="truncate" title={line}>
+                          {line}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td className="p-3">
                   <Badge tone={display.tone}>
                     {display.label}
                   </Badge>
@@ -453,7 +483,7 @@ export default function SalesListPage() {
             );})}
             {sales.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-6 text-center text-sm text-slate-400">
+                <td colSpan={11} className="p-6 text-center text-sm text-slate-400">
                   Nenhuma venda encontrada.
                 </td>
               </tr>
