@@ -82,6 +82,11 @@ export function canManageSales(role: string): boolean {
   return role === 'ORG_MASTER' || role === 'STORE_MANAGER' || role === 'PLATFORM_ADMIN';
 }
 
+/** Edição de itens/preços de uma venda já registrada — apenas master. */
+export function canEditSaleItems(role: string): boolean {
+  return role === 'ORG_MASTER' || role === 'PLATFORM_ADMIN';
+}
+
 /** Ajuste manual de estoque e transferências — gerente e master. */
 export function canManageStock(role: string): boolean {
   return role === 'ORG_MASTER' || role === 'STORE_MANAGER' || role === 'PLATFORM_ADMIN';

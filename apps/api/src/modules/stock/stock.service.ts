@@ -14,6 +14,14 @@ import { paginate, paginatedResult } from '../../common/utils/pagination';
 
 type DbClient = PrismaService | Prisma.TransactionClient;
 
+function qtyByProduct(items: { productId: string; quantity: number }[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const item of items) {
+    map.set(item.productId, (map.get(item.productId) ?? 0) + item.quantity);
+  }
+  return map;
+}
+
 /** Motivo padrão da baixa de estoque por venda (usado para idempotência e estorno). */
 export const SALE_STOCK_OUT_REASON = 'Ref. à venda de mercadorias.';
 /** Motivo do estorno ao cancelar venda que já havia baixado estoque. */
@@ -317,6 +325,31 @@ export class StockService {
     if (await this.hasSaleStockDeduction(db, saleId)) return;
     for (const item of items) {
       await this.deductForSale(db, storeId, item.productId, item.quantity, userId, saleId);
+    }
+  }
+
+  /**
+   * Ajusta estoque pela diferença de itens de uma venda que já baixou mercadoria.
+   * Quantidade a mais → nova baixa; a menos → estorno.
+   */
+  async adjustSaleStockForItemChanges(
+    db: DbClient,
+    storeId: string,
+    oldItems: { productId: string; quantity: number }[],
+    newItems: { productId: string; quantity: number }[],
+    userId: string,
+    saleId: string,
+  ) {
+    const oldQty = qtyByProduct(oldItems);
+    const newQty = qtyByProduct(newItems);
+    const productIds = new Set([...oldQty.keys(), ...newQty.keys()]);
+    for (const productId of productIds) {
+      const delta = (newQty.get(productId) ?? 0) - (oldQty.get(productId) ?? 0);
+      if (delta > 0) {
+        await this.deductForSale(db, storeId, productId, delta, userId, saleId);
+      } else if (delta < 0) {
+        await this.restoreForCancelledSale(db, storeId, productId, -delta, userId, saleId);
+      }
     }
   }
 

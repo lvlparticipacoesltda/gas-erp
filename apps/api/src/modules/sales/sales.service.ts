@@ -6,11 +6,13 @@ import {
   createMobileSaleSchema,
   updateSaleStatusSchema,
   updateSalePaymentsSchema,
+  updateSaleItemsSchema,
   rejectSaleBackdateSchema,
   rejectSaleMobileSchema,
   type CreateSaleInput,
   type CreateMobileSaleInput,
   canManageSales,
+  canEditSaleItems,
   canApproveMobileSales,
   hasScreenPermission,
   resolveSaleBackdateInput,
@@ -1215,6 +1217,57 @@ export class SalesService {
     }
   }
 
+  private async assertSaleItemsForUpdate(
+    user: AuthUser,
+    storeId: string,
+    newItems: { productId: string; quantity: number }[],
+    oldItems: { productId: string; quantity: number }[],
+    stockAlreadyDeducted: boolean,
+  ) {
+    const reserved = new Map<string, number>();
+    if (stockAlreadyDeducted) {
+      for (const item of oldItems) {
+        reserved.set(item.productId, (reserved.get(item.productId) ?? 0) + item.quantity);
+      }
+    }
+
+    const existingIds = new Set(oldItems.map((item) => item.productId));
+    const qtyByProduct = new Map<string, number>();
+    for (const item of newItems) {
+      qtyByProduct.set(item.productId, (qtyByProduct.get(item.productId) ?? 0) + item.quantity);
+    }
+
+    for (const [productId, quantity] of qtyByProduct) {
+      const product = await this.prisma.product.findFirst({
+        where: { id: productId, organizationId: user.organizationId },
+        include: {
+          stockBalances: { where: { storeId } },
+        },
+      });
+
+      if (!product) {
+        throw new BadRequestException('Produto não encontrado.');
+      }
+      if (!product.active && !existingIds.has(productId)) {
+        throw new BadRequestException(`Produto "${product.name}" está inativo.`);
+      }
+
+      const balance = product.stockBalances[0];
+      if (!balance) {
+        throw new BadRequestException(
+          `Produto "${product.name}" sem estoque cadastrado nesta loja. Ajuste em Estoque.`,
+        );
+      }
+
+      const extraNeeded = quantity - (reserved.get(productId) ?? 0);
+      if (extraNeeded > 0 && balance.available < extraNeeded) {
+        throw new BadRequestException(
+          `Estoque insuficiente para "${product.name}" (disponível: ${balance.available}).`,
+        );
+      }
+    }
+  }
+
   private assertCanUpdateSaleStatus(
     user: AuthUser,
     currentStatus: SaleStatus,
@@ -1666,6 +1719,201 @@ export class SalesService {
     }
 
     this.notifyStoreRealtime(sale.storeId, sale.store.organizationId, 'sale_payments');
+
+    return this.findOne(user, id);
+  }
+
+  async updateItems(user: AuthUser, id: string, input: unknown) {
+    if (!canEditSaleItems(user.role)) {
+      throw new ForbiddenException('Apenas o master pode alterar os itens desta venda.');
+    }
+
+    const parsed = updateSaleItemsSchema.parse(input);
+    const sale = await this.prisma.sale.findUnique({
+      where: { id },
+      include: {
+        store: { select: { organizationId: true } },
+        payments: true,
+        items: true,
+      },
+    });
+
+    if (!sale || sale.store.organizationId !== user.organizationId) {
+      throw new NotFoundException('Venda não encontrada');
+    }
+
+    assertStoreAccess(user, sale.storeId);
+
+    if (sale.status === SaleStatus.CANCELLED) {
+      throw new BadRequestException('Não é possível alterar itens de venda cancelada.');
+    }
+    if (sale.backdateApproval === 'PENDING') {
+      throw new BadRequestException(
+        'Venda aguardando aprovação de data retroativa. Aguarde aprovação do gerente.',
+      );
+    }
+    if (sale.backdateApproval === 'REJECTED') {
+      throw new BadRequestException('Venda retroativa rejeitada não pode ser alterada.');
+    }
+    if (sale.mobileApproval === 'PENDING') {
+      throw new BadRequestException(
+        'Venda aguardando aprovação do app. Aguarde aprovação da loja.',
+      );
+    }
+    if (sale.mobileApproval === 'REJECTED') {
+      throw new BadRequestException('Venda do app rejeitada não pode ser alterada.');
+    }
+
+    const oldItems = sale.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    }));
+    const newItems = parsed.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discount: item.discount ?? 0,
+      storePaymentMethodId: item.storePaymentMethodId ?? null,
+    }));
+
+    const hadDeduction = await this.stockService.hasSaleStockDeduction(this.prisma, sale.id);
+    await this.assertSaleItemsForUpdate(user, sale.storeId, newItems, oldItems, hadDeduction);
+
+    const deliveryFee = toNumber(sale.deliveryFee);
+    const saleTotal =
+      newItems.reduce(
+        (sum, item) => sum + item.quantity * item.unitPrice - item.discount,
+        0,
+      ) + deliveryFee;
+
+    let paymentsInput = parsed.payments;
+    if (!paymentsInput?.length && !anyItemHasPaymentMethod(newItems)) {
+      const existing = sale.payments.map((p) => ({
+        method: p.method,
+        storePaymentMethodId: p.storePaymentMethodId ?? undefined,
+        amount: toNumber(p.amount),
+      }));
+      if (existing.length === 1) {
+        paymentsInput = [{ ...existing[0], amount: saleTotal }];
+      } else if (Math.abs(toNumber(sale.total) - saleTotal) <= 0.009) {
+        paymentsInput = existing;
+      } else {
+        throw new BadRequestException('Informe os pagamentos para o novo total da venda.');
+      }
+    }
+
+    const {
+      resolvedPayments,
+      gasDoPovoBenefit,
+      deliveryFeeStorePaymentMethodId,
+    } = await this.resolveSalePaymentPlan(
+      sale.storeId,
+      newItems,
+      deliveryFee,
+      {
+        payments: paymentsInput,
+        gasDoPovoBenefit: anyItemHasPaymentMethod(newItems)
+          ? undefined
+          : paymentsInput?.some((p) => p.method === 'GDP')
+            ? true
+            : paymentsInput?.length
+              ? false
+              : sale.gasDoPovoBenefit,
+        deliveryFeeStorePaymentMethodId:
+          parsed.deliveryFeeStorePaymentMethodId !== undefined
+            ? parsed.deliveryFeeStorePaymentMethodId
+            : sale.deliveryFeeStorePaymentMethodId,
+      },
+    );
+
+    try {
+      assertSalePaymentsTotal(resolvedPayments, saleTotal);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Pagamentos inválidos.');
+    }
+
+    const unitCostByProduct = await this.resolveItemUnitCosts(sale.storeId, newItems);
+    const previousItems = sale.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: toNumber(item.unitPrice),
+    }));
+
+    await this.prisma.$transaction(async (tx) => {
+      const deductedNow = await this.stockService.hasSaleStockDeduction(tx, sale.id);
+      if (deductedNow) {
+        await this.stockService.adjustSaleStockForItemChanges(
+          tx,
+          sale.storeId,
+          oldItems,
+          newItems,
+          user.id,
+          sale.id,
+        );
+      }
+
+      await tx.saleItem.deleteMany({ where: { saleId: id } });
+      await tx.saleItem.createMany({
+        data: newItems.map((item) => ({
+          saleId: id,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          unitCost: unitCostByProduct.get(item.productId) ?? 0,
+          discount: item.discount,
+          total: item.quantity * item.unitPrice - item.discount,
+          storePaymentMethodId: item.storePaymentMethodId || undefined,
+        })),
+      });
+
+      await tx.sale.update({
+        where: { id },
+        data: {
+          total: saleTotal,
+          gasDoPovoBenefit,
+          deliveryFeeStorePaymentMethodId,
+        },
+      });
+
+      await tx.salePayment.deleteMany({ where: { saleId: id } });
+      await tx.salePayment.createMany({
+        data: resolvedPayments.map((p) => ({
+          saleId: id,
+          method: p.method,
+          amount: p.amount,
+          storePaymentMethodId: p.storePaymentMethodId,
+          processingFee: p.processingFee,
+        })),
+      });
+
+      await tx.saleStatusLog.create({
+        data: {
+          saleId: id,
+          status: sale.status,
+          userId: user.id,
+          notes: 'Itens da venda atualizados',
+        },
+      });
+    });
+
+    try {
+      await this.audit.log(user, 'UPDATE_ITEMS', 'Sale', id, {
+        storeId: sale.storeId,
+        previousItems,
+        newItems: newItems.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        })),
+        previousTotal: toNumber(sale.total),
+        total: saleTotal,
+        stockAdjusted: hadDeduction,
+      });
+    } catch {
+      // auditoria não bloqueia
+    }
+
+    this.notifyStoreRealtime(sale.storeId, sale.store.organizationId, 'sale_updated');
 
     return this.findOne(user, id);
   }

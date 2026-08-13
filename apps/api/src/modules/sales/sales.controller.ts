@@ -76,6 +76,13 @@ export class SalesController {
     return this.salesService.updatePayments(user, id, body);
   }
 
+  @Patch(':id/items')
+  @UseGuards(RolesGuard)
+  @Roles('ORG_MASTER', 'PLATFORM_ADMIN')
+  updateItems(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.salesService.updateItems(user, id, body);
+  }
+
   @Post(':id/backdate/approve')
   approveBackdate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.salesService.approveBackdate(user, id);

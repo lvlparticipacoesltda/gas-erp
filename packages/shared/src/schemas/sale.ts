@@ -78,6 +78,22 @@ export const updateSaleItemUnitPriceSchema = z.object({
   unitPrice: z.number().nonnegative(),
 });
 
+export const updateSaleItemsSchema = z.object({
+  items: z.array(saleItemSchema).min(1, 'Informe ao menos um produto.'),
+  payments: z.array(salePaymentSchema).optional(),
+  deliveryFeeStorePaymentMethodId: z.string().min(1).optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (anyItemHasPaymentMethod(data.items) && !allItemsHavePaymentMethod(data.items)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Defina a forma de pagamento em todos os produtos.',
+      path: ['items'],
+    });
+  }
+});
+
+export type UpdateSaleItemsInput = z.infer<typeof updateSaleItemsSchema>;
+
 export const updateSalePaymentsSchema = z.object({
   payments: z.array(salePaymentSchema).optional(),
   /** Atualiza forma de pagamento por item; quando enviado, os pagamentos são recalculados. */

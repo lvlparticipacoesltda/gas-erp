@@ -17,9 +17,20 @@ import {
   type StorePaymentMethodOption,
 } from '@/components/sale-payments-editor';
 import {
+  SaleItemPaymentsEditor,
+  paymentMethodsForSale,
+} from '@/components/sale-item-payments-editor';
+import {
+  SaleItemsEditor,
+  storeCatalogPrice,
+  type CatalogProduct,
+  type EditableSaleLine,
+} from '@/components/sale-items-editor';
+import {
   BACKDATE_APPROVAL_LABELS,
   MOBILE_APPROVAL_LABELS,
   canManageSales,
+  canEditSaleItems,
   canApproveMobileSales,
   getPaymentLinesSumErrorMessage,
   hasScreenPermission,
@@ -35,7 +46,10 @@ import {
   getRouteDurationSeconds,
   getWaitTimeSeconds,
   isDelivererAssignableForSale,
+  allItemsHavePaymentMethod,
+  buildPaymentAllocationsFromItems,
   type DelivererTimeClockStatus,
+  type PaginatedResponse,
 } from '@gas-erp/shared';
 
 interface SaleDetail {
@@ -57,6 +71,7 @@ interface SaleDetail {
   total: number | string;
   gasDoPovoBenefit?: boolean;
   deliveryFee?: number | string;
+  deliveryFeeStorePaymentMethod?: { id: string; label: string; systemCode: string | null } | null;
   notes?: string | null;
   canceledReason?: string | null;
   canceledAt?: string | null;
@@ -65,10 +80,12 @@ interface SaleDetail {
   deliveryNeighborhood?: string | null;
   deliveryCity?: string | null;
   deliveryState?: string | null;
-  customer?: { name: string; phone?: string | null } | null;
+  customer?: { id?: string; name: string; phone?: string | null } | null;
   deliverer?: { id: string; user: { name: string } } | null;
   attendant?: { id: string; name: string; email?: string } | null;
   items: {
+    id: string;
+    productId: string;
     quantity: number;
     unitPrice: number | string;
     product: { name: string };
@@ -122,6 +139,13 @@ export default function SaleDetailPage() {
   const [paymentLines, setPaymentLines] = useState<SalePaymentLine[]>([]);
   const [editingPayments, setEditingPayments] = useState(false);
   const [savingPayments, setSavingPayments] = useState(false);
+  const [editingItems, setEditingItems] = useState(false);
+  const [savingItems, setSavingItems] = useState(false);
+  const [itemLines, setItemLines] = useState<EditableSaleLine[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [customerPriceByProduct, setCustomerPriceByProduct] = useState<Record<string, number>>({});
+  const [itemPaymentByProduct, setItemPaymentByProduct] = useState(false);
+  const [deliveryFeeMethodId, setDeliveryFeeMethodId] = useState('');
 
   function mapSalePaymentsToLines(
     s: SaleDetail,
@@ -173,6 +197,7 @@ export default function SaleDetailPage() {
     setPaymentMethods(methods);
     setPaymentLines(mapSalePaymentsToLines(s, methods));
     setEditingPayments(false);
+    setEditingItems(false);
     const terminal = s.status === 'DELIVERED' || s.status === 'PORTARIA';
     const current = getStoredUser<{ role: string }>();
     const manager = current ? canManageSales(current.role) : false;
@@ -302,6 +327,149 @@ export default function SaleDetailPage() {
     }
   }
 
+  function saleItemsToLines(s: SaleDetail): EditableSaleLine[] {
+    const byProduct = new Map<string, EditableSaleLine>();
+    for (const item of s.items) {
+      const existing = byProduct.get(item.productId);
+      if (existing) {
+        existing.quantity += Math.max(1, Math.floor(Number(item.quantity) || 1));
+      } else {
+        byProduct.set(item.productId, {
+          productId: item.productId,
+          quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
+          unitPrice: parsePrice(item.unitPrice),
+          storePaymentMethodId: item.storePaymentMethod?.id,
+        });
+      }
+    }
+    return [...byProduct.values()];
+  }
+
+  function resolveEditUnitPrice(productId: string): number {
+    const custom = customerPriceByProduct[productId];
+    if (custom != null) return custom;
+    const product = products.find((p) => p.id === productId);
+    return storeCatalogPrice(product);
+  }
+
+  function applyItemLines(next: EditableSaleLine[]) {
+    setItemLines(next);
+    if (itemPaymentByProduct) return;
+    const nextTotal =
+      next.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+      + parsePrice(sale?.deliveryFee);
+    setPaymentLines((current) => {
+      if (current.length === 1) {
+        return [{ ...current[0], amount: nextTotal }];
+      }
+      return current;
+    });
+  }
+
+  async function startEditItems() {
+    if (!sale) return;
+    setError('');
+    setEditingPayments(false);
+    const byProduct = sale.items.some((item) => item.storePaymentMethod?.id);
+    setItemPaymentByProduct(byProduct);
+    setItemLines(saleItemsToLines(sale));
+    setPaymentLines(mapSalePaymentsToLines(sale, paymentMethods));
+    setDeliveryFeeMethodId(sale.deliveryFeeStorePaymentMethod?.id ?? '');
+    setEditingItems(true);
+
+    try {
+      const catalog = await api<PaginatedResponse<CatalogProduct>>(
+        `/products?storeId=${storeId}&pageSize=100`,
+        {},
+        getToken(),
+      );
+      setProducts(catalog.data);
+    } catch {
+      setProducts([]);
+    }
+
+    if (sale.customer?.id) {
+      try {
+        const map = await api<Record<string, number>>(
+          `/customers/${sale.customer.id}/product-prices/map?storeId=${storeId}`,
+          {},
+          getToken(),
+        );
+        setCustomerPriceByProduct(map);
+      } catch {
+        setCustomerPriceByProduct({});
+      }
+    } else {
+      setCustomerPriceByProduct({});
+    }
+  }
+
+  async function saveItems() {
+    if (!sale) return;
+    if (itemLines.length === 0) {
+      setError('Adicione pelo menos um produto.');
+      return;
+    }
+    if (itemLines.some((item) => item.unitPrice <= 0)) {
+      setError('Informe um preço válido para todos os produtos.');
+      return;
+    }
+    const nextTotal =
+      itemLines.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+      + parsePrice(sale.deliveryFee);
+    if (nextTotal <= 0) {
+      setError('O total da venda deve ser maior que zero.');
+      return;
+    }
+
+    if (itemPaymentByProduct) {
+      if (!allItemsHavePaymentMethod(itemLines)) {
+        setError('Defina a forma de pagamento em todos os produtos.');
+        return;
+      }
+    } else if (!paymentsMatchTotal(paymentLines, nextTotal)) {
+      setError(getPaymentLinesSumErrorMessage(paymentLines, nextTotal));
+      return;
+    }
+
+    setError('');
+    setSavingItems(true);
+    try {
+      await api(`/sales/${saleId}/items`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          items: itemLines.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            storePaymentMethodId: itemPaymentByProduct
+              ? item.storePaymentMethodId
+              : undefined,
+          })),
+          payments: itemPaymentByProduct
+            ? buildPaymentAllocationsFromItems(
+                itemLines.map((item) => ({
+                  storePaymentMethodId: item.storePaymentMethodId,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                })),
+                parsePrice(sale.deliveryFee),
+                deliveryFeeMethodId || sale.deliveryFeeStorePaymentMethod?.id || null,
+              )
+            : salePaymentLinesToPayload(paymentLines),
+          deliveryFeeStorePaymentMethodId: itemPaymentByProduct
+            ? (deliveryFeeMethodId || sale.deliveryFeeStorePaymentMethod?.id || undefined)
+            : undefined,
+        }),
+      }, getToken());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar itens da venda');
+    } finally {
+      setSavingItems(false);
+    }
+  }
+
   if (!sale) {
     return <PageLoader />;
   }
@@ -316,6 +484,7 @@ export default function SaleDetailPage() {
   const display = getSaleDisplayStatus(sale);
   const currentUser = getStoredUser<{ role: string; permissions?: string[] }>();
   const isManager = currentUser ? canManageSales(currentUser.role) : false;
+  const isMaster = currentUser ? canEditSaleItems(currentUser.role) : false;
   const isFinance = currentUser?.role === 'FINANCE';
   const hasSalesScreen = currentUser
     ? hasScreenPermission(currentUser.role, currentUser.permissions, 'store.sales')
@@ -347,10 +516,34 @@ export default function SaleDetailPage() {
   const canEditPayments =
     sale.status !== 'CANCELLED'
     && (isManager || isFinance || (hasSalesScreen && !isTerminal));
+  const canEditItems =
+    isMaster
+    && sale.status !== 'CANCELLED'
+    && !isPendingBackdate
+    && !isPendingMobile
+    && sale.backdateApproval !== 'REJECTED'
+    && sale.mobileApproval !== 'REJECTED';
   const assignableDeliverers = deliverers.filter(
     (d) => isDelivererAssignableForSale(d, storeId).assignable || d.id === sale.deliverer?.id,
   );
   const saleTotal = parsePrice(sale.total);
+  const editItemsTotal =
+    itemLines.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+    + parsePrice(sale.deliveryFee);
+  const defaultItemPaymentMethodId =
+    (
+      paymentMethodsForSale(paymentMethods).find((m) => m.systemCode === 'CASH')
+      ?? paymentMethodsForSale(paymentMethods)[0]
+    )?.id ?? null;
+  const editorProducts: CatalogProduct[] = (() => {
+    const byId = new Map(products.map((p) => [p.id, p]));
+    for (const item of sale.items) {
+      if (!byId.has(item.productId)) {
+        byId.set(item.productId, { id: item.productId, name: item.product.name });
+      }
+    }
+    return [...byId.values()];
+  })();
 
   return (
     <>
@@ -563,22 +756,109 @@ export default function SaleDetailPage() {
             </dl>
 
             <h3 className="mb-2 mt-6 font-medium">Itens</h3>
-            <ul className="space-y-1 text-sm">
-              {sale.items.flatMap((item, itemIndex) => {
-                const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
-                return Array.from({ length: qty }, (_, unitIndex) => (
-                  <li key={`${itemIndex}-${unitIndex}`}>
-                    1x {item.product.name} — {formatCurrency(item.unitPrice)}
-                    {item.storePaymentMethod?.label ? (
-                      <span className="text-slate-500"> · {item.storePaymentMethod.label}</span>
-                    ) : null}
-                  </li>
-                ));
-              })}
-            </ul>
+            {canEditItems && editingItems ? (
+              <div className="space-y-4">
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Se a venda já baixou estoque, aumentar ou diminuir a quantidade ajusta o estoque automaticamente.
+                </p>
+                <SaleItemsEditor
+                  products={editorProducts}
+                  items={itemLines}
+                  onChange={applyItemLines}
+                  resolveUnitPrice={resolveEditUnitPrice}
+                  defaultPaymentMethodId={defaultItemPaymentMethodId}
+                  assignPaymentMethod={itemPaymentByProduct}
+                />
+                {itemPaymentByProduct ? (
+                  <SaleItemPaymentsEditor
+                    methods={paymentMethods}
+                    items={itemLines.map((item) => ({
+                      key: item.productId,
+                      label: (products.find((p) => p.id === item.productId)?.name
+                        ?? sale.items.find((s) => s.productId === item.productId)?.product.name
+                        ?? 'Produto'),
+                      quantity: item.quantity,
+                      unitPrice: item.unitPrice,
+                      storePaymentMethodId: item.storePaymentMethodId || '',
+                    }))}
+                    onChangeItemMethod={(productId, storePaymentMethodId) => {
+                      applyItemLines(
+                        itemLines.map((item) =>
+                          item.productId === productId
+                            ? { ...item, storePaymentMethodId }
+                            : item,
+                        ),
+                      );
+                    }}
+                    deliveryFee={parsePrice(sale.deliveryFee)}
+                    deliveryFeeStorePaymentMethodId={deliveryFeeMethodId}
+                    onChangeDeliveryFeeMethod={setDeliveryFeeMethodId}
+                  />
+                ) : (
+                  <SalePaymentsEditor
+                    methods={paymentMethods}
+                    lines={paymentLines}
+                    onChange={setPaymentLines}
+                    saleTotal={editItemsTotal}
+                    gdpLocked={false}
+                    gdpMethodId={paymentMethods.find((m) => m.systemCode === 'GDP')?.id}
+                  />
+                )}
+                <p className="text-sm font-semibold text-slate-900">
+                  Novo total: {formatCurrency(editItemsTotal)}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" disabled={savingItems} onClick={saveItems}>
+                    {savingItems ? 'Salvando...' : 'Salvar itens'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={savingItems}
+                    onClick={() => {
+                      setItemLines(saleItemsToLines(sale));
+                      setPaymentLines(mapSalePaymentsToLines(sale, paymentMethods));
+                      setEditingItems(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <ul className="space-y-1 text-sm">
+                  {sale.items.flatMap((item, itemIndex) => {
+                    const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+                    return Array.from({ length: qty }, (_, unitIndex) => (
+                      <li key={`${itemIndex}-${unitIndex}`}>
+                        1x {item.product.name} — {formatCurrency(item.unitPrice)}
+                        {item.storePaymentMethod?.label ? (
+                          <span className="text-slate-500"> · {item.storePaymentMethod.label}</span>
+                        ) : null}
+                      </li>
+                    ));
+                  })}
+                </ul>
+                {canEditItems ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-3"
+                    onClick={startEditItems}
+                  >
+                    Editar itens
+                  </Button>
+                ) : null}
+              </>
+            )}
 
             <h3 className="mb-2 mt-4 font-medium">Pagamentos</h3>
-            {canEditPayments && editingPayments ? (
+            {editingItems ? (
+              <p className="text-sm text-slate-500">
+                Os pagamentos serão atualizados junto com os itens.
+              </p>
+            ) : canEditPayments && editingPayments ? (
               <div className="space-y-3">
                 <SalePaymentsEditor
                   methods={paymentMethods}
