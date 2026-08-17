@@ -26,6 +26,7 @@ interface StoreStat {
   operatingExpenses?: number;
   netCost?: number;
   netProfit?: number;
+  p13ClosingStock?: number;
 }
 
 export default function MasterDashboardPage() {
@@ -157,6 +158,10 @@ export default function MasterDashboardPage() {
                         )}
                       </>
                     )}
+                    <div>
+                      <div className="text-slate-500">Estoque final GLP 13KG (P13)</div>
+                      <div className="font-semibold">{s.p13ClosingStock ?? 0}</div>
+                    </div>
                   </div>
                   <div className="mt-3 text-sm font-medium text-brand">Abrir loja →</div>
                 </Card>

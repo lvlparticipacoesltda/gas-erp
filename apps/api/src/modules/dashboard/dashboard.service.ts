@@ -19,6 +19,7 @@ import {
   computeNetRevenue,
   computeSaleCogs,
   formatDashboardDateRangeLabel,
+  isGlpP13Product,
   toNumber,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -215,6 +216,7 @@ export class DashboardService {
       salesGrouped,
       activeDeliveries,
       summary,
+      p13ClosingByStore,
       saleItemsByStore,
       paymentsByStore,
       operatingExpenses,
@@ -242,6 +244,7 @@ export class DashboardService {
           })
         : Promise.resolve([]),
       this.computeDashboardForStores(storeIds, start, end, dateFrom, dateTo, true, user),
+      this.computeP13ClosingByStore(storeIds, start, end),
       showFinancial && storeIds.length
         ? this.prisma.saleItem.findMany({
             where: { sale: sharedSaleWhere },
@@ -322,6 +325,7 @@ export class DashboardService {
         salesCount,
         salesTotal,
         activeDeliveries: activeDeliveryCount,
+        p13ClosingStock: p13ClosingByStore.get(store.id) ?? 0,
         ...financialSummary,
       };
     });
@@ -380,6 +384,95 @@ export class DashboardService {
     }
 
     return { total: round2(total), byStore };
+  }
+
+  /**
+   * Estoque final de GLP 13KG (P13) por unidade no período (mesma regra do resumo diário).
+   */
+  private async computeP13ClosingByStore(
+    storeIds: string[],
+    start: Date,
+    end: Date,
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    for (const storeId of storeIds) result.set(storeId, 0);
+    if (storeIds.length === 0) return result;
+
+    const balances = await this.prisma.stockBalance.findMany({
+      where: { storeId: { in: storeIds } },
+      select: {
+        storeId: true,
+        productId: true,
+        available: true,
+        product: { select: { name: true, sku: true, productType: true } },
+      },
+    });
+
+    const p13ProductIds = [
+      ...new Set(
+        balances
+          .filter((row) => isGlpP13Product(row.product))
+          .map((row) => row.productId),
+      ),
+    ];
+    if (p13ProductIds.length === 0) return result;
+
+    const movements = await this.prisma.stockMovement.findMany({
+      where: {
+        storeId: { in: storeIds },
+        productId: { in: p13ProductIds },
+        createdAt: { gte: start },
+      },
+      select: {
+        storeId: true,
+        type: true,
+        quantity: true,
+        createdAt: true,
+      },
+    });
+
+    type Acc = {
+      current: number;
+      sinceStartIn: number;
+      sinceStartOut: number;
+      periodIn: number;
+      periodOut: number;
+    };
+    const byStore = new Map<string, Acc>();
+    const ensure = (storeId: string): Acc => {
+      let acc = byStore.get(storeId);
+      if (!acc) {
+        acc = { current: 0, sinceStartIn: 0, sinceStartOut: 0, periodIn: 0, periodOut: 0 };
+        byStore.set(storeId, acc);
+      }
+      return acc;
+    };
+
+    for (const row of balances) {
+      if (!p13ProductIds.includes(row.productId)) continue;
+      ensure(row.storeId).current += row.available;
+    }
+
+    for (const movement of movements) {
+      const acc = ensure(movement.storeId);
+      const inPeriod = movement.createdAt >= start && movement.createdAt < end;
+      if (movement.type === 'IN') {
+        acc.sinceStartIn += movement.quantity;
+        if (inPeriod) acc.periodIn += movement.quantity;
+      } else {
+        acc.sinceStartOut += movement.quantity;
+        if (inPeriod) acc.periodOut += movement.quantity;
+      }
+    }
+
+    for (const storeId of storeIds) {
+      const acc = byStore.get(storeId);
+      if (!acc) continue;
+      const opening = acc.current - acc.sinceStartIn + acc.sinceStartOut;
+      result.set(storeId, opening + acc.periodIn - acc.periodOut);
+    }
+
+    return result;
   }
 
   private emptyDashboard(dateFrom: string, dateTo: string): DashboardPayload {
