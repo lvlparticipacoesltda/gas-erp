@@ -18,6 +18,7 @@ import {
   computeNetProfitFromNetCost,
   computeNetRevenue,
   computeSaleCogs,
+  computeSaleGdpStats,
   formatDashboardDateRangeLabel,
   isGlpP13Product,
   toNumber,
@@ -758,37 +759,23 @@ export class DashboardService {
         }
       }
 
-      const gdpPaymentRevenue = sale.payments.reduce((sum, payment) => {
-        const isGdpPayment =
-          payment.method === 'GDP' ||
-          (payment.storePaymentMethodId != null &&
-            gdpMethodIds.has(payment.storePaymentMethodId));
-        return isGdpPayment ? sum + toNumber(payment.amount) : sum;
-      }, 0);
-
-      const itemGdpQty = sale.items.reduce((sum, item) => {
-        const isGdpItem =
-          item.storePaymentMethodId != null &&
-          gdpMethodIds.has(item.storePaymentMethodId);
-        return isGdpItem && isGlp(item.product.productType) ? sum + item.quantity : sum;
-      }, 0);
-
-      const glpItemsRevenue = sale.items.reduce(
-        (sum, item) =>
-          isGlp(item.product.productType) ? sum + toNumber(item.total) : sum,
-        0,
+      const gdpStats = computeSaleGdpStats(
+        {
+          gasDoPovoBenefit: sale.gasDoPovoBenefit,
+          items: sale.items.map((item) => ({
+            quantity: item.quantity,
+            total: item.total,
+            productType: item.product.productType,
+            storePaymentMethodId: item.storePaymentMethodId,
+          })),
+          payments: sale.payments,
+        },
+        gdpMethodIds,
       );
 
-      const saleIsGdp =
-        sale.gasDoPovoBenefit || gdpPaymentRevenue > 0 || itemGdpQty > 0;
-      const saleGdpQty = itemGdpQty > 0 ? itemGdpQty : saleIsGdp ? saleGlpQty : 0;
-      // Sem linha GDP (ex.: venda por produto com taxa Gás do Povo): usa o valor dos itens GLP.
-      const saleGdpRevenue =
-        gdpPaymentRevenue > 0 ? gdpPaymentRevenue : saleIsGdp ? glpItemsRevenue : 0;
-
-      gdpQuantity += saleGdpQty;
-      gdpRevenue += saleGdpRevenue;
-      if (saleIsGdp) gdpSalesCount += 1;
+      gdpQuantity += gdpStats.quantity;
+      gdpRevenue += gdpStats.revenue;
+      if (gdpStats.isGdp) gdpSalesCount += 1;
 
       if (sale.delivererId) {
         const id = sale.delivererId;
@@ -798,11 +785,11 @@ export class DashboardService {
         );
         gdpQuantityByDelivererId.set(
           id,
-          (gdpQuantityByDelivererId.get(id) ?? 0) + saleGdpQty,
+          (gdpQuantityByDelivererId.get(id) ?? 0) + gdpStats.quantity,
         );
         gdpRevenueByDelivererId.set(
           id,
-          (gdpRevenueByDelivererId.get(id) ?? 0) + saleGdpRevenue,
+          (gdpRevenueByDelivererId.get(id) ?? 0) + gdpStats.revenue,
         );
       }
 
