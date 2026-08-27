@@ -56,6 +56,38 @@ export async function apiBlobUrl(path: string, token?: string | null): Promise<s
   return URL.createObjectURL(await res.blob());
 }
 
+/** Dispara o download de um arquivo autenticado (planilha, CSV, etc.). */
+export async function apiDownloadFile(
+  path: string,
+  token?: string | null,
+  fallbackName = 'download',
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { headers, cache: 'no-store' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    const code = extractApiErrorCode(err);
+    const message = parseApiError(err, 'Não foi possível baixar o arquivo');
+    if (res.status === 401 && code === SESSION_SUPERSEDED_CODE) {
+      handleSessionSuperseded(message);
+    }
+    throw new Error(message);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  const filename = match?.[1]?.trim() || fallbackName;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('token');

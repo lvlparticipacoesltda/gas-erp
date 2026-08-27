@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { BrandLoader, PageLoader } from '@/components/brand-loader';
 import { CustomerAddressFields, customerAddressPayload, type CustomerAddressForm } from '@/components/customer-address-fields';
@@ -16,14 +16,16 @@ import { TableAction, TableActions } from '@/components/table-actions';
 import { useConfirm } from '@/components/confirm-dialog';
 import { useToast } from '@/components/toast';
 import { Badge, Button, Input, Label, PageHeader, Select, Table } from '@/components/ui';
-import { api, getToken } from '@/lib/api';
+import { api, apiDownloadFile, getStoredUser, getToken } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { formatSaleAddress } from '@/lib/sale-utils';
 import {
   CUSTOMER_CATEGORY_FILTER_NONE,
+  canExportCustomerBase,
   getSaleDisplayStatus,
   getSaleDelivererName,
   PAYMENT_METHOD_LABELS,
+  type AuthUser,
   type PaginatedResponse,
 } from '@gas-erp/shared';
 
@@ -280,6 +282,8 @@ export default function CustomersPage() {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [canExport, setCanExport] = useState(false);
 
   async function loadCategories() {
     const rows = await api<CustomerCategoryOption[]>('/customers/categories', {}, getToken());
@@ -311,6 +315,11 @@ export default function CustomersPage() {
   }
 
   useEffect(() => {
+    const user = getStoredUser<AuthUser>();
+    setCanExport(!!user && canExportCustomerBase(user.role));
+  }, []);
+
+  useEffect(() => {
     void loadCategories().catch(() => setCategories([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -332,6 +341,21 @@ export default function CustomersPage() {
     setPage(1);
     setAppliedSearch('');
     setAppliedCategoryId('');
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await apiDownloadFile(
+        `/customers/export?storeId=${encodeURIComponent(storeId)}`,
+        getToken(),
+        'clientes.xlsx',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível exportar a base.');
+    } finally {
+      setExporting(false);
+    }
   }
 
   function openCreate() {
@@ -543,7 +567,19 @@ export default function CustomersPage() {
         </div>
       </FilterPanel>
 
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        {canExport && (
+          <Button
+            type="button"
+            variant="secondary"
+            className="gap-1.5"
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            <Download className="h-4 w-4" />
+            Exportar base
+          </Button>
+        )}
         <Button type="button" onClick={openCreate} className="gap-1.5">
           <Plus className="h-4 w-4" />
           Criar

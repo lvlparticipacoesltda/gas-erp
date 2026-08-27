@@ -1,5 +1,6 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SaleStatus } from '@gas-erp/database';
+import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   customerAddressSchema,
@@ -9,6 +10,8 @@ import {
   phoneSearchTerms,
   CUSTOMER_CATEGORY_FILTER_NONE,
   CUSTOMER_CATEGORY_NAMES,
+  canExportCustomerBase,
+  formatDateKeyInTimezone,
 } from '@gas-erp/shared';
 import { AuthUser, toNumber } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -362,5 +365,89 @@ export class CustomersService {
     await this.getCustomerInOrg(user, customerId, storeId);
     const rows = await this.listProductPrices(user, customerId, storeId);
     return Object.fromEntries(rows.map((row) => [row.productId, row.price]));
+  }
+
+  async exportXlsx(user: AuthUser, storeId: string): Promise<{ filename: string; buffer: Buffer }> {
+    if (!canExportCustomerBase(user.role)) {
+      throw new ForbiddenException('Sem permissão para exportar a base de clientes');
+    }
+    if (!storeId) throw new BadRequestException('storeId é obrigatório');
+    assertStoreAccess(user, storeId);
+
+    const store = await this.prisma.store.findFirst({
+      where: { id: storeId, organizationId: user.organizationId },
+      select: { code: true },
+    });
+    if (!store) throw new BadRequestException('Loja não encontrada');
+
+    const customers = await this.prisma.customer.findMany({
+      where: {
+        organizationId: user.organizationId,
+        storeId,
+        active: true,
+      },
+      include: {
+        category: { select: { name: true } },
+        addresses: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Gas ERP';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Clientes');
+    sheet.columns = [
+      { header: 'Nome', key: 'name', width: 32 },
+      { header: 'Telefone', key: 'phone', width: 18 },
+      { header: 'CPF/CNPJ', key: 'document', width: 18 },
+      { header: 'E-mail', key: 'email', width: 28 },
+      { header: 'Categoria', key: 'category', width: 16 },
+      { header: 'Logradouro', key: 'street', width: 28 },
+      { header: 'Número', key: 'number', width: 10 },
+      { header: 'Complemento', key: 'complement', width: 18 },
+      { header: 'Bairro', key: 'neighborhood', width: 18 },
+      { header: 'Cidade', key: 'city', width: 18 },
+      { header: 'UF', key: 'state', width: 6 },
+      { header: 'CEP', key: 'zipCode', width: 12 },
+      { header: 'Ponto de referência', key: 'landmark', width: 24 },
+      { header: 'Observações', key: 'notes', width: 28 },
+    ];
+
+    for (const customer of customers) {
+      const addr = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0];
+      sheet.addRow({
+        name: customer.name,
+        phone: customer.phone ?? '',
+        document: customer.document ?? '',
+        email: customer.email ?? '',
+        category: customer.category?.name ?? '',
+        street: addr?.street ?? '',
+        number: addr?.number ?? '',
+        complement: addr?.complement ?? '',
+        neighborhood: addr?.neighborhood ?? '',
+        city: addr?.city ?? '',
+        state: addr?.state ?? '',
+        zipCode: addr?.zipCode ?? '',
+        landmark: addr?.landmark ?? '',
+        notes: customer.notes ?? '',
+      });
+    }
+
+    sheet.getRow(1).font = { bold: true };
+    if (customers.length > 0) {
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: customers.length + 1, column: 14 },
+      };
+    }
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    const code = store.code.replace(/[^A-Za-z0-9_-]+/g, '-') || 'unidade';
+    return {
+      filename: `clientes-${code}-${formatDateKeyInTimezone(new Date())}.xlsx`,
+      buffer: Buffer.from(arrayBuffer),
+    };
   }
 }

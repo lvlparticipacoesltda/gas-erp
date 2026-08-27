@@ -87,6 +87,11 @@ export function canEditSaleItems(role: string): boolean {
   return role === 'ORG_MASTER' || role === 'PLATFORM_ADMIN';
 }
 
+/** Exportação da base de clientes em planilha — apenas master. */
+export function canExportCustomerBase(role: string): boolean {
+  return role === 'ORG_MASTER' || role === 'PLATFORM_ADMIN';
+}
+
 /** Ajuste manual de estoque e transferências — gerente e master. */
 export function canManageStock(role: string): boolean {
   return role === 'ORG_MASTER' || role === 'STORE_MANAGER' || role === 'PLATFORM_ADMIN';

@@ -1,7 +1,19 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
 import { CustomersService } from './customers.service';
-import { JwtAuthGuard } from '../../common/guards';
-import { CurrentUser } from '../../common/decorators';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
+import { CurrentUser, Roles } from '../../common/decorators';
 import { AuthUser } from '@gas-erp/shared';
 
 @Controller('customers')
@@ -32,6 +44,21 @@ export class CustomersController {
   @Get('categories')
   listCategories(@CurrentUser() user: AuthUser) {
     return this.customersService.listCategories(user);
+  }
+
+  /** Planilha da base ativa da unidade — somente master. */
+  @Get('export')
+  @UseGuards(RolesGuard)
+  @Roles('ORG_MASTER', 'PLATFORM_ADMIN')
+  async exportXlsx(
+    @CurrentUser() user: AuthUser,
+    @Query('storeId') storeId: string,
+  ) {
+    const { filename, buffer } = await this.customersService.exportXlsx(user, storeId);
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${filename}"`,
+    });
   }
 
   @Get(':id/product-prices/map')
