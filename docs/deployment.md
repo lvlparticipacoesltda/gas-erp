@@ -2,14 +2,14 @@
 
 Guia para colocar o Gas ERP em produção e evoluir a infraestrutura conforme o negócio cresce.
 
-## Status atual (jul/2026)
+## Status atual (set/2026)
 
 Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Povo.
 
 | Item | Status | Detalhe |
 |------|--------|---------|
 | Repositório GitHub | ✅ | `lvlparticipacoesltda/gas-erp` |
-| Banco PostgreSQL (Neon) | ✅ | 21 migrations aplicadas em produção |
+| Banco PostgreSQL (Neon) | ✅ | 46 migrations aplicadas em produção |
 | API (Fly.io GRU) | ✅ | `https://api.thlgasdopovo.com.br` — ver [fly-migration.md](fly-migration.md) |
 | API (Railway — legado) | ⏳ | `gas-erpapi-production.up.railway.app` — pausar após 24–48h estáveis no Fly |
 | Web (Vercel) | ✅ | Alias `gas-erp-web.vercel.app` |
@@ -27,12 +27,12 @@ Deploy MVP **no ar** e validado em uso para a Rede Gás Litoral / THL Gás do Po
 
 | Commit | Descrição |
 |--------|-----------|
-| `f427a17` | Métricas de entrega renomeadas + tempo total da entrega |
-| `4bbf3dd` | Vendas efetivadas contabilizadas corretamente em painéis e relatórios |
+| `6c826aa` | Export XLSX da base de clientes (master) |
+| `917dfa0` | Master edita itens e valores da venda |
+| `e077e59` | Atestados e justificativas de ponto |
+| `14083fb` | Vasilhames emprestados |
 | `a2787ab` | Mobile aponta para `api.thlgasdopovo.com.br` (Fly) |
 | `123314b` | Deploy da API no Fly.io GRU |
-| `51db304` | Otimização de latência + deploy seletivo (Sprint 2) |
-| `c2ca6c6` | Ícones e logos da marca no painel web |
 
 ### URLs de produção
 
@@ -109,7 +109,7 @@ Hoje o domínio raiz (`thlgasdopovo.com.br`) aponta para a Vercel e `api.thlgasd
 
 ## App do entregador (Expo — `apps/mobile`)
 
-App React Native (Expo SDK 56 + `expo-router`) usado pelos entregadores para ver entregas atribuídas, iniciar a rota (abre o Google Maps), acompanhar o tempo em rota, concluir a entrega e enviar GPS em segundo plano. O foco inicial é **Android**, perfil de uso típico dos entregadores.
+App React Native (Expo SDK 56 + `expo-router`) — nome **THLGDP Entregador**. Entregadores: mapa in-app, entregas, venda, GPS em segundo plano. Atendentes: escala + bater ponto. Foco **Android**.
 
 - JWT guardado com `expo-secure-store`
 - GPS em segundo plano com `expo-location` + `expo-task-manager` durante entregas `IN_PROGRESS`
@@ -463,7 +463,7 @@ Roadmap detalhado com sprints: **[roadmap.md](roadmap.md)**
 
 **Status:** 🟡 Quase concluído — falta apenas redirect `www` (1.7).
 
-- [x] **21 migrations** em produção (`20260701120000_deliverer_gps_stale_reminder`)
+- [x] **46 migrations** em produção (`20260806160000_time_clock_justifications`)
 - [x] **`DIRECT_URL`** no Railway (migrations estáveis no Neon)
 - [x] **Senhas demo** trocadas em produção
 - [x] **Build AAB produção** (`eas build --profile production`)
@@ -524,7 +524,7 @@ Ver [playstore-checklist.md](playstore-checklist.md) · [roadmap.md](roadmap.md)
 - [x] Clientes por loja + preço por cliente
 - [x] Mapa de entregadores (presença GPS)
 - [x] Venda pelo app entregador com aprovação na loja
-- [x] Auto-refresh 15s no resumo diário e dashboard master
+- [x] SSE no resumo diário e dashboard master (fallback 60s)
 - [x] Pagamentos múltiplos + geocoding + sugestão de entregador por proximidade
 - [x] Inativar vs excluir (usuários, lojas, clientes, entregadores)
 - [x] Aba entregadores no painel master (`/master/deliverers`)
@@ -532,6 +532,12 @@ Ver [playstore-checklist.md](playstore-checklist.md) · [roadmap.md](roadmap.md)
 - [x] GPS stale + alerta quando posição do entregador para
 - [x] Métricas entregador: rotas realizadas vs canceladas
 - [x] Resend + domínio verificado (recuperação de senha)
+- [x] Escalas, horários, cartão de ponto, atestados
+- [x] Gastos por unidade + resultado por unidade
+- [x] Vasilhames emprestados
+- [x] Sessões + dispositivos confiáveis
+- [x] Notificações master
+- [x] Fechamento loja/master
 
 ### Infraestrutura (Sprint 2 — ver [roadmap.md](roadmap.md))
 

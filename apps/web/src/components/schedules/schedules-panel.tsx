@@ -47,14 +47,6 @@ interface MonthGrid {
   collaborators: CollaboratorRow[];
 }
 
-interface PunchMe {
-  date: string;
-  nextType: 'CLOCK_IN' | 'CLOCK_OUT' | null;
-  dayComplete?: boolean;
-  punches: Array<{ id: string; type: string; punchedAt: string; source: string }>;
-  schedule: ScheduleEntry | null;
-}
-
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
@@ -90,14 +82,12 @@ export function SchedulesPanel({
   stores,
   showStoreFilter,
   showRoleTabs,
-  showPunchCard,
 }: {
   user: AuthUser;
   storeId?: string;
   stores?: Array<{ id: string; name: string }>;
   showStoreFilter?: boolean;
   showRoleTabs?: boolean;
-  showPunchCard?: boolean;
 }) {
   const canEdit = canManageSchedules(user.role);
   const now = new Date();
@@ -131,8 +121,6 @@ export function SchedulesPanel({
     notes: '',
   });
 
-  const [punch, setPunch] = useState<PunchMe | null>(null);
-  const [punching, setPunching] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [applyWeekliesOpen, setApplyWeekliesOpen] = useState(false);
 
@@ -190,27 +178,9 @@ export function SchedulesPanel({
       pendingScrollLeftRef.current = tableScrollRef.current.scrollLeft;
     }
   }
-  const loadPunch = useCallback(async () => {
-    if (!showPunchCard || !storeId) return;
-    try {
-      const data = await api<PunchMe>(
-        `/time-clock/me?storeId=${encodeURIComponent(storeId)}`,
-        {},
-        getToken(),
-      );
-      setPunch(data);
-    } catch {
-      setPunch(null);
-    }
-  }, [showPunchCard, storeId]);
-
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    void loadPunch();
-  }, [loadPunch]);
 
   const days = useMemo(
     () => Array.from({ length: grid?.daysInMonth ?? 0 }, (_, i) => i + 1),
@@ -361,30 +331,6 @@ export function SchedulesPanel({
     }
   }
 
-  async function doPunch() {
-    if (!punch || !storeId || !punch.nextType || punch.dayComplete) return;
-    setPunching(true);
-    try {
-      await api(
-        '/time-clock/punch',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            storeId,
-            type: punch.nextType,
-            source: 'WEB',
-          }),
-        },
-        getToken(),
-      );
-      await loadPunch();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao bater ponto');
-    } finally {
-      setPunching(false);
-    }
-  }
-
   function shiftMonth(delta: number) {
     const d = new Date(year, month - 1 + delta, 1);
     setYear(d.getFullYear());
@@ -393,36 +339,6 @@ export function SchedulesPanel({
 
   return (
     <div className="space-y-4">
-      {showPunchCard && punch ? (
-        <Card className="flex flex-wrap items-center justify-between gap-3 border-brand-200 bg-brand-50/40 p-4">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">Meu ponto de hoje</div>
-            <div className="mt-1 text-xs text-slate-600">
-              {punch.punches.length === 0
-                ? 'Nenhum registro ainda'
-                : punch.punches
-                    .map(
-                      (p) =>
-                        `${p.type === 'CLOCK_IN' ? 'Entrada' : 'Saída'} ${new Date(p.punchedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
-                    )
-                    .join(' · ')}
-            </div>
-          </div>
-          <Button
-            onClick={() => void doPunch()}
-            disabled={punching || punch.dayComplete || !punch.nextType}
-          >
-            {punching
-              ? 'Registrando…'
-              : punch.dayComplete || !punch.nextType
-                ? 'Ponto do dia completo'
-                : punch.nextType === 'CLOCK_IN'
-                  ? 'Bater entrada'
-                  : 'Bater saída'}
-          </Button>
-        </Card>
-      ) : null}
-
       <FilterBar>
         {showStoreFilter && stores && stores.length > 0 ? (
           <FilterField label="Unidade">

@@ -50,11 +50,25 @@ export function computeNetProfit(grossProfit: number, processingFees: number): n
 }
 
 /**
- * Percentual de uma linha do resultado sobre o faturamento: margem quando o valor é
- * lucro, participação quando é custo. Sem faturamento no período não há base de
- * comparação, então retorna null em vez de zero.
+ * Percentual de uma linha do resultado sobre o faturamento: participação de custo
+ * ou margem sobre a receita. Sem faturamento no período não há base, então retorna
+ * null em vez de zero.
+ *
+ * No resumo/visão geral a margem operacional usa {@link computeCogsMarginPercent}
+ * (base = CMV). Esta função permanece para o DRE, onde cada linha é % da receita.
  */
 export function computeMarginPercent(revenue: number, value: number): number | null {
   if (revenue <= 0) return null;
   return Math.round((value / revenue) * 10000) / 100;
+}
+
+/**
+ * Margem sobre o CMV: lucro ÷ custo da mercadoria.
+ *
+ * Ex.: venda 100, CMV 80 → 25% (não 20%, que seria sobre o faturamento).
+ * Sem CMV no período não há base — retorna null.
+ */
+export function computeCogsMarginPercent(cogs: number, profit: number): number | null {
+  if (cogs <= 0) return null;
+  return Math.round((profit / cogs) * 10000) / 100;
 }

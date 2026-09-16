@@ -57,7 +57,7 @@ async function renderCardToCanvas(
   host.style.position = 'fixed';
   host.style.left = '-10000px';
   host.style.top = '0';
-  host.style.width = '1100px';
+  host.style.width = '820px';
   host.style.background = '#fff';
   host.style.zIndex = '-1';
   document.body.appendChild(host);
@@ -76,8 +76,8 @@ async function renderCardToCanvas(
       scale: 2,
       backgroundColor: '#ffffff',
       useCORS: true,
-      width: 1100,
-      windowWidth: 1100,
+      width: 820,
+      windowWidth: 820,
     });
   } finally {
     root.unmount();
@@ -353,7 +353,12 @@ export function TimeClockLogPanel({
         <p className="text-sm text-slate-500">
           Visualização apenas — edição de batidas é restrita a master e gerente.
         </p>
-      ) : null}
+      ) : (
+        <p className="text-sm text-slate-500">
+          Entregador e atendente batem ponto no aplicativo. Aqui dá para ajustar só
+          os horários de entrada e saída.
+        </p>
+      )}
 
       <FilterBar>
         {showStoreFilter && storeOptions.length > 0 ? (
@@ -491,22 +496,6 @@ export function TimeClockLogPanel({
                     </Button>
                   </div>
                 ) : null}
-              </div>
-
-              <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-                {[
-                  ['Normais', currentCard.totals.totalNormais],
-                  ['Faltas', String(currentCard.totals.faltas)],
-                  ['Atrasos', String(currentCard.totals.atrasos)],
-                  ['Falta/atraso', currentCard.totals.faltaEAtraso ?? '—'],
-                  ['Abono', currentCard.totals.abono ?? '—'],
-                  ['Banco saldo', currentCard.totals.bancoSaldo ?? '—'],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <div className="text-xs text-slate-500">{label}</div>
-                    <div className="text-lg font-bold tabular-nums text-slate-900">{value}</div>
-                  </div>
-                ))}
               </div>
 
               <div className="overflow-x-auto">

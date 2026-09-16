@@ -136,7 +136,31 @@ pnpm db:studio      # Prisma Studio
 | `20260627160000_customer_product_prices` | Preço negociado por cliente/produto/loja |
 | `20260627180000_customer_per_store` | Clientes vinculados a loja específica |
 | `20260701120000_deliverer_gps_stale_reminder` | Lembrete quando GPS do entregador para de atualizar |
+| `20260714010000_store_address_fields` | Endereço estruturado + geo da loja |
 | `20260715120000_deliverer_available_store` | Disponibilidade no mapa por unidade (`availableStoreId`) |
+| `20260715150000_sale_item_payment_method` | Forma de pagamento por item da venda |
+| `20260721120000_product_vasilhame_link` | Vínculo produto cheio ↔ vasilhame |
+| `20260722120000_notifications` | Notification + NotificationRead |
+| `20260722140000_delivery_optional_deliverer` | Entrega sem entregador alocado |
+| `20260722160000_store_cnpj` | CNPJ da loja (cupom) |
+| `20260722190000_sale_delivery_coordinates` | Lat/lng de entrega na venda |
+| `20260722200000_work_schedules_time_clock` | Escalas + batidas de ponto |
+| `20260722210000_user_hr_fields` | CPF/PIS/admissão/cargo |
+| `20260723120000_store_legal_name` | Razão social da loja |
+| `20260723130000_backfill_gas_do_povo_benefit` | Backfill flag GDP |
+| `20260724120000_work_schedule_per_user` | Escala única por org+user+data |
+| `20260724180000_customer_categories_p13_p20_p45` | Categorias de cliente |
+| `20260728150000_user_sessions` | UserSession (JWT `sid`) |
+| `20260729170000_work_schedule_weekly` | Horários semanais |
+| `20260729180000_schedule_day_vacation` | Tipo de dia `VACATION` |
+| `20260730120000_deliverer_default_store` | Unidade padrão do entregador |
+| `20260730150000_trusted_devices` | TrustedDevice + pairing |
+| `20260730160000_time_clock_punch_slot` | Slots ent1/sai1/ent2/sai2 |
+| `20260730170000_customer_category_gas_do_povo` | Categoria Gás do Povo |
+| `20260803150000_expenses` | ExpenseCategory + Expense |
+| `20260804150000_expense_store_required` | `storeId` obrigatório na despesa |
+| `20260806120000_vasilhame_loans` | VasilhameLoan (comodato) |
+| `20260806160000_time_clock_justifications` | Atestados/justificativas de ponto |
 
 ### Neon / Railway
 
@@ -232,7 +256,7 @@ npx expo start --dev-client
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-No emulador: abra **Gás do Povo Entregador**. Pressione **`r`** no Metro para recarregar JS.
+No emulador: abra **THLGDP Entregador**. Pressione **`r`** no Metro para recarregar JS.
 
 ### Modo 2 — APK preview (EAS, sem Metro)
 
@@ -250,9 +274,10 @@ npx eas build -p android --profile production # AAB Play Store
 
 - Apenas usuários com papel **`DELIVERER`**
 - Use `entregador@gas.com` / `admin123` (seed)
-- Abas: **Entregas**, **Venda** (criar pedido), **Histórico**
+- Entregador: **Mapa**, **Venda**, **Histórico**, **Escala**
+- Atendente: **Escala** + bater ponto (GPS 100 m + selfie)
 
-### Fluxo testado (jul/2026)
+### Fluxo testado (jul/2026 — mapa; ponto validado ago/2026)
 
 1. Login entregador
 2. Tela **Mapa** com posição GPS + botão de entregas (estilo 99)
@@ -298,60 +323,46 @@ Ver seção completa em versões anteriores deste doc. Principais:
 
 ---
 
-## Progresso atual (jul/2026)
+## Progresso atual (set/2026)
 
 ### Produção (web + API)
 
 | Item | Status |
 |------|--------|
 | Deploy Vercel + Fly.io GRU + Neon | ✅ |
-| Domínio thlgasdopovo.com.br | ✅ |
+| 46 migrations em produção | ✅ até `time_clock_justifications` |
 | Vendas, estoque, clientes, RBAC | ✅ |
-| Fornecedores + compras (notas de entrada) | ✅ |
-| Relatórios (vendas, compras, estoque) + CSV | ✅ |
-| Formas de pagamento + taxas + receita líquida | ✅ |
-| Custo fornecedor + margem bruta | ✅ |
-| Clientes por loja + preço por cliente | ✅ |
-| Mapa de entregadores (presença GPS) | ✅ |
-| Venda mobile com aprovação na loja | ✅ |
-| Wizard de venda + Portaria + GDP | ✅ |
-| Data retroativa com aprovação gerente | ✅ |
-| Resumo diário De/Até + auto-refresh 15s | ✅ |
-| Dashboard master consolidado | ✅ |
-| Paginação server-side (20/pág) | ✅ |
-| Entregador N:N unidades | ✅ |
-| Push FCM (nova rota / cancelamento / lembrete) | ✅ |
-| Pagamentos múltiplos + geocoding + sugestão entregador | ✅ |
-| Inativar vs excluir (usuários, lojas, clientes, entregadores) | ✅ |
-| Aba entregadores no painel master | ✅ |
-| Páginas privacidade e exclusão de conta (Play Store) | ✅ |
+| Escalas, horários, cartão de ponto, atestados | ✅ |
+| Gastos por unidade + resultado por unidade | ✅ |
+| Vasilhames emprestados | ✅ |
+| Sessões + dispositivos confiáveis | ✅ |
+| Notificações + SSE (fallback 60s) | ✅ |
+| Fechamento loja/master | ✅ |
+| Fornecedores, compras, relatórios CSV | ✅ |
+| Categorias de cliente + export XLSX | ✅ |
+| Master edita itens da venda | ✅ |
 
-### App entregador (`apps/mobile`)
+### App mobile (`apps/mobile` — THLGDP Entregador)
 
 | Item | Status |
 |------|--------|
-| Tela **Mapa** fullscreen + picker de entregas (estilo 99) | ✅ jul/2026 |
-| Rota in-app com polyline + reroteamento automático | ✅ jul/2026 |
-| Login DELIVERER + entregas + detalhe | ✅ |
-| Iniciar rota / Maps / concluir | ✅ |
-| GPS background + presença no mapa | ✅ |
-| Push FCM + som customizado | ✅ |
-| Criar venda (aba Venda) | ✅ |
-| Build EAS preview (APK) | ✅ |
-| Build EAS production (AAB) | ✅ |
-| Data safety + vídeo GPS (Play Console) | ✅ |
-| Submit / publicação Play Store | ✅ Publicado jul/2026 |
+| Tela **Mapa** + rota in-app (polyline) | ✅ |
+| Login DELIVERER / ATTENDANT | ✅ |
+| Venda + histórico (entregador) | ✅ |
+| Escala + ponto (GPS 100 m + selfie) | ✅ |
+| Push FCM + GPS background | ✅ |
+| Play Store | ✅ Publicado jul/2026 |
 
 ### Commits recentes (referência)
 
 | Commit | Descrição |
 |--------|-----------|
-| `f427a17` | Métricas de entrega renomeadas + tempo total |
-| `4bbf3dd` | Vendas efetivadas em painéis e relatórios |
-| `a2787ab` | Mobile aponta para API Fly (`api.thlgasdopovo.com.br`) |
-| `123314b` | Deploy da API no Fly.io GRU |
-| `51db304` | Otimização de latência + CI/deploy seletivo |
-| `c2ca6c6` | Ícones e logos da marca no painel web |
+| `6c826aa` | Export XLSX da base de clientes (master) |
+| `917dfa0` | Master edita itens e valores da venda |
+| `e077e59` | Atestados e justificativas de ponto |
+| `14083fb` | Controle de vasilhames emprestados |
+| `f427a17` | Métricas de entrega + tempo total |
+| `a2787ab` | Mobile aponta para API Fly |
 
 ---
 

@@ -11,7 +11,7 @@ Controle de acesso do Gas ERP: papéis, lojas vinculadas e permissões granulare
 | STORE_MANAGER | Operação da loja | Uma ou mais (UserStore) |
 | ATTENDANT | Vendas e clientes | Uma ou mais |
 | FINANCE | Vendas, resumo, fornecedores, compras, relatórios | Uma ou mais |
-| DELIVERER | App mobile (entregas + venda) | Uma ou mais |
+| DELIVERER | App mobile (entregas + venda + escala) | Uma ou mais |
 
 Token JWT contém `organizationId`, `storeIds[]` e `permissions[]` (telas efetivas após `resolveUserPermissions`).
 
@@ -33,6 +33,7 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 | `store.sales` | Vendas |
 | `store.sales.new` | Nova venda |
 | `store.customers` | Clientes |
+| `store.vasilhame-loans` | Vasilhames emprestados |
 | `store.products` | Produtos |
 | `store.suppliers` | Fornecedores |
 | `store.purchases` | Compras |
@@ -40,6 +41,9 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 | `store.stock.transfers` | Transferências |
 | `store.deliverers` | Entregadores |
 | `store.deliverers.map` | Mapa de entregadores |
+| `store.schedules` | Escalas de trabalho |
+| `store.schedules.horarios` | Horários semanais |
+| `store.time-clock` | Cartão de ponto |
 | `store.reports` | Relatórios |
 
 > `store.dashboard` foi renomeado para `store.daily-summary`. Valores antigos no banco são normalizados automaticamente.
@@ -55,7 +59,7 @@ O master define, por usuário, quais telas aparecem no menu da loja.
 | Papel | Telas padrão |
 |-------|----------------|
 | STORE_MANAGER | Todas |
-| ATTENDANT | daily-summary, sales, sales.new, customers, deliverers.map |
+| ATTENDANT | daily-summary, sales, sales.new, customers, vasilhame-loans, stock, deliverers.map, schedules |
 | FINANCE | daily-summary, sales, customers, suppliers, purchases, reports |
 | DELIVERER | daily-summary (app mobile é o canal principal) |
 
@@ -80,25 +84,31 @@ Exclusões são **irreversíveis**. A UI exige confirmação explícita.
 
 | Ação | Quem pode |
 |------|-----------|
-| Aprovar/rejeitar venda com data anterior | `ORG_MASTER`, `STORE_MANAGER`, `PLATFORM_ADMIN` (`canManageSales`) |
-| Aprovar/rejeitar venda criada no app | `ORG_MASTER`, `STORE_MANAGER`, `ATTENDANT`, `PLATFORM_ADMIN` (`canApproveMobileSales`) |
+| Aprovar/rejeitar venda com data anterior | `canManageSales` |
+| Aprovar/rejeitar venda criada no app | `canApproveMobileSales` |
+| Editar itens/valores de venda já registrada | `canEditSaleItems` (apenas master) |
+| Exportar base de clientes (XLSX) | `canExportCustomerBase` (apenas master) |
+| Ajuste de estoque e transferências | `canManageStock` (gerente e master) |
 | Cancelar venda finalizada (Portaria/Entregue) | `canManageSales` |
-| Ver custo fornecedor e margem bruta | `ORG_MASTER`, `STORE_MANAGER`, `FINANCE`, `PLATFORM_ADMIN` (`canViewFinancialMargins`) |
-| Ver e lançar gastos da empresa | `ORG_MASTER`, `FINANCE`, `PLATFORM_ADMIN` (`canViewExpenses`) |
-| Configurar formas de pagamento e taxas | `ORG_MASTER`, `STORE_MANAGER`, `FINANCE`, `PLATFORM_ADMIN` (`canManagePaymentMethods`) |
-| Iniciar rota de entrega (`IN_PROGRESS`) | Apenas o entregador dono (app mobile) |
+| Ver custo fornecedor e margem bruta | `canViewFinancialMargins` |
+| Ver e lançar gastos da empresa | `canViewExpenses` / `canManageExpenses` |
+| Configurar formas de pagamento e taxas | `canManagePaymentMethods` |
+| Cadastrar/editar escalas | `canManageSchedules` (master e gerente) |
+| Ver horários semanais | `canAccessHorarios` |
+| Ver cartão de ponto | `canViewTimeClockLog` |
+| Iniciar rota de entrega (`IN_PROGRESS`) | Apenas o entregador dono (app) |
 | Concluir entrega (`DELIVERED`) | Entregador dono ou equipe da loja |
-| Marcar entregador disponível / indisponível (mapa) | Gerente, master ou atendente com `store.deliverers.map` (`canToggleDelivererAvailability`) |
+| Marcar entregador disponível / indisponível | `canToggleDelivererAvailability` |
 | Criar venda no app mobile | Papel `DELIVERER` |
+| Bater ponto no app | `DELIVERER` ou `ATTENDANT` |
 
-Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canApproveMobileSales`, `canManageDeliverers`, `canViewFinancialMargins`, `canViewExpenses`, `canManagePaymentMethods`, `canToggleDelivererAvailability`, `hasScreenPermission`.
+Helpers em `packages/shared/src/permissions.ts`: `canManageSales`, `canEditSaleItems`, `canExportCustomerBase`, `canManageStock`, `canApproveMobileSales`, `canManageDeliverers`, `canManageSchedules`, `canViewFinancialMargins`, `canViewExpenses`, `canManageExpenses`, `canManagePaymentMethods`, `canToggleDelivererAvailability`, `canAccessHorarios`, `canViewTimeClockLog`, `hasScreenPermission`.
 
 ### Gastos da empresa
 
 O painel de custos (`/master/expenses` e `/store/[storeId]/expenses`) **não** é chave de tela: o
-acesso vem do papel, via `canViewExpenses`. Gerente e atendente continuam vendo CMV e margem bruta,
-mas não o custo fixo da empresa — nem na tela, nem nos campos `operatingExpenses`/`netCost` do
-dashboard, que a API omite para quem não tem o papel.
+acesso vem do papel, via `canViewExpenses`. Toda despesa exige `storeId` (custo direto da unidade).
+Gerente e atendente veem CMV e margem bruta, mas não o custo operacional nem `operatingExpenses`/`netCost`.
 
 ## Onde é aplicado
 
@@ -106,7 +116,7 @@ dashboard, que a API omite para quem não tem o papel.
 |--------|---------|---------------|
 | Shared | `packages/shared/src/permissions.ts` | Chaves, defaults, helpers |
 | API | `auth.service.ts`, `users.service.ts` | JWT e CRUD com `permissions` |
-| Web nav | `app-shell.tsx`, `store-nav.ts` | Filtra itens do menu da loja |
+| Web nav | `master-nav.ts`, `store-nav.ts` | Filtra itens do menu (grupos accordion) |
 | Web guard | `store/[storeId]/layout.tsx` | Bloqueia URL sem permissão |
 | Formulário | `master/users/page.tsx` | Checkboxes de tela + lojas |
 

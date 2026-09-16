@@ -46,11 +46,7 @@ export default function StoreSchedulesPage() {
           ) : undefined
         }
       />
-      <SchedulesPanel
-        user={user}
-        storeId={storeId}
-        showPunchCard={false}
-      />
+      <SchedulesPanel user={user} storeId={storeId} />
     </>
   );
 }

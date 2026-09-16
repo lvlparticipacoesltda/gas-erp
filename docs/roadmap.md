@@ -1,6 +1,6 @@
 # Roadmap — Gas ERP
 
-Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-cutover Fly + mobile + métricas).
+Planejamento de fases e sprints do projeto. Atualizado em **set/2026** (RH, gastos, resultado, vasilhames, SSE, sessões).
 
 **Documentação relacionada:** [deployment.md](deployment.md) · [playstore-checklist.md](playstore-checklist.md) · [development.md](development.md) · [infrastructure-plan.md](infrastructure-plan.md) · [fly-migration.md](fly-migration.md)
 
@@ -11,7 +11,7 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 | Fase | Objetivo | Status |
 |------|----------|--------|
 | **Fase 0 — MVP operacional** | Web + API + mobile em produção para 1 rede piloto | ✅ Concluída |
-| **Fase 1 — Consolidação** | Play Store, segurança, cutover API regional | ✅ Quase fechada (pendências menores abaixo) |
+| **Fase 1 — Consolidação** | Play Store, segurança, cutover API regional, RH operacional, gastos/resultado | ✅ Quase fechada (pendências menores abaixo) |
 | **Fase 2 — Fiscal e financeiro** | NFC-e/NF-e, contas a pagar/receber, fluxo de caixa | ⏳ Planejada |
 | **Fase 3 — Crescimento** | App cliente, WhatsApp, real-time, multi-tenant SaaS | ⏳ Backlog |
 
@@ -37,7 +37,7 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 
 | # | Tarefa | Status |
 |---|--------|--------|
-| 1.1 | 21 migrations em produção | ✅ |
+| 1.1 | Migrations em produção (hoje **46**, até `time_clock_justifications`) | ✅ |
 | 1.2 | Senhas demo trocadas | ✅ |
 | 1.3 | Build AAB produção | ✅ |
 | 1.4 | Vídeo divulgação GPS | ✅ |
@@ -75,7 +75,7 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 
 ## Sprint 3 — Refinamentos operacionais (web + API)
 
-**Status:** ⏳ Próximo foco de produto (após pendências de segurança do Sprint 2).
+**Status:** ⏳ Próximo foco de produto (vários itens de operação já saíram em ago/set — ver “Já entregue”).
 
 | # | Tarefa | Prioridade |
 |---|--------|------------|
@@ -95,7 +95,8 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 | Módulo | Descrição | Dependências |
 |--------|-----------|--------------|
 | **Fiscal** | NFC-e/NF-e via `FiscalProvider` (stub em `packages/shared/src/fiscal/`) | Escolha de provedor |
-| **Gastos da empresa** | ✅ Entregue — painel de custos (`Expense`/`ExpenseCategory`), competência, rateio e custo/lucro líquido no dashboard | — |
+| **Gastos da empresa** | ✅ Entregue — painel de custos (`Expense`/`ExpenseCategory`), competência por unidade (`storeId` obrigatório) e custo/lucro líquido no dashboard | — |
+| **Resultado por unidade** | ✅ Entregue — `/master/results` + `GET /results/by-store` | — |
 | **Contas a pagar** | Títulos de fornecedores vinculados a `PurchaseInvoice` (o painel de gastos já cobre a parte não-fornecedor) | Fiscal parcial |
 | **Contas a receber** | Títulos de vendas a prazo / fiado | Formas de pagamento ✅ |
 | **Fluxo de caixa** | Consolidação entradas/saídas por loja e período | Contas a pagar/receber |
@@ -118,7 +119,7 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 
 ---
 
-## Já entregue (referência rápida — jun/jul 2026)
+## Já entregue (referência rápida — jun–set 2026)
 
 ### Produto
 - MVP web + API em produção (vendas, estoque, entregas, resumo diário, RBAC)
@@ -133,6 +134,15 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 - Loading com app-icon + pulsação; favicon alinhado à marca
 - Métricas de entrega: tempo até aceitar, em rota e total (`f427a17`)
 - Painéis/relatórios contabilizam vendas efetivadas (`4bbf3dd`)
+- Escalas, horários semanais, cartão de ponto, atestados (`e077e59`)
+- Gastos por unidade + resultado por unidade
+- Vasilhames emprestados (`14083fb`)
+- Sessões JWT + dispositivos confiáveis
+- Notificações master + SSE (fallback 60s)
+- Fechamento loja/master
+- Master edita itens da venda (`917dfa0`)
+- Export XLSX de clientes (`6c826aa`)
+- App mobile: atendente bate ponto; nome **THLGDP Entregador**
 
 ### Infra (Sprint 2)
 - API Fly.io GRU + `api.thlgasdopovo.com.br`
@@ -147,6 +157,5 @@ Planejamento de fases e sprints do projeto. Atualizado em **6 jul/2026** (pós-c
 
 1. **Segurança:** rotacionar senha Neon e atualizar secrets no Fly (e Railway se ainda ativo).
 2. **Fechar Sprint 2:** pausar Railway; opcionalmente Sentry/uptime e staging.
-3. **Fechar Sprint 2:** pausar Railway; opcionalmente Sentry/uptime e staging.
-4. **Sprint 3** ou **Fase 2 (fiscal)** — alinhar com o cliente piloto.
-5. **Fase 3** real-time só se o polling de 15s continuar incomodando no dia a dia.
+3. **Sprint 3** ou **Fase 2 (fiscal)** — alinhar com o cliente piloto.
+4. **Fase 3** Redis pub/sub só se o SSE + fallback de 60s continuar insuficiente.

@@ -28,7 +28,7 @@ export default function MasterTimeClockLogPage() {
     <>
       <PageHeader
         title="Cartão de ponto"
-        subtitle="Consulta e exportação por colaborador"
+        subtitle="Batidas de entrada e saída. Entregador e atendente registram pelo aplicativo."
         action={
           <Link
             href="/master/schedules"

@@ -3,7 +3,7 @@ import {
   computeNetProfitFromNetCost,
   sumExpenseAmounts,
 } from '../dist/expense-financials.js';
-import { computeMarginPercent } from '../dist/sale-financials.js';
+import { computeMarginPercent, computeCogsMarginPercent } from '../dist/sale-financials.js';
 
 function assert(label, condition) {
   if (!condition) {
@@ -28,12 +28,15 @@ assert(
   sumExpenseAmounts([{ amount: '0.10' }, { amount: '0.20' }]) === 0.3,
 );
 
-// Margem é sobre o faturamento, não sobre o CMV (que daria markup).
+// Margem do DRE continua sobre o faturamento; no resumo a margem é sobre o CMV.
 assert('margem de 40 sobre 100 = 40%', computeMarginPercent(100, 40) === 40);
 assert('participação de 60 sobre 100 = 60%', computeMarginPercent(100, 60) === 60);
 assert('sem faturamento não há margem', computeMarginPercent(0, 40) === null);
 assert('prejuízo vira margem negativa', computeMarginPercent(100, -25) === -25);
 assert('percentual arredondado em 2 casas', computeMarginPercent(3, 1) === 33.33);
+assert('markup 20 sobre CMV 80 = 25%', computeCogsMarginPercent(80, 20) === 25);
+assert('sem CMV não há margem no resumo', computeCogsMarginPercent(0, 20) === null);
+assert('prejuízo sobre CMV fica negativo', computeCogsMarginPercent(80, -16) === -20);
 
 // A análise vertical fecha: faturamento − (CMV + taxas + despesas) = lucro líquido,
 // e os percentuais das linhas somam 100%.

@@ -17,14 +17,10 @@ import {
   canViewTimeClockLog,
   hasScreenPermission,
   assignTimeClockPunchSlots,
-  computeTimeClockDayTotals,
   copyScheduleSchema,
   clearScheduleSchema,
-  formatMinutesComma,
-  formatMinutesCommaOrNull,
   getBusinessDayBounds,
   haversineDistanceMeters,
-  intervalsFromSlots,
   isTimeClockDayComplete,
   isNonWorkingScheduleDay,
   parseHmToMinutes,
@@ -242,18 +238,6 @@ function justificationDayWindow(
     start: Math.round((from - dayStart) / 60000),
     end: Math.round((to - dayStart) / 60000),
   };
-}
-
-/** Minutos de sobreposição entre a janela justificada e o previsto do dia. */
-function overlapMinutes(
-  scheduled: Array<{ start: number; end: number }>,
-  window: { start: number; end: number },
-): number {
-  return scheduled.reduce((sum, slot) => {
-    const start = Math.max(slot.start, window.start);
-    const end = Math.min(slot.end, window.end);
-    return end > start ? sum + (end - start) : sum;
-  }, 0);
 }
 
 function parseHmParts(hm: string): { hour: number; minute: number } {
@@ -1971,40 +1955,13 @@ export class SchedulesService {
           };
         });
 
-        let totalNormaisMinutes = 0;
-        let totalNoturnoMinutes = 0;
-        let diaFaltaMinutes = 0;
-        let faltaEAtrasoMinutes = 0;
-        let abonoTotalMinutes = 0;
-        let extra50dMinutes = 0;
-        let extraDiurnaMinutes = 0;
-        let extraNoturnaMinutes = 0;
-        let bancoTotalMinutes = 0;
-        let faltas = 0;
-        let atrasos = 0;
-        let bancoSaldoRunning = 0;
-
         const days = Array.from({ length: dim }, (_, i) => {
           const day = i + 1;
           const date = `${params.year}-${String(params.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const key = `${collab.id}|${date}`;
           const schedule = scheduleByKey.get(key) ?? null;
           const slots = assignDayPunchSlots(punchesByKey.get(key) ?? []);
-          const scheduleSlots = scheduleSlotsFromEntry(schedule);
-          const isWorkDay = Boolean(
-            schedule && !isNonWorkingScheduleDay(schedule.dayType),
-          );
 
-          const scheduledIntervals = intervalsFromSlots(scheduleSlots);
-          const workedIntervals = intervalsFromSlots({
-            ent1: slots.ent1 ? brazilTimeHm(slots.ent1) : null,
-            sai1: slots.sai1 ? brazilTimeHm(slots.sai1) : null,
-            ent2: slots.ent2 ? brazilTimeHm(slots.ent2) : null,
-            sai2: slots.sai2 ? brazilTimeHm(slots.sai2) : null,
-          });
-
-          // Justificativas que tocam o dia. Só as que abonam viram minutos de
-          // ABONO; as demais apenas documentam a ausência na grade.
           const dayJustifications = (justificationsByUser.get(collab.id) ?? [])
             .map((item) => ({
               item,
@@ -2012,41 +1969,9 @@ export class SchedulesService {
             }))
             .filter((entry) => entry.window !== null);
 
-          const abonoMinutes = isWorkDay
-            ? dayJustifications.reduce(
-                (sum, entry) =>
-                  justificationAbonaHoras(entry.item.type)
-                    ? sum + overlapMinutes(scheduledIntervals, entry.window!)
-                    : sum,
-                0,
-              )
-            : 0;
-
-          const calc = computeTimeClockDayTotals({
-            isWorkDay,
-            scheduled: scheduledIntervals,
-            worked: workedIntervals,
-            abonoMinutes,
-            scheduledStartMinutes: parseHmToMinutes(scheduleSlots.ent1),
-            scheduledEndMinutes: parseHmToMinutes(scheduleSlots.sai2 ?? scheduleSlots.sai1),
-            firstInMinutes: slots.ent1 ? parseHmToMinutes(brazilTimeHm(slots.ent1)) : null,
-            lastOutMinutes: slots.sai2
-              ? parseHmToMinutes(brazilTimeHm(slots.sai2))
-              : slots.sai1
-                ? parseHmToMinutes(brazilTimeHm(slots.sai1))
-                : null,
-          });
-
-          bancoSaldoRunning += calc.bancoTotalMinutes;
-          totalNormaisMinutes += calc.totalNormaisMinutes;
-          totalNoturnoMinutes += calc.totalNoturnoMinutes;
-          diaFaltaMinutes += calc.diaFaltaMinutes;
-          faltaEAtrasoMinutes += calc.faltaEAtrasoMinutes;
-          abonoTotalMinutes += calc.abonoMinutes;
-          extra50dMinutes += calc.extra50dMinutes;
-          extraDiurnaMinutes += calc.extraDiurnaMinutes;
-          extraNoturnaMinutes += calc.extraNoturnaMinutes;
-          bancoTotalMinutes += calc.bancoTotalMinutes;
+          const hasAbono = dayJustifications.some(({ item }) =>
+            justificationAbonaHoras(item.type),
+          );
 
           const clockIn = slots.ent1;
           const clockOut = slots.sai2 ?? slots.sai1;
@@ -2056,14 +1981,11 @@ export class SchedulesService {
             clockIn,
             clockOut,
           });
-          // Ausencia/atraso coberto por abono deixa de pesar como falta.
           const status: TimeClockDayStatus =
-            calc.abonoMinutes > 0
+            hasAbono
             && (rawStatus === 'ABSENT' || rawStatus === 'LATE' || rawStatus === 'INCOMPLETE')
               ? 'JUSTIFIED'
               : rawStatus;
-          if (status === 'ABSENT') faltas += 1;
-          if (status === 'LATE') atrasos += 1;
 
           return {
             date,
@@ -2076,16 +1998,6 @@ export class SchedulesService {
             ent2: formatPunchHm(slots.ent2, slots.sourceEnt2),
             sai2: formatPunchHm(slots.sai2, slots.sourceSai2),
             hasPhotos: photosByKey.has(key),
-            totalNormais: formatMinutesCommaOrNull(calc.totalNormaisMinutes),
-            totalNormaisMinutes: calc.totalNormaisMinutes,
-            totalNoturno: formatMinutesCommaOrNull(calc.totalNoturnoMinutes),
-            totalNoturnoMinutes: calc.totalNoturnoMinutes,
-            diaFalta: formatMinutesCommaOrNull(calc.diaFaltaMinutes),
-            diaFaltaMinutes: calc.diaFaltaMinutes,
-            faltaEAtraso: formatMinutesCommaOrNull(calc.faltaEAtrasoMinutes),
-            faltaEAtrasoMinutes: calc.faltaEAtrasoMinutes,
-            abono: formatMinutesCommaOrNull(calc.abonoMinutes),
-            abonoMinutes: calc.abonoMinutes,
             justifications: dayJustifications.map(({ item }) => ({
               id: item.id,
               type: item.type,
@@ -2094,16 +2006,6 @@ export class SchedulesService {
               abona: justificationAbonaHoras(item.type),
               hasFile: Boolean(item.fileName),
             })),
-            extra50d: formatMinutesCommaOrNull(calc.extra50dMinutes),
-            extra50dMinutes: calc.extra50dMinutes,
-            extraDiurna: formatMinutesCommaOrNull(calc.extraDiurnaMinutes),
-            extraDiurnaMinutes: calc.extraDiurnaMinutes,
-            extraNoturna: formatMinutesCommaOrNull(calc.extraNoturnaMinutes),
-            extraNoturnaMinutes: calc.extraNoturnaMinutes,
-            bancoTotal: formatMinutesCommaOrNull(calc.bancoTotalMinutes),
-            bancoTotalMinutes: calc.bancoTotalMinutes,
-            bancoSaldo: bancoSaldoRunning > 0 ? formatMinutesComma(bancoSaldoRunning) : null,
-            bancoSaldoMinutes: bancoSaldoRunning,
             status,
             statusLabel: TIME_CLOCK_DAY_STATUS_LABELS[status],
           };
@@ -2125,30 +2027,6 @@ export class SchedulesService {
           },
           horarioTrabalho,
           days,
-          totals: {
-            totalNormais: formatMinutesComma(totalNormaisMinutes),
-            totalNormaisMinutes: Math.round(totalNormaisMinutes),
-            totalNoturno: formatMinutesCommaOrNull(totalNoturnoMinutes),
-            totalNoturnoMinutes: Math.round(totalNoturnoMinutes),
-            diaFalta: formatMinutesCommaOrNull(diaFaltaMinutes),
-            diaFaltaMinutes: Math.round(diaFaltaMinutes),
-            faltaEAtraso: formatMinutesCommaOrNull(faltaEAtrasoMinutes),
-            faltaEAtrasoMinutes: Math.round(faltaEAtrasoMinutes),
-            abono: formatMinutesCommaOrNull(abonoTotalMinutes),
-            abonoMinutes: Math.round(abonoTotalMinutes),
-            extra50d: formatMinutesCommaOrNull(extra50dMinutes),
-            extra50dMinutes: Math.round(extra50dMinutes),
-            extraDiurna: formatMinutesCommaOrNull(extraDiurnaMinutes),
-            extraDiurnaMinutes: Math.round(extraDiurnaMinutes),
-            extraNoturna: formatMinutesCommaOrNull(extraNoturnaMinutes),
-            extraNoturnaMinutes: Math.round(extraNoturnaMinutes),
-            bancoTotal: formatMinutesCommaOrNull(bancoTotalMinutes),
-            bancoTotalMinutes: Math.round(bancoTotalMinutes),
-            bancoSaldo: formatMinutesCommaOrNull(bancoSaldoRunning) ?? formatMinutesComma(0),
-            bancoSaldoMinutes: Math.round(bancoSaldoRunning),
-            faltas,
-            atrasos,
-          },
         };
       })
       .sort((a, b) => a.header.userName.localeCompare(b.header.userName, 'pt-BR'));

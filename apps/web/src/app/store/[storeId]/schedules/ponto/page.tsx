@@ -24,7 +24,7 @@ export default function StoreTimeClockLogPage() {
     <>
       <PageHeader
         title="Cartão de ponto"
-        subtitle="Compare batidas de entrada/saída com a escala da unidade"
+        subtitle="Batidas de entrada e saída. Entregador e atendente registram pelo aplicativo."
         action={
           <Link
             href={`/store/${storeId}/schedules`}

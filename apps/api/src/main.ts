@@ -52,8 +52,10 @@ async function bootstrap() {
     new PrismaValidationExceptionFilter(),
   );
   const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
-  await app.listen(port);
-  console.log(`API running on http://localhost:${port}/api/v1`);
+  // Fly proxy exige bind em 0.0.0.0 (não 127.0.0.1 / só localhost).
+  const host = process.env.HOST ?? '0.0.0.0';
+  await app.listen(port, host);
+  console.log(`API running on http://${host}:${port}/api/v1`);
   console.log(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
 }
 

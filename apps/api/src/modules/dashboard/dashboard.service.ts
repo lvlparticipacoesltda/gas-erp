@@ -11,8 +11,8 @@ import {
   PAYMENT_METHOD_LABELS,
   canViewExpenses,
   canViewFinancialMargins,
+  computeCogsMarginPercent,
   computeGrossProfit,
-  computeMarginPercent,
   computeNetCost,
   computeNetProfit,
   computeNetProfitFromNetCost,
@@ -67,6 +67,7 @@ type DashboardPayload = {
   revenue: number;
   totalCost?: number;
   grossProfit?: number;
+  /** Lucro bruto ÷ CMV. Ausente sem CMV no período. */
   grossMarginPercent?: number | null;
   totalProcessingFees?: number;
   /** Custos diretos das unidades do escopo no período (competência). */
@@ -75,6 +76,7 @@ type DashboardPayload = {
   netCost?: number;
   netRevenue?: number;
   netProfit?: number;
+  /** Lucro líquido ÷ CMV. Ausente sem CMV no período. */
   netMarginPercent?: number | null;
   paymentsByMethod: {
     label: string;
@@ -1140,13 +1142,13 @@ export class DashboardService {
           return {
             totalCost,
             grossProfit,
-            grossMarginPercent: computeMarginPercent(revenue, grossProfit),
+            grossMarginPercent: computeCogsMarginPercent(totalCost, grossProfit),
             totalProcessingFees,
             ...(operatingExpenses ? { operatingExpenses: operatingExpenses.total } : {}),
             netCost,
             netRevenue,
             netProfit,
-            netMarginPercent: computeMarginPercent(revenue, netProfit),
+            netMarginPercent: computeCogsMarginPercent(totalCost, netProfit),
           };
         })()
       : {};

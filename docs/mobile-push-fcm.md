@@ -2,7 +2,7 @@
 
 Permissão de notificação no celular **não basta**. Em builds EAS/APK, o Expo só gera `ExponentPushToken[...]` se o **Firebase Cloud Messaging (FCM)** estiver configurado.
 
-Sem FCM, o app aceita a permissão mas **nunca grava token no banco** — nos logs da Railway aparece:
+Sem FCM, o app aceita a permissão mas **nunca grava token no banco** — nos logs da API (Fly) aparece:
 
 ```text
 Push NEW_DELIVERY ignorado: entregador ... sem expoPushToken registrado

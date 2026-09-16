@@ -286,7 +286,11 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
           <>
             <Card><div className="text-sm text-slate-500">CMV {periodLabel}</div><div className="text-2xl font-bold">{formatCurrency(data.totalCost!)}</div></Card>
             <Card><div className="text-sm text-slate-500">Lucro bruto {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.grossProfit))}>{formatCurrency(data.grossProfit!)}</div></Card>
-            <Card><div className="text-sm text-slate-500">Margem bruta {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.grossMarginPercent))}>{formatPercent(data.grossMarginPercent)}</div></Card>
+            <Card>
+              <div className="text-sm text-slate-500">Margem bruta {periodLabel}</div>
+              <div className={cn('text-2xl font-bold', negativeTone(data.grossMarginPercent))}>{formatPercent(data.grossMarginPercent)}</div>
+              <div className="mt-1 text-xs text-slate-400">lucro bruto ÷ CMV</div>
+            </Card>
           </>
         )}
         {showNetFinancial && (
@@ -308,7 +312,11 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             )}
             <Card><div className="text-sm text-slate-500">Faturamento líquido {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.netRevenue))}>{formatCurrency(data.netRevenue!)}</div></Card>
             <Card><div className="text-sm text-slate-500">Lucro líquido {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.netProfit))}>{formatCurrency(data.netProfit!)}</div></Card>
-            <Card><div className="text-sm text-slate-500">Margem líquida {periodLabel}</div><div className={cn('text-2xl font-bold', negativeTone(data.netMarginPercent))}>{formatPercent(data.netMarginPercent)}</div></Card>
+            <Card>
+              <div className="text-sm text-slate-500">Margem líquida {periodLabel}</div>
+              <div className={cn('text-2xl font-bold', negativeTone(data.netMarginPercent))}>{formatPercent(data.netMarginPercent)}</div>
+              <div className="mt-1 text-xs text-slate-400">lucro líquido ÷ CMV</div>
+            </Card>
           </>
         )}
       </div>

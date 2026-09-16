@@ -1,6 +1,6 @@
 # Plano de infraestrutura — latência, deploy e evolução
 
-Documento de planejamento para **Sprint 2** e fases seguintes. Atualizado jul/2026.
+Documento de planejamento para **Sprint 2** e fases seguintes. Atualizado set/2026 (SSE no ar; Redis/Sentry/staging ainda pendentes).
 
 **Relacionado:** [roadmap.md](roadmap.md) · [deployment.md](deployment.md) · [architecture.md](architecture.md)
 
@@ -51,17 +51,19 @@ Neon PostgreSQL (sa-east-1)          ← banco no Brasil
 
 **Latência B resolvida no Sprint 2:** API e banco agora na mesma região (~59 ms health vs ~1–3 s no Railway EUA).
 
-### Polling atual (tipo A — não é bug de rede)
+### Tempo real (tipo A)
 
-| Tela / app | Intervalo | Arquivo |
-|------------|-----------|---------|
-| Resumo diário / dashboard master | 15s | `apps/web/src/hooks/use-live-query.ts` |
-| Mapa de entregadores | 15s | `deliverers/map/page.tsx` |
-| Sidebar entregas | 20s | `deliveries-sidebar.tsx` |
-| App entregador — lista | 30s | `apps/mobile/src/hooks/useDeliveries.ts` |
+O painel web já usa **SSE** (`GET /realtime/store` e `/realtime/org`) via `useLiveQuery` + `use-realtime-refetch`. Polling de **60s** é só fallback se o EventSource cair.
+
+| Tela / app | Atualização | Arquivo |
+|------------|-------------|---------|
+| Resumo diário / dashboard master | SSE + fallback 60s | `use-live-query.ts`, `realtime.ts` |
+| Mapa de entregadores | poll ~15s | `deliverers/map/page.tsx` |
+| Sidebar entregas | poll ~20s | `deliveries-sidebar.tsx` |
+| App entregador — lista | poll ~30s | `apps/mobile/src/hooks/useDeliveries.ts` |
 | App entregador — presença GPS | 15s | `apps/mobile/src/lib/location.ts` |
 
-Ou seja: mesmo com infra perfeita, o usuário **não verá mudanças instantâneas** nessas telas até migrarmos para eventos em tempo real.
+Mapa e app mobile ainda dependem de polling. Redis pub/sub só vale se o SSE do painel ficar insuficiente.
 
 ---
 
@@ -70,11 +72,11 @@ Ou seja: mesmo com infra perfeita, o usuário **não verá mudanças instantâne
 Não recomendamos migrar tudo para um monolito único de imediato. O caminho natural é **colocar os componentes na mesma região** e **substituir polling por eventos**, mantendo o monorepo.
 
 ```
-Hoje (MVP)                    Curto prazo (Sprint 2–3)           Médio prazo (Fase 3)
+Hoje (set/2026)               Curto prazo (Sprint 2 restante)     Médio prazo (Fase 3)
 ─────────────────────────────────────────────────────────────────────────────────────
-Vercel + Fly GRU + Neon   →   + cache Redis + staging        →   SSE/WebSocket real-time
-Deploy seletivo + CI      →   Sentry + uptime                →   Staging obrigatório
-Polling 15–30s            →   Cache dashboard 10s           →   Real-time (Redis pub/sub)
+Vercel + Fly GRU + Neon   →   + cache Redis + staging        →   Redis pub/sub (mapa/app)
+SSE no painel + CI        →   Sentry + uptime                →   Staging obrigatório
+Polling só fallback/mapa  →   Cache dashboard 10s           →   Real-time mobile
 ```
 
 ### Opções de “stack unificada” (futuro)
@@ -163,7 +165,7 @@ Itens originais do Sprint 2, mantidos:
 
 ## Sprint 3+ — Reduzir delay percebido (tipo A)
 
-Infra sozinha **não elimina** o polling de 15s. Para “conversar melhor” em tempo real:
+Infra sozinha **não elimina** o polling do mapa e do app. O painel já usa SSE. Para “conversar melhor” em tempo real no mobile:
 
 | Fase | Solução | Esforço |
 |------|---------|---------|
@@ -202,11 +204,11 @@ Etapa 3 — Alto volume / fiscal
 Prioridade se o objetivo é **menos delay percebido agora**:
 
 1. [x] Colocar API no Brasil (Bloco 2) — **concluído jul/2026**
-2. [ ] Cache Redis no dashboard (Bloco 4) — **segundo maior ROI**
+2. [ ] Cache Redis no dashboard (Bloco 4)
 3. [ ] Pausar Railway (fallback legado)
-4. [ ] Deploy seletivo no CI (Bloco 3) — ✅ concluído
-5. [ ] Explicar ao time que polling 15s é comportamento atual (tipo A)
-6. [ ] Sprint 3: SSE + invalidação de cache após vendas
+4. [x] Deploy seletivo no CI (Bloco 3)
+5. [x] SSE no painel (`/realtime/store` e `/realtime/org`) — fallback 60s
+6. [ ] Redis pub/sub se mapa/app precisarem de real-time além do polling
 
 ---
 

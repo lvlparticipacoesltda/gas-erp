@@ -1,4 +1,4 @@
-# Checklist de publicação — App Gas Entregador (Google Play)
+# Checklist de publicação — THLGDP Entregador (Google Play)
 
 **Status:** ✅ App publicado na Google Play (jul/2026).
 

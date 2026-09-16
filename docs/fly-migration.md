@@ -2,7 +2,7 @@
 
 Colocar a API em **São Paulo** (Fly.io `gru`), ao lado do Neon **sa-east-1**, para reduzir latência B (requests de ~1–3s para metas de <200ms–1,5s).
 
-**Status (jul/2026):** ✅ **Cutover concluído.** API em produção em `https://api.thlgasdopovo.com.br/api/v1`. Railway permanece como fallback legado até ser pausado.
+**Status (set/2026):** ✅ **Cutover concluído** (jul/2026). API em produção em `https://api.thlgasdopovo.com.br/api/v1`. Railway permanece como fallback legado até ser pausado.
 
 **Relacionado:** [infrastructure-plan.md](infrastructure-plan.md) · [deployment.md](deployment.md)
 

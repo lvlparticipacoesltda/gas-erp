@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { TimeClockDayStatus } from '@gas-erp/shared';
 import { formatCnpj } from '@/lib/utils';
 
@@ -38,16 +38,6 @@ export type TimeClockCard = {
     ent2: string | null;
     sai2: string | null;
     hasPhotos?: boolean;
-    totalNormais: string | null;
-    totalNoturno?: string | null;
-    diaFalta?: string | null;
-    faltaEAtraso?: string | null;
-    abono?: string | null;
-    extra50d?: string | null;
-    extraDiurna?: string | null;
-    extraNoturna?: string | null;
-    bancoTotal?: string | null;
-    bancoSaldo?: string | null;
     status: TimeClockDayStatus;
     statusLabel: string;
     justifications?: Array<{
@@ -59,20 +49,6 @@ export type TimeClockCard = {
       hasFile: boolean;
     }>;
   }>;
-  totals: {
-    totalNormais: string;
-    totalNoturno?: string | null;
-    diaFalta?: string | null;
-    faltaEAtraso?: string | null;
-    abono?: string | null;
-    extra50d?: string | null;
-    extraDiurna?: string | null;
-    extraNoturna?: string | null;
-    bancoTotal?: string | null;
-    bancoSaldo?: string | null;
-    faltas: number;
-    atrasos: number;
-  };
 };
 
 /** Cor do marcador de status por dia (só na tela; o PDF sai sem a coluna). */
@@ -97,29 +73,16 @@ const SLOT_KEYS: PunchSlotKey[] = ['ent1', 'sai1', 'ent2', 'sai2'];
 
 const DAY_COLUMNS: Array<{
   key: string;
-  label: ReactNode;
+  label: string;
   align?: 'left' | 'center';
-  /** Largura fixa; sem ela `table-layout: fixed` divide tudo em partes iguais. */
   width?: number;
 }> = [
   { key: 'dia', label: 'DIA', align: 'left', width: 58 },
-  // Cabe uma faixa por linha ("08:00-12:00" / "13:00-18:00"): com a divisão
-  // igualitária o texto não cabia e vazava por cima das colunas de batida.
   { key: 'previsto', label: 'PREVISTO', align: 'left', width: 82 },
   { key: 'ent1', label: 'ENT.1', align: 'center' },
   { key: 'sai1', label: 'SAÍ.1', align: 'center' },
   { key: 'ent2', label: 'ENT.2', align: 'center' },
   { key: 'sai2', label: 'SAÍ.2', align: 'center' },
-  { key: 'totalNormais', label: <>TOTAL<br />NORMAIS</>, align: 'center' },
-  { key: 'totalNoturno', label: <>TOTAL<br />NOTURNO</>, align: 'center' },
-  { key: 'diaFalta', label: <>DIA<br />FALTA</>, align: 'center' },
-  { key: 'faltaEAtraso', label: <>FALTA E<br />ATRASO</>, align: 'center' },
-  { key: 'abono', label: 'ABONO', align: 'center' },
-  { key: 'extra50d', label: <>EXTRA<br />50%D</>, align: 'center' },
-  { key: 'extraDiurna', label: <>EXTRA<br />DIURNA</>, align: 'center' },
-  { key: 'extraNoturna', label: <>EXTRA<br />NOTURNA</>, align: 'center' },
-  { key: 'bancoTotal', label: <>BANCO<br />TOTAL</>, align: 'center' },
-  { key: 'bancoSaldo', label: <>BANCO<br />SALDO</>, align: 'center' },
 ];
 
 /** Remove marcador (M) e normaliza para HH:mm ou null. */
@@ -167,11 +130,6 @@ function formatDateBr(value?: string | null) {
   const [y, m, d] = value.split('-');
   if (!y || !m || !d) return value;
   return `${d}/${m}/${y}`;
-}
-
-function cellValue(value?: string | null) {
-  if (value == null || value === '') return '';
-  return value;
 }
 
 const MONTH_NAMES = [
@@ -348,16 +306,17 @@ export function TimeClockCardView({
 }) {
   const showPhotosCol = Boolean(onViewPhotos);
   const showStatus = Boolean(showStatusColumn);
-  const { header, horarioTrabalho, days, totals } = card;
+  const { header, horarioTrabalho, days } = card;
   const cnpj = formatCnpj(header.cnpj) || '—';
   const weekCols = horarioTrabalho.length + 1;
+  const hasTrailingCols = showPhotosCol || Boolean(onAddJustification);
 
   return (
     <div
       className={className}
       data-time-clock-card={header.userId}
       style={{
-        width: 1100,
+        width: 820,
         maxWidth: '100%',
         background: '#fff',
         color: '#111',
@@ -475,6 +434,7 @@ export function TimeClockCardView({
             <col key={col.key} style={col.width ? { width: col.width } : undefined} />
           ))}
           {showPhotosCol ? <col /> : null}
+          {onAddJustification ? <col /> : null}
         </colgroup>
         <thead>
           <tr>
@@ -489,7 +449,7 @@ export function TimeClockCardView({
                 style={cellStyle({
                   header: true,
                   center: col.align !== 'left',
-                  lastCol: !showPhotosCol && idx === DAY_COLUMNS.length - 1,
+                  lastCol: !hasTrailingCols && idx === DAY_COLUMNS.length - 1,
                 })}
               >
                 {col.label}
@@ -522,7 +482,7 @@ export function TimeClockCardView({
               { key: 'ent2', value: day.ent2 ?? '—' },
               { key: 'sai2', value: day.sai2 ?? '—' },
             ];
-            const metric = (v?: string | null) => cellValue(v);
+            const lastPunchCol = !hasTrailingCols;
             const tone = STATUS_TONE[day.status] ?? STATUS_TONE.DAY_OFF;
             const justification = day.justifications?.[0] ?? null;
             // Dia sem nenhuma batida e coberto por justificativa: o rótulo ocupa
@@ -556,7 +516,11 @@ export function TimeClockCardView({
                     colSpan={4}
                     title={justification.typeLabel}
                     style={{
-                      ...cellStyle({ center: true, lastRow }),
+                      ...cellStyle({
+                        center: true,
+                        lastRow,
+                        lastCol: lastPunchCol,
+                      }),
                       background: justification.abona ? '#eff6ff' : '#fef2f2',
                       color: justification.abona ? '#1e40af' : '#991b1b',
                       fontWeight: 600,
@@ -566,7 +530,7 @@ export function TimeClockCardView({
                     {justification.hasFile ? ' 📎' : ''}
                   </td>
                 ) : (
-                  punchDisplays.map(({ key, value }) => (
+                  punchDisplays.map(({ key, value }, punchIdx) => (
                   <EditablePunchCell
                     key={`${day.date}-${key}`}
                     display={value}
@@ -576,6 +540,7 @@ export function TimeClockCardView({
                       center: true,
                       nowrap: true,
                       lastRow,
+                      lastCol: lastPunchCol && punchIdx === punchDisplays.length - 1,
                       editable,
                     })}
                     onSave={async (nextValue) => {
@@ -586,24 +551,6 @@ export function TimeClockCardView({
                   />
                   ))
                 )}
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.totalNormais)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.totalNoturno)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.diaFalta)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.faltaEAtraso)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.abono)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.extra50d)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.extraDiurna)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.extraNoturna)}</td>
-                <td style={cellStyle({ center: true, lastRow })}>{metric(day.bancoTotal)}</td>
-                <td
-                  style={cellStyle({
-                    center: true,
-                    lastRow,
-                    lastCol: !showPhotosCol,
-                  })}
-                >
-                  {metric(day.bancoSaldo)}
-                </td>
                 {showPhotosCol ? (
                   <td
                     style={cellStyle({
@@ -670,19 +617,6 @@ export function TimeClockCardView({
           fontSize: 9,
         }}
       >
-        <div style={{ marginBottom: 4 }}>
-          <strong>TOTAIS:</strong>
-          {' '}Normais {totals.totalNormais}
-          {totals.totalNoturno ? ` · Noturno ${totals.totalNoturno}` : ''}
-          {totals.diaFalta ? ` · Dia falta ${totals.diaFalta}` : ''}
-          {totals.faltaEAtraso ? ` · Falta/atraso ${totals.faltaEAtraso}` : ''}
-          {totals.extra50d ? ` · Extra 50%D ${totals.extra50d}` : ''}
-          {totals.extraDiurna ? ` · Extra diurna ${totals.extraDiurna}` : ''}
-          {totals.extraNoturna ? ` · Extra noturna ${totals.extraNoturna}` : ''}
-          {totals.bancoTotal ? ` · Banco total ${totals.bancoTotal}` : ''}
-          {totals.bancoSaldo ? ` · Banco saldo ${totals.bancoSaldo}` : ''}
-          {` · Faltas ${totals.faltas} · Atrasos ${totals.atrasos}`}
-        </div>
         <div style={{ color: '#444' }}>
           (M) = App móvel
           {editable ? ' · Clique nos horários para editar' : ''}

@@ -11,17 +11,23 @@ Base: `/api/v1`
 
 ## Auth
 
-- `POST /auth/login` — `{ email, password }` → JWT com `storeIds`, `permissions`
+- `POST /auth/login` — `{ email, password }` → JWT com `storeIds`, `permissions`, `sid`
+- `POST /auth/logout` — revoga a sessão atual
 - `GET /auth/me` — usuário autenticado (permissões efetivas)
 - `PATCH /auth/me` — `{ name?, email?, phone? }` — atualizar próprio perfil
 - `POST /auth/change-password` — `{ currentPassword, newPassword }`
 - `POST /auth/forgot-password` — `{ email }` — envia link por e-mail (Resend)
 - `POST /auth/reset-password` — `{ token, newPassword }`
+- `GET /auth/trusted-devices` — dispositivos pareados
+- `POST /auth/trusted-devices/pairing-code` — gera código de pairing (TTL)
+- `DELETE /auth/trusted-devices/:id` — remove dispositivo
 
 ## Users (master)
 
 - `GET /users` — lista usuários da organização
-- `POST /users` — `{ email, name, password, role, storeIds?, permissions? }`
+- `GET /users/sessions` — sessões ativas (filtros `audience=staff|deliverer`)
+- `DELETE /users/sessions/:sessionId` — revoga sessão
+- `POST /users` — `{ email, name, password?, role, storeIds?, permissions? }` — senha aleatória se omitida
 - `PATCH /users/:id` — `{ name?, email?, role?, active?, storeIds?, permissions? }` — **inativar**: `active: false` (soft)
 - `DELETE /users/:id` — **exclusão permanente** (hard delete; não pode excluir a si mesmo nem entregadores — use `/deliverers/:id`)
 
@@ -49,7 +55,9 @@ Cada forma inclui `feeMode` (`NONE`, `PERCENT`, `FIXED`, `PERCENT_AND_FIXED`), `
 
 Operações escopadas por loja (`storeId` obrigatório).
 
-- `GET /customers?storeId=...` — lista clientes da loja
+- `GET /customers?storeId=...&categoryId=` — lista clientes da loja
+- `GET /customers/categories` — categorias canônicas (P13/P20/P45/Gás do Povo)
+- `GET /customers/export?storeId=` — planilha XLSX da base ativa (somente master)
 - `GET /customers/:id?storeId=&page=&pageSize=` — detalhe + histórico paginado de vendas (não canceladas, mais recentes primeiro). Cada venda inclui `items` (com `product.name`), `attendant`, `deliverer`, endereço de entrega e `payments` (com `storePaymentMethod { label, systemCode }`). `sales.total` = total de pedidos
 - `POST /customers` — criar (vinculado à loja)
 - `PATCH /customers/:id` — atualizar (inclui `active: false` para inativar)
@@ -91,11 +99,11 @@ Operações escopadas por loja (`X-Store-Id` ou `storeId`).
 ### Expenses (gastos da empresa)
 
 Acesso restrito a `ORG_MASTER`, `FINANCE` e `PLATFORM_ADMIN` (`canViewExpenses`); demais papéis
-recebem **403**. Master enxerga a organização inteira; financeiro, as lojas às quais tem acesso
-**mais** as despesas sem unidade.
+recebem **403**. Toda despesa tem **`storeId` obrigatório** (custo direto da unidade). Sem filtro
+de loja, master vê a organização; financeiro, só as lojas às quais tem acesso.
 
-Filtros comuns a `GET /expenses`, `/summary` e `/export`: `storeId` (use `org` para apenas as
-despesas da organização), `categoryId`, `status`, `dateFrom`, `dateTo`, `search`.
+Filtros comuns a `GET /expenses`, `/summary` e `/export`: `storeId`, `categoryId`, `status`,
+`dateFrom`, `dateTo`, `search`.
 
 - `GET /expenses?...&page=&pageSize=` — lista paginada; além do envelope padrão devolve
   `filteredTotal` (soma de todo o filtro, não só da página)
@@ -103,7 +111,7 @@ despesas da organização), `categoryId`, `status`, `dateFrom`, `dateTo`, `searc
   `byMonth[]` (6 meses até o mês de `dateTo`)
 - `GET /expenses/export?...` — download CSV
 - `GET /expenses/:id` — detalhe
-- `POST /expenses` — criar. `storeId` ausente = despesa da organização. `installments > 1` gera uma
+- `POST /expenses` — criar. `storeId` obrigatório. `installments > 1` gera uma
   linha por mês (mesmo valor), agrupadas por `recurrenceGroupId`
 - `PATCH /expenses/:id` — atualizar
 - `POST /expenses/:id/pay` — marca como pago (`paidAt` opcional; padrão = hoje)
@@ -125,6 +133,7 @@ mês em que ocorreu, esteja pago ou pendente.
   - Pagamentos podem referenciar `storePaymentMethodId` (taxa calculada automaticamente)
 - `PATCH /sales/:id/status` — atualizar status (bloqueado se `backdateApproval` ou `mobileApproval` pendentes/rejeitados)
 - `PATCH /sales/:id/payments` — atualizar formas de pagamento (soma = total; ver permissões abaixo)
+- `PATCH /sales/:id/items` — editar itens/valores (somente `canEditSaleItems` — master)
 - `POST /sales/:id/backdate/approve` — aprovar venda retroativa (`canManageSales`)
 - `POST /sales/:id/backdate/reject` — `{ reason }` — rejeitar venda retroativa
 - `POST /sales/:id/mobile/approve` — aprovar venda criada no app (`canApproveMobileSales`)
@@ -234,13 +243,40 @@ Para quem tem `canViewExpenses` (master e financeiro), a resposta também traz o
 
 | Campo | Significado |
 |-------|-------------|
-| `operatingExpenses` | Despesas da empresa no período, por competência, já rateadas |
-| `operatingExpensesDirect` | Parcela lançada diretamente nas unidades do escopo |
-| `operatingExpensesShared` | Parcela vinda de despesas sem unidade, rateada por faturamento |
+| `operatingExpenses` | Despesas da(s) unidade(s) no período, por competência |
 | `netCost` | `totalCost` (CMV) + `totalProcessingFees` + `operatingExpenses` |
 
-`netProfit` passa a ser `revenue − netCost`. Sem acesso a despesas (ex.: gerente de loja), o
-`netCost` continua sendo apenas CMV + taxas — o custo fixo da empresa não é exposto.
+`netProfit` = `revenue − netCost`. Sem `canViewExpenses`, a API omite `operatingExpenses` e o
+`netCost` fica só CMV + taxas.
+
+## Results
+
+- `GET /results/by-store?date=&dateFrom=&dateTo=` — resultado (P&L) por unidade no período
+
+## Vasilhame loans (comodato)
+
+Não movimenta estoque. `storeId` obrigatório.
+
+- `GET /vasilhame-loans?storeId=&search=&page=&pageSize=`
+- `GET /vasilhame-loans/:id`
+- `POST /vasilhame-loans` — cliente opcional (empréstimo avulso)
+- `PATCH /vasilhame-loans/:id`
+- `DELETE /vasilhame-loans/:id`
+
+## Schedules e ponto
+
+Escalas (`/schedules`) e cartão de ponto (`/time-clock`). Cadastro de escala: `canManageSchedules`.
+
+- `GET /schedules` — grade do mês
+- `GET /schedules/me` — escala do usuário logado (app)
+- `PUT /schedules/day` / `DELETE /schedules/day/:id`
+- `POST /schedules/copy` / `POST /schedules/clear`
+- `GET|PUT|DELETE /schedules/weeklies/:userId` — horário semanal
+- `POST /schedules/weeklies/:userId/apply` / `POST /schedules/weeklies/apply-store`
+- `GET /time-clock/me` / `POST /time-clock/punch` — batidas (slots ent1/sai1/ent2/sai2; GPS + selfie no app)
+- `GET /time-clock` / `GET /time-clock/report` / `GET /time-clock/cards` / `GET /time-clock/day-photos`
+- `PUT /time-clock/day` — ajuste manual das batidas do dia
+- `GET|POST /time-clock/justifications` / `GET .../:id/file` / `DELETE .../:id` — atestados
 
 ## Notifications (master)
 
