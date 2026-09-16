@@ -54,8 +54,9 @@ export function computeNetProfit(grossProfit: number, processingFees: number): n
  * ou margem sobre a receita. Sem faturamento no período não há base, então retorna
  * null em vez de zero.
  *
- * No resumo/visão geral a margem operacional usa {@link computeCogsMarginPercent}
- * (base = CMV). Esta função permanece para o DRE, onde cada linha é % da receita.
+ * No resumo/visão geral a margem operacional usa {@link computeCatalogMarkupPercent}
+ * (preço de tabela da loja sobre o CMV cadastrado). Esta função permanece para o
+ * DRE, onde cada linha é % da receita.
  */
 export function computeMarginPercent(revenue: number, value: number): number | null {
   if (revenue <= 0) return null;
@@ -71,4 +72,49 @@ export function computeMarginPercent(revenue: number, value: number): number | n
 export function computeCogsMarginPercent(cogs: number, profit: number): number | null {
   if (cogs <= 0) return null;
   return Math.round((profit / cogs) * 10000) / 100;
+}
+
+/** Linha para o markup de tabela: preço e custo cadastrados da loja, não o da venda. */
+export interface CatalogMarkupLineInput {
+  quantity: number;
+  listPrice: unknown;
+  supplierCost: unknown;
+}
+
+/**
+ * Soma o faturamento e o CMV de tabela (preço/custo cadastrados × quantidade).
+ *
+ * Linhas sem custo (taxa, brinde) ficam de fora — não diluem nem inflacionam o markup.
+ */
+export function aggregateCatalogMarkup(lines: CatalogMarkupLineInput[]): {
+  tableRevenue: number;
+  tableCogs: number;
+  tableProfit: number;
+} {
+  let tableRevenue = 0;
+  let tableCogs = 0;
+  for (const line of lines) {
+    const quantity = line.quantity;
+    const supplierCost = toNumber(line.supplierCost);
+    const listPrice = toNumber(line.listPrice);
+    if (quantity <= 0 || supplierCost <= 0) continue;
+    tableRevenue += quantity * listPrice;
+    tableCogs += quantity * supplierCost;
+  }
+  return {
+    tableRevenue,
+    tableCogs,
+    tableProfit: tableRevenue - tableCogs,
+  };
+}
+
+/**
+ * Markup de tabela: (preço cadastrado − custo) ÷ custo, ponderado pelas quantidades.
+ *
+ * Ignora o preço realizado da venda (Gás do Povo, entrega, avulso). Sem CMV de
+ * tabela no período não há base — retorna null.
+ */
+export function computeCatalogMarkupPercent(lines: CatalogMarkupLineInput[]): number | null {
+  const { tableCogs, tableProfit } = aggregateCatalogMarkup(lines);
+  return computeCogsMarginPercent(tableCogs, tableProfit);
 }

@@ -3,7 +3,11 @@ import {
   computeNetProfitFromNetCost,
   sumExpenseAmounts,
 } from '../dist/expense-financials.js';
-import { computeMarginPercent, computeCogsMarginPercent } from '../dist/sale-financials.js';
+import {
+  computeMarginPercent,
+  computeCogsMarginPercent,
+  computeCatalogMarkupPercent,
+} from '../dist/sale-financials.js';
 
 function assert(label, condition) {
   if (!condition) {
@@ -37,6 +41,23 @@ assert('percentual arredondado em 2 casas', computeMarginPercent(3, 1) === 33.33
 assert('markup 20 sobre CMV 80 = 25%', computeCogsMarginPercent(80, 20) === 25);
 assert('sem CMV não há margem no resumo', computeCogsMarginPercent(0, 20) === null);
 assert('prejuízo sobre CMV fica negativo', computeCogsMarginPercent(80, -16) === -20);
+
+// Markup de tabela ignora o preço realizado (GDP / entrega / avulso).
+assert(
+  'P13 tabela 125 custo 84,32 = 48,24%',
+  computeCatalogMarkupPercent([{ quantity: 21, listPrice: 125, supplierCost: 84.32 }]) === 48.24,
+);
+assert(
+  'taxa sem custo não entra no markup',
+  computeCatalogMarkupPercent([
+    { quantity: 21, listPrice: 125, supplierCost: 84.32 },
+    { quantity: 2, listPrice: 40, supplierCost: 0 },
+  ]) === 48.24,
+);
+assert(
+  'sem custo cadastrado não há markup',
+  computeCatalogMarkupPercent([{ quantity: 2, listPrice: 40, supplierCost: 0 }]) === null,
+);
 
 // A análise vertical fecha: faturamento − (CMV + taxas + despesas) = lucro líquido,
 // e os percentuais das linhas somam 100%.

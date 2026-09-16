@@ -29,7 +29,7 @@ Estou continuando o Gas ERP — monorepo em /Users/zeroummobilidade/gas-erp (pnp
 - Venda mobile: entregador cria → aprovação na loja (`mobileApproval`)
 - Fornecedores + compras (entrada de estoque; trava cheio vs vasilhame vinculado)
 - Relatórios: vendas, compras, estoque + CSV; master agrega unidades
-- Formas de pagamento + taxas + receita líquida; custo fornecedor + margem
+- Formas de pagamento + taxas + receita líquida; custo fornecedor + markup de tabela no resumo
 - Clientes por loja + categorias (P13/P20/P45/Gás do Povo) + preço negociado + export XLSX (master)
 - Vasilhames emprestados (comodato; não movimenta estoque)
 - Gastos da empresa por unidade (`storeId` obrigatório) + resultado por unidade (`GET /results/by-store`)

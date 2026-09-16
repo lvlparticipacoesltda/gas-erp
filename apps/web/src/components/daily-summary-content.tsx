@@ -289,7 +289,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             <Card>
               <div className="text-sm text-slate-500">Margem bruta {periodLabel}</div>
               <div className={cn('text-2xl font-bold', negativeTone(data.grossMarginPercent))}>{formatPercent(data.grossMarginPercent)}</div>
-              <div className="mt-1 text-xs text-slate-400">lucro bruto ÷ CMV</div>
+              <div className="mt-1 text-xs text-slate-400">markup de tabela — (preço − custo) ÷ custo</div>
             </Card>
           </>
         )}
@@ -315,7 +315,7 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             <Card>
               <div className="text-sm text-slate-500">Margem líquida {periodLabel}</div>
               <div className={cn('text-2xl font-bold', negativeTone(data.netMarginPercent))}>{formatPercent(data.netMarginPercent)}</div>
-              <div className="mt-1 text-xs text-slate-400">lucro líquido ÷ CMV</div>
+              <div className="mt-1 text-xs text-slate-400">markup de tabela após taxas e despesas</div>
             </Card>
           </>
         )}

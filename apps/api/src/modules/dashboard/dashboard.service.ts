@@ -11,6 +11,7 @@ import {
   PAYMENT_METHOD_LABELS,
   canViewExpenses,
   canViewFinancialMargins,
+  aggregateCatalogMarkup,
   computeCogsMarginPercent,
   computeGrossProfit,
   computeNetCost,
@@ -67,7 +68,7 @@ type DashboardPayload = {
   revenue: number;
   totalCost?: number;
   grossProfit?: number;
-  /** Lucro bruto ÷ CMV. Ausente sem CMV no período. */
+  /** Markup de tabela: (preço cadastrado − custo) ÷ custo. Ausente sem CMV de GLP. */
   grossMarginPercent?: number | null;
   totalProcessingFees?: number;
   /** Custos diretos das unidades do escopo no período (competência). */
@@ -76,7 +77,7 @@ type DashboardPayload = {
   netCost?: number;
   netRevenue?: number;
   netProfit?: number;
-  /** Lucro líquido ÷ CMV. Ausente sem CMV no período. */
+  /** Markup líquido de tabela (após taxas e despesas). Ausente sem CMV de GLP. */
   netMarginPercent?: number | null;
   paymentsByMethod: {
     label: string;
@@ -550,6 +551,7 @@ export class DashboardService {
       stockBalances,
       stockMovements,
       operatingExpenses,
+      productSettings,
     ] = await Promise.all([
       this.prisma.sale.aggregate({
         where: saleWhere,
@@ -598,7 +600,14 @@ export class DashboardService {
       showFinancial
         ? this.prisma.saleItem.findMany({
             where: { sale: saleWhere },
-            select: { productId: true, quantity: true, total: true, unitCost: true },
+            select: {
+              productId: true,
+              quantity: true,
+              total: true,
+              unitCost: true,
+              sale: { select: { storeId: true } },
+              product: { select: { productType: true } },
+            },
           })
         : Promise.resolve([]),
       showFinancial
@@ -675,6 +684,12 @@ export class DashboardService {
       showExpenses
         ? this.computeOperatingExpenses(user.organizationId, storeIds, dateFrom, dateTo)
         : Promise.resolve(null),
+      showFinancial
+        ? this.prisma.productStoreSetting.findMany({
+            where: { storeId: { in: storeIds } },
+            select: { storeId: true, productId: true, price: true, supplierCost: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const revenue = toNumber(saleAgg._sum.total);
@@ -1139,16 +1154,38 @@ export class DashboardService {
             operatingExpenses?.total ?? 0,
           );
           const netProfit = computeNetProfitFromNetCost(revenue, netCost);
+          const catalogByProductStore = new Map(
+            productSettings.map((setting) => [
+              `${setting.storeId}:${setting.productId}`,
+              setting,
+            ]),
+          );
+          const catalog = aggregateCatalogMarkup(
+            saleItemsDetail
+              .filter((item) => isGlp(item.product.productType))
+              .map((item) => {
+                const setting = catalogByProductStore.get(
+                  `${item.sale.storeId}:${item.productId}`,
+                );
+                return {
+                  quantity: item.quantity,
+                  listPrice: setting?.price ?? 0,
+                  supplierCost: setting?.supplierCost ?? 0,
+                };
+              }),
+          );
+          const catalogNetProfit =
+            catalog.tableProfit - totalProcessingFees - (operatingExpenses?.total ?? 0);
           return {
             totalCost,
             grossProfit,
-            grossMarginPercent: computeCogsMarginPercent(totalCost, grossProfit),
+            grossMarginPercent: computeCogsMarginPercent(catalog.tableCogs, catalog.tableProfit),
             totalProcessingFees,
             ...(operatingExpenses ? { operatingExpenses: operatingExpenses.total } : {}),
             netCost,
             netRevenue,
             netProfit,
-            netMarginPercent: computeCogsMarginPercent(totalCost, netProfit),
+            netMarginPercent: computeCogsMarginPercent(catalog.tableCogs, catalogNetProfit),
           };
         })()
       : {};

@@ -237,7 +237,7 @@ Requer FCM configurado — ver [mobile-push-fcm.md](mobile-push-fcm.md).
 
 Período: dia único (`date`) ou intervalo inclusivo (`dateFrom` + `dateTo`). Fuso: `America/Sao_Paulo` (UTC-3 fixo). Agregações usam **`saleDate`**; exclui `backdateApproval` e `mobileApproval` pendentes/rejeitados.
 
-Inclui `deliveryMetrics` (espera, rota, por entregador) e totais financeiros com **receita líquida** (após taxas de pagamento) e **margem bruta** (quando custo fornecedor configurado).
+Inclui `deliveryMetrics` (espera, rota, por entregador) e totais financeiros com **receita líquida** (após taxas de pagamento) e **markup de tabela** (preço cadastrado do GLP − custo, sobre o CMV cadastrado — não usa o mix de preços do dia: Gás do Povo, presencial, entrega).
 
 Para quem tem `canViewExpenses` (master e financeiro), a resposta também traz o custo operacional:
 
