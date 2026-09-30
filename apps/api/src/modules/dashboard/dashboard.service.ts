@@ -22,6 +22,7 @@ import {
   computeSaleGdpStats,
   formatDashboardDateRangeLabel,
   isGlpP13Product,
+  glpCylinderSize,
   toNumber,
 } from '@gas-erp/shared';
 import { assertStoreAccess } from '../../common/guards';
@@ -123,6 +124,9 @@ type DashboardPayload = {
     }[];
   };
   glpQuantitySold: number;
+  glpP13QuantitySold: number;
+  glpP20QuantitySold: number;
+  glpP45QuantitySold: number;
   gasDoPovo: {
     quantity: number;
     revenue: number;
@@ -490,6 +494,9 @@ export class DashboardService {
       stockGlp: { products: [], totals: { opening: 0, out: 0, closing: 0 } },
       stockAll: { groups: [] },
       glpQuantitySold: 0,
+      glpP13QuantitySold: 0,
+      glpP20QuantitySold: 0,
+      glpP45QuantitySold: 0,
       gasDoPovo: { quantity: 0, revenue: 0, salesCount: 0 },
       portaria: { salesCount: 0, glpQuantity: 0 },
       portariaDetail: { salesCount: 0, totalRevenue: 0, byProduct: [], byPaymentMethod: [] },
@@ -700,6 +707,9 @@ export class DashboardService {
       (productType ?? '').toUpperCase() === 'GLP';
 
     let glpQuantitySold = 0;
+    let glpP13QuantitySold = 0;
+    let glpP20QuantitySold = 0;
+    let glpP45QuantitySold = 0;
     let gdpQuantity = 0;
     let gdpRevenue = 0;
     let gdpSalesCount = 0;
@@ -748,6 +758,12 @@ export class DashboardService {
         0,
       );
       glpQuantitySold += saleGlpQty;
+      for (const item of sale.items) {
+        const size = glpCylinderSize(item.product);
+        if (size === 'P13') glpP13QuantitySold += item.quantity;
+        else if (size === 'P20') glpP20QuantitySold += item.quantity;
+        else if (size === 'P45') glpP45QuantitySold += item.quantity;
+      }
 
       if (sale.status === 'PORTARIA') {
         portariaSalesCount += 1;
@@ -1201,6 +1217,9 @@ export class DashboardService {
       stockGlp,
       stockAll,
       glpQuantitySold,
+      glpP13QuantitySold,
+      glpP20QuantitySold,
+      glpP45QuantitySold,
       gasDoPovo: {
         quantity: gdpQuantity,
         revenue: gdpRevenue,

@@ -66,6 +66,9 @@ export interface DailySummaryData {
     }[];
   };
   glpQuantitySold: number;
+  glpP13QuantitySold?: number;
+  glpP20QuantitySold?: number;
+  glpP45QuantitySold?: number;
   gasDoPovo: {
     quantity: number;
     revenue: number;
@@ -250,10 +253,22 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
       )}
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Card className="border-brand/40 bg-brand/5">
-          <div className="text-sm text-slate-500">Botijas GLP vendidas {periodLabel}</div>
-          <div className="text-3xl font-extrabold text-brand-dark">{data.glpQuantitySold}</div>
-        </Card>
+        <div className="col-span-full grid gap-4 sm:grid-cols-3">
+          <Card className="border-brand/40 bg-brand/5">
+            <div className="text-sm text-slate-500">GLP 13KG vendidos {periodLabel}</div>
+            <div className="text-3xl font-extrabold text-brand-dark">
+              {data.glpP13QuantitySold ?? data.glpQuantitySold}
+            </div>
+          </Card>
+          <Card className="border-brand/40 bg-brand/5">
+            <div className="text-sm text-slate-500">GLP 20KG vendidos {periodLabel}</div>
+            <div className="text-3xl font-extrabold text-brand-dark">{data.glpP20QuantitySold ?? 0}</div>
+          </Card>
+          <Card className="border-brand/40 bg-brand/5">
+            <div className="text-sm text-slate-500">GLP 45KG vendidos {periodLabel}</div>
+            <div className="text-3xl font-extrabold text-brand-dark">{data.glpP45QuantitySold ?? 0}</div>
+          </Card>
+        </div>
         <Card className="border-emerald-300 bg-emerald-50">
           <div className="text-sm text-slate-500">Gás do Povo {periodLabel}</div>
           <div className="flex items-baseline gap-3">
