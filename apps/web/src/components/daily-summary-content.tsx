@@ -69,6 +69,7 @@ export interface DailySummaryData {
   glpP13QuantitySold?: number;
   glpP20QuantitySold?: number;
   glpP45QuantitySold?: number;
+  agua20LQuantitySold?: number;
   gasDoPovo: {
     quantity: number;
     revenue: number;
@@ -77,6 +78,8 @@ export interface DailySummaryData {
   portaria: {
     salesCount: number;
     glpQuantity: number;
+    aguaQuantity?: number;
+    aguaSalesCount?: number;
   };
   portariaDetail?: {
     salesCount: number;
@@ -269,6 +272,10 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             <div className="text-3xl font-extrabold text-brand-dark">{data.glpP45QuantitySold ?? 0}</div>
           </Card>
         </div>
+        <Card className="border-brand/40 bg-brand/5">
+          <div className="text-sm text-slate-500">Água Cristal 20L vendida {periodLabel}</div>
+          <div className="text-3xl font-extrabold text-brand-dark">{data.agua20LQuantitySold ?? 0}</div>
+        </Card>
         <Card className="border-emerald-300 bg-emerald-50">
           <div className="text-sm text-slate-500">Gás do Povo {periodLabel}</div>
           <div className="flex items-baseline gap-3">
@@ -291,6 +298,19 @@ export function DailySummaryContent({ data, showStoreInSlowDeliveries }: DailySu
             </div>
             <div>
               <div className="text-2xl font-bold text-sky-800">{portaria.salesCount}</div>
+              <div className="text-xs text-slate-500">pedidos</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="border-sky-300 bg-sky-50">
+          <div className="text-sm text-slate-500">Portaria água {periodLabel}</div>
+          <div className="flex items-baseline gap-3">
+            <div>
+              <div className="text-3xl font-extrabold text-sky-800">{portaria.aguaQuantity ?? 0}</div>
+              <div className="text-xs text-slate-500">garrafões</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-sky-800">{portaria.aguaSalesCount ?? 0}</div>
               <div className="text-xs text-slate-500">pedidos</div>
             </div>
           </div>

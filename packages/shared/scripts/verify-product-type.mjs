@@ -1,8 +1,10 @@
 import {
   glpCylinderSize,
+  isAgua20LProduct,
   isGlpP13Product,
   isGlpP20Product,
   isGlpP45Product,
+  isWaterFilledProduct,
 } from '../dist/product-type.js';
 
 function assert(label, condition) {
@@ -43,6 +45,20 @@ assert('helpers P45', isGlpP45Product({ sku: 'GLP-P45', name: 'GLP 45 KG', produ
 assert(
   'P13 helper no SKU comum',
   isGlpP13Product({ sku: 'GLP-P13', name: 'GLP 13KG', productType: 'GLP' }),
+);
+assert(
+  'Água Cristal 20L é garrafão cheio',
+  isAgua20LProduct({ sku: 'AGUA', name: 'AGUA CRISTAL 20L', productType: 'AGUA' }),
+);
+assert(
+  'vasilhame água 20L não conta como venda',
+  isAgua20LProduct({ sku: 'VAS-AGUA', name: 'Vasilhame AGUA 20L', productType: 'VASILHAME' }) ===
+    false,
+);
+assert(
+  'galão cadastrado como tipo água não conta',
+  isWaterFilledProduct({ sku: 'Galão', name: 'Vasilhame agua 20L', productType: 'Agua ' }) ===
+    false,
 );
 
 console.log('product-type OK');

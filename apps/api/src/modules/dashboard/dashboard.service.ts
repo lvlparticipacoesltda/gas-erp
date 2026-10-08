@@ -21,6 +21,7 @@ import {
   computeSaleCogs,
   computeSaleGdpStats,
   formatDashboardDateRangeLabel,
+  isAgua20LProduct,
   isGlpP13Product,
   glpCylinderSize,
   toNumber,
@@ -127,6 +128,7 @@ type DashboardPayload = {
   glpP13QuantitySold: number;
   glpP20QuantitySold: number;
   glpP45QuantitySold: number;
+  agua20LQuantitySold: number;
   gasDoPovo: {
     quantity: number;
     revenue: number;
@@ -135,6 +137,8 @@ type DashboardPayload = {
   portaria: {
     salesCount: number;
     glpQuantity: number;
+    aguaQuantity: number;
+    aguaSalesCount: number;
   };
   portariaDetail: {
     salesCount: number;
@@ -497,8 +501,9 @@ export class DashboardService {
       glpP13QuantitySold: 0,
       glpP20QuantitySold: 0,
       glpP45QuantitySold: 0,
+      agua20LQuantitySold: 0,
       gasDoPovo: { quantity: 0, revenue: 0, salesCount: 0 },
-      portaria: { salesCount: 0, glpQuantity: 0 },
+      portaria: { salesCount: 0, glpQuantity: 0, aguaQuantity: 0, aguaSalesCount: 0 },
       portariaDetail: { salesCount: 0, totalRevenue: 0, byProduct: [], byPaymentMethod: [] },
       salesCount: 0,
       deliveries: { pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
@@ -710,11 +715,14 @@ export class DashboardService {
     let glpP13QuantitySold = 0;
     let glpP20QuantitySold = 0;
     let glpP45QuantitySold = 0;
+    let agua20LQuantitySold = 0;
     let gdpQuantity = 0;
     let gdpRevenue = 0;
     let gdpSalesCount = 0;
     let portariaSalesCount = 0;
     let portariaGlpQuantity = 0;
+    let portariaAguaQuantity = 0;
+    let portariaAguaSalesCount = 0;
     let portariaRevenue = 0;
     const portariaByProduct = new Map<
       string,
@@ -758,16 +766,25 @@ export class DashboardService {
         0,
       );
       glpQuantitySold += saleGlpQty;
+      let saleAguaQty = 0;
       for (const item of sale.items) {
         const size = glpCylinderSize(item.product);
         if (size === 'P13') glpP13QuantitySold += item.quantity;
         else if (size === 'P20') glpP20QuantitySold += item.quantity;
         else if (size === 'P45') glpP45QuantitySold += item.quantity;
+        if (isAgua20LProduct(item.product)) {
+          agua20LQuantitySold += item.quantity;
+          saleAguaQty += item.quantity;
+        }
       }
 
       if (sale.status === 'PORTARIA') {
         portariaSalesCount += 1;
         portariaGlpQuantity += saleGlpQty;
+        if (saleAguaQty > 0) {
+          portariaAguaQuantity += saleAguaQty;
+          portariaAguaSalesCount += 1;
+        }
         portariaRevenue += toNumber(sale.total);
         for (const item of sale.items) {
           const acc = portariaByProduct.get(item.product.id) ?? {
@@ -1220,6 +1237,7 @@ export class DashboardService {
       glpP13QuantitySold,
       glpP20QuantitySold,
       glpP45QuantitySold,
+      agua20LQuantitySold,
       gasDoPovo: {
         quantity: gdpQuantity,
         revenue: gdpRevenue,
@@ -1228,6 +1246,8 @@ export class DashboardService {
       portaria: {
         salesCount: portariaSalesCount,
         glpQuantity: portariaGlpQuantity,
+        aguaQuantity: portariaAguaQuantity,
+        aguaSalesCount: portariaAguaSalesCount,
       },
       portariaDetail: {
         salesCount: portariaSalesCount,
